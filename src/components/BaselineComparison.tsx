@@ -17,7 +17,7 @@ import {
   isSameMonth
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface BaselineComparisonProps {
@@ -213,6 +213,35 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
       .filter((group): group is NonNullable<typeof group> => group !== null);
   }, [items, baselineItems, categories]);
 
+  const renderTodayLine = () => {
+    const today = startOfDay(new Date());
+    if (today < startDate || today > endDate) return null;
+
+    let todayLeft = 0;
+    if (zoom === 'day') {
+      todayLeft += differenceInDays(today, startDate) * columnWidth + (columnWidth / 2);
+    } else if (zoom === 'week') {
+      const startOfW = startOfWeek(today);
+      const weekIndex = Math.floor(differenceInDays(startOfW, startOfWeek(startDate)) / 7);
+      const dayInWeek = differenceInDays(today, startOfW);
+      todayLeft += (weekIndex * columnWidth) + (dayInWeek * (columnWidth / 7));
+    } else {
+      const startOfM = startOfMonth(today);
+      const monthIndex = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth());
+      const dayInMonth = today.getDate() - 1;
+      todayLeft += (monthIndex * columnWidth) + (dayInMonth * (columnWidth / 30));
+    }
+
+    return (
+      <div 
+        className="absolute top-0 bottom-0 w-px bg-blue-500 z-50 pointer-events-none"
+        style={{ left: `calc(var(--left-col-width, 300px) + ${todayLeft}px)` }}
+      >
+        <div className="absolute top-0 -translate-x-1/2 bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm">오늘</div>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white border-y xl:border border-gray-200 xl:rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
       <div className="px-6 py-4 bg-blue-50/50 border-b border-gray-200 flex items-center gap-3">
@@ -249,8 +278,12 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
             </div>
           </div>
 
+          {/* Today Line */}
+          {renderTodayLine()}
+
           {/* Rows */}
-          <div className="divide-y divide-gray-100">
+          {/* Rows */}
+          <div className="divide-y divide-gray-100 relative">
             {aggregatedData.map((group) => (
               <React.Fragment key={group.category}>
                 {/* Category Header */}
@@ -323,7 +356,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
                               {/* Baseline Bar */}
                               {sub.baseline && (
                                 <div 
-                                  className="absolute top-0.5 xl:top-1 h-2 xl:h-4 border-y-2 xl:border-4 border-gray-300 rounded-full z-0 transition-all"
+                                  className="absolute top-0.5 xl:top-1 h-2 xl:h-4 rounded-full z-0 transition-all"
                                   style={{ 
                                     left: bPos.left, 
                                     width: bPos.width,
@@ -355,8 +388,8 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
 
                               {/* Delay Indicator */}
                               {sub.baseline && sub.actual && sub.actual.end > sub.baseline.end && (
-                                <div 
-                                  className="absolute bottom-0.5 xl:bottom-3 h-0.5 xl:h-1 bg-rose-400 rounded-full z-20 opacity-60"
+                                  <div 
+                                    className="absolute bottom-0.5 xl:bottom-3 h-0.5 xl:h-1 bg-red-600 rounded-full z-20"
                                   style={{ 
                                     left: bPos.left + bPos.width, 
                                     width: getTaskPosition(sub.baseline.end, sub.actual.end).width - (zoom === 'day' ? columnWidth : zoom === 'week' ? columnWidth/7 : columnWidth/30) 

@@ -23,10 +23,24 @@ import {
   ArrowLeftRight,
   Database,
   FileText,
-  User as UserIcon,
-  Youtube
+  User as UserIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+const LogoIcon = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="currentColor" 
+    className={className}
+  >
+    <path d="M6 2l5 9H1l5-9z" />
+    <circle cx="18" cy="6.5" r="4.5" />
+    <rect x="1.5" y="13.5" width="9" height="9" rx="1.5" />
+    <path d="M18 22l-5-9h10l-5 9z" />
+  </svg>
+);
 
 import ProjectList from './components/ProjectList';
 import ScheduleForm from './components/ScheduleForm';
@@ -458,6 +472,20 @@ export default function App() {
     setBaselineSchedules(baselineSchedules.filter(s => s.id !== id));
   };
 
+  const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
+    setBaselineSchedules(baselineSchedules.map(s => s.id === item.id ? item : s));
+    
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.saveSchedule(item);
+      } catch (error) {
+        console.error('Error updating baseline schedule in Supabase:', error);
+      }
+    }
+  };
+
   const handleReorderBaselineSchedules = (newItems: ScheduleItem[]) => {
     setBaselineSchedules(newItems);
   };
@@ -472,15 +500,12 @@ export default function App() {
     <div className="h-screen flex flex-col">
       <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <a 
-            href="https://www.youtube.com/@%EC%82%BC%EC%9A%B0%ED%8B%B0%EB%B9%84" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="bg-red-600 p-1.5 rounded-lg shadow-sm hover:bg-red-700 transition-all flex items-center justify-center"
-            title="삼우티비 유튜브 채널"
+          <div 
+            className="bg-blue-600 p-1.5 rounded-lg flex items-center justify-center text-white shadow-sm"
+            title="S-CON"
           >
-            <Youtube size={20} className="text-white" />
-          </a>
+            <LogoIcon size={20} />
+          </div>
           <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
         </div>
         <div className="flex items-center gap-4">
@@ -528,15 +553,12 @@ export default function App() {
       {/* Sidebar (Desktop only) */}
       <aside className="hidden xl:flex w-64 bg-white border-r border-gray-200 flex-col flex-shrink-0 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
         <div className="p-6 flex items-center gap-3">
-          <a 
-            href="https://www.youtube.com/@%EC%82%BC%EC%9A%B0%ED%8B%B0%EB%B9%84" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="bg-red-600 p-1.5 rounded-lg shadow-sm hover:bg-red-700 transition-all flex items-center justify-center"
-            title="삼우티비 유튜브 채널"
+          <div 
+            className="bg-blue-600 p-2 rounded-xl flex items-center justify-center text-white shadow-md"
+            title="S-CON"
           >
-            <Youtube size={20} className="text-white" />
-          </a>
+            <LogoIcon size={22} />
+          </div>
           <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
         </div>
 
@@ -865,28 +887,39 @@ export default function App() {
               </select>
             </div>
 
-            {(tabMode === 'gantt' || tabMode === 'comparison' || tabMode === 'baseline') && (
-              <div className="ml-auto flex items-center border border-gray-200 p-0.5 rounded-lg bg-gray-50 shadow-sm">
-                <button 
-                  onClick={() => setZoom('day')}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'day' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            <div className="ml-auto flex items-center gap-3">
+              {(tabMode === 'gantt' || tabMode === 'table') && (
+                <button
+                  onClick={handleOpenNewForm}
+                  className="hidden lg:flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 active:scale-95 transition-all shadow-sm"
                 >
-                  <span className="hidden xl:inline">일간</span><span className="xl:hidden">일</span>
+                  <Plus size={16} />
+                  <span>신규 공정 등록</span>
                 </button>
-                <button 
-                  onClick={() => setZoom('week')}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'week' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <span className="hidden xl:inline">주간</span><span className="xl:hidden">주</span>
-                </button>
-                <button 
-                  onClick={() => setZoom('month')}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'month' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <span className="hidden xl:inline">월간</span><span className="xl:hidden">월</span>
-                </button>
-              </div>
-            )}
+              )}
+              {(tabMode === 'gantt' || tabMode === 'comparison' || tabMode === 'baseline') && (
+                <div className="flex items-center border border-gray-200 p-0.5 rounded-lg bg-gray-50 shadow-sm">
+                  <button 
+                    onClick={() => setZoom('day')}
+                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'day' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <span className="hidden xl:inline">일간</span><span className="xl:hidden">일</span>
+                  </button>
+                  <button 
+                    onClick={() => setZoom('week')}
+                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'week' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <span className="hidden xl:inline">주간</span><span className="xl:hidden">주</span>
+                  </button>
+                  <button 
+                    onClick={() => setZoom('month')}
+                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'month' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <span className="hidden xl:inline">월간</span><span className="xl:hidden">월</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1025,7 +1058,7 @@ export default function App() {
         {mainMenu === 'schedule' && (
           <button
             onClick={handleOpenNewForm}
-            className={`hidden md:flex xl:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg items-center justify-center hover:bg-blue-700 active:scale-95 transition-all z-50`}
+            className={`flex lg:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg items-center justify-center hover:bg-blue-700 active:scale-95 transition-all z-50`}
           >
             <Plus size={24} />
           </button>

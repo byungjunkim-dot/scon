@@ -39,6 +39,7 @@ import { CSS } from '@dnd-kit/utilities';
 interface BaselineGanttProps {
   items: ScheduleItem[];
   onAdd: (item: Omit<ScheduleItem, 'id'>) => void;
+  onUpdate: (item: ScheduleItem) => void;
   onDelete: (id: string) => void;
   onReorder: (items: ScheduleItem[]) => void;
   settings: AppSettings;
@@ -51,12 +52,13 @@ interface SortableRowProps {
   columnWidth: number;
   headerInterval: any[];
   onDeleteClick: (id: string) => void;
+  onSelect: (item: ScheduleItem) => void;
   zoom: 'day' | 'week' | 'month';
   settings: AppSettings;
 }
 
 const SortableRow: React.FC<SortableRowProps> = ({ 
-  item, startDate, columnWidth, headerInterval, onDeleteClick, zoom, settings 
+  item, startDate, columnWidth, headerInterval, onDeleteClick, onSelect, zoom, settings 
 }) => {
   const {
     attributes,
@@ -97,23 +99,37 @@ const SortableRow: React.FC<SortableRowProps> = ({
       style={style}
       className="flex h-10 border-b border-gray-50 last:border-0 group hover:bg-gray-50/50 transition-colors bg-white"
     >
-      <div className="sticky left-0 z-30 w-[75px] xl:w-[250px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center gap-2 group-hover:bg-gray-50/50 transition-colors pl-2 xl:pl-4">
+      <div 
+        onClick={() => onSelect(item)}
+        className="sticky left-0 z-30 w-[75px] xl:w-[250px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center gap-2 group-hover:bg-gray-50/50 transition-colors pl-2 xl:pl-4 cursor-pointer"
+      >
         <button 
-          onClick={() => onDeleteClick(item.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteClick(item.id);
+          }}
           className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded transition-all flex-shrink-0"
           title="삭제"
         >
           <Trash2 size={14} />
         </button>
         <div className="flex items-center gap-2 overflow-hidden flex-1">
-          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0">
+          <div 
+            {...attributes} 
+            {...listeners} 
+            onClick={(e) => e.stopPropagation()}
+            className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+          >
             <GripVertical size={14} />
           </div>
           <div className="text-xs font-medium text-gray-700 truncate">{item.subCategory}</div>
         </div>
       </div>
 
-      <div className="relative flex-1">
+      <div 
+        onClick={() => onSelect(item)}
+        className="relative flex-1 cursor-pointer"
+      >
         <div className="absolute inset-0 flex pointer-events-none">
           {headerInterval.map((h, i) => (
             <div 
@@ -127,7 +143,7 @@ const SortableRow: React.FC<SortableRowProps> = ({
         <motion.div 
           initial={{ opacity: 0, scaleX: 0 }}
           animate={{ opacity: 1, scaleX: 1 }}
-          className="absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm border border-black/5 origin-left z-10"
+          className="absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm border border-black/5 origin-left z-10 hover:brightness-105 active:scale-[0.98] transition-all"
           style={{ 
             left, 
             width,
@@ -139,9 +155,10 @@ const SortableRow: React.FC<SortableRowProps> = ({
   );
 };
 
-const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onDelete, onReorder, settings, zoom }) => {
+const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, onDelete, onReorder, settings, zoom }) => {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<Category>>(new Set());
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -174,6 +191,21 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onDelete, o
   const [newSubCategory, setNewSubCategory] = useState('');
   const [newStartDate, setNewStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [newEndDate, setNewEndDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
+
+  const handleSelect = (item: ScheduleItem) => {
+    setEditingId(item.id);
+    setNewCategory(item.category);
+    setNewSubCategory(item.subCategory);
+    setNewStartDate(item.startDate);
+    setNewEndDate(item.endDate);
+  };
+
+  const handleClear = () => {
+    setEditingId(null);
+    setNewSubCategory('');
+    setNewStartDate(format(new Date(), 'yyyy-MM-dd'));
+    setNewEndDate(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
+  };
 
   const subCategories = useMemo(() => {
     if (!newCategory || !settings.taskMaster[newCategory]) return [];
@@ -278,43 +310,81 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onDelete, o
     return groups;
   }, [items, settings.categories]);
 
-  const handleAdd = () => {
+  const renderTodayLine = () => {
+    const today = startOfDay(new Date());
+    if (today < startDate || today > endDate) return null;
+
+    let todayLeft = 0;
+    if (zoom === 'day') {
+      todayLeft += differenceInDays(today, startDate) * columnWidth + (columnWidth / 2);
+    } else if (zoom === 'week') {
+      const startOfW = startOfWeek(today);
+      const weekIndex = differenceInDays(startOfW, startOfWeek(startDate)) / 7;
+      const dayInWeek = differenceInDays(today, startOfW);
+      todayLeft += (weekIndex * columnWidth) + (dayInWeek * (columnWidth / 7));
+    } else {
+      const startOfM = startOfMonth(today);
+      const monthIndex = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth());
+      const dayInMonth = today.getDate() - 1;
+      todayLeft += (monthIndex * columnWidth) + (dayInMonth * (columnWidth / 30));
+    }
+
+    return (
+      <div 
+        className="absolute top-0 bottom-0 w-px bg-blue-500 z-20 pointer-events-none"
+        style={{ left: `calc(var(--left-col-width, 250px) + ${todayLeft}px)` }}
+      >
+        <div className="absolute top-0 -translate-x-1/2 bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm">오늘</div>
+      </div>
+    );
+  };
+
+  const handleAddOrUpdate = () => {
     if (!newSubCategory) return;
     
-    onAdd({
-      category: newCategory,
-      subCategory: newSubCategory,
-      taskName: newSubCategory, // Use subCategory as taskName for baseline
-      startDate: newStartDate,
-      endDate: newEndDate,
-      duration: differenceInDays(new Date(newEndDate), new Date(newStartDate)) + 1,
-      progress: 0,
-      status: '예정',
-      siteName: '',
-      dongBlock: '',
-      zone: '',
-      floor: '',
-      detailLocation: '',
-      predecessor: '',
-      contractor: '',
-      memo: '',
-      isBaseline: true
-    });
-    
-    setNewSubCategory('');
+    if (editingId) {
+      const existingItem = items.find(i => i.id === editingId);
+      if (existingItem) {
+        onUpdate({
+          ...existingItem,
+          category: newCategory,
+          subCategory: newSubCategory,
+          taskName: newSubCategory, // Use subCategory as taskName for baseline
+          startDate: newStartDate,
+          endDate: newEndDate,
+          duration: differenceInDays(new Date(newEndDate), new Date(newStartDate)) + 1
+        });
+      }
+      handleClear();
+    } else {
+      onAdd({
+        category: newCategory,
+        subCategory: newSubCategory,
+        taskName: newSubCategory, // Use subCategory as taskName for baseline
+        startDate: newStartDate,
+        endDate: newEndDate,
+        duration: differenceInDays(new Date(newEndDate), new Date(newStartDate)) + 1,
+        progress: 0,
+        status: '예정',
+        siteName: '',
+        dongBlock: '',
+        zone: '',
+        floor: '',
+        detailLocation: '',
+        predecessor: '',
+        contractor: '',
+        memo: '',
+        isBaseline: true
+      });
+      handleClear();
+    }
   };
 
   return (
     <div className="flex flex-col h-full bg-white border-y sm:border border-gray-200 rounded-none sm:rounded-xl overflow-hidden shadow-sm">
-      <div className="px-6 py-4 bg-slate-50 border-b border-gray-200 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-bold text-slate-800">Baseline 계획 수립</h3>
-          <p className="text-[10px] text-slate-500 font-medium">공종 대분류 및 세부공종별 기준 일정을 수립합니다.</p>
-        </div>
-      </div>
 
       {/* Gantt Chart Area */}
-      <div className="flex-1 overflow-auto no-scrollbar relative">
+      <div className="flex-1 overflow-auto no-scrollbar relative max-xl:[--left-col-width:75px] xl:[--left-col-width:250px]">
         <div className="min-w-full inline-block align-top">
           {/* Header */}
           <div className="flex sticky top-0 z-30 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
@@ -338,6 +408,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onDelete, o
 
           {/* Body */}
           <div className="relative">
+            {renderTodayLine()}
             <DndContext 
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -377,6 +448,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onDelete, o
                               columnWidth={columnWidth}
                               headerInterval={headerInterval}
                               onDeleteClick={setDeleteId}
+                              onSelect={handleSelect}
                               zoom={zoom}
                               settings={settings}
                             />
@@ -438,13 +510,22 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onDelete, o
             />
           </div>
           <button 
-            onClick={handleAdd}
+            onClick={handleAddOrUpdate}
             disabled={!newSubCategory}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold text-xs flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Plus size={16} />
-            추가
+            {editingId ? <Plus size={16} className="rotate-45" /> : <Plus size={16} />}
+            {editingId ? '수정 완료' : '추가'}
           </button>
+          
+          {editingId && (
+            <button 
+              onClick={handleClear}
+              className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-bold text-xs transition-all"
+            >
+              취소
+            </button>
+          )}
         </div>
       </div>
 

@@ -4,6 +4,21 @@ import { Building2, Mail, Lock, User as UserIcon, Phone, Briefcase, Code, Key, A
 import { User } from '../types';
 import { supabaseService } from '../services/supabaseService';
 
+const LogoIcon = ({ size = 32, className = "" }: { size?: number, className?: string }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="currentColor" 
+    className={className}
+  >
+    <path d="M6 2l5 9H1l5-9z" />
+    <circle cx="18" cy="6.5" r="4.5" />
+    <rect x="1.5" y="13.5" width="9" height="9" rx="1.5" />
+    <path d="M18 22l-5-9h10l-5 9z" />
+  </svg>
+);
+
 interface AuthViewProps {
   onLogin: (user: User) => void;
 }
@@ -160,8 +175,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
         className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden border border-gray-100"
       >
         <div className="p-8 bg-blue-600 text-white text-center">
-          <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-            <Building2 size={32} />
+          <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-inner">
+            <LogoIcon size={32} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">S-CON</h1>
           <p className="text-blue-100 text-sm mt-1">Smart Construction Management System</p>
