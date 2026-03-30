@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Component, ReactNode, ErrorInfo } from 'react';
 import { 
   Building2, 
   Building,
@@ -347,6 +347,7 @@ export default function App() {
   // Handlers
   const handleLogin = (user: User) => {
     setCurrentUser(user);
+    localStorage.setItem('cp_current_user', JSON.stringify(user));
     setViewMode('projects');
   };
   const handleLogout = () => {
@@ -365,16 +366,17 @@ export default function App() {
       createdAt: new Date().toLocaleDateString(),
       settings: INITIAL_SETTINGS
     };
-    setProjects([...projects, newProject]);
+    const updatedProjects = [...projects, newProject];
+    setProjects(updatedProjects);
 
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveProject(newProject);
       } catch (error) {
         console.error('Error saving project to Supabase:', error);
       }
+    } else {
+      localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
     }
   };
 
@@ -467,33 +469,35 @@ export default function App() {
 
   const handleAddSchedule = async (item: Omit<ScheduleItem, 'id'>) => {
     const newItem: ScheduleItem = { ...item, id: Date.now().toString() };
-    setSchedules([...schedules, newItem]);
+    const updatedSchedules = [...schedules, newItem];
+    setSchedules(updatedSchedules);
     setIsFormOpen(false);
 
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveSchedule(newItem);
       } catch (error) {
         console.error('Error saving schedule to Supabase:', error);
       }
+    } else if (currentProjectId) {
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
     }
   };
 
   const handleUpdateSchedule = async (item: ScheduleItem) => {
-    setSchedules(schedules.map(s => s.id === item.id ? item : s));
+    const updatedSchedules = schedules.map(s => s.id === item.id ? item : s);
+    setSchedules(updatedSchedules);
     setSelectedItemId(null);
     setIsFormOpen(false);
 
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveSchedule(item);
       } catch (error) {
         console.error('Error saving schedule to Supabase:', error);
       }
+    } else if (currentProjectId) {
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
     }
   };
 
@@ -561,8 +565,6 @@ export default function App() {
     const baselineItems = schedules.map(s => ({ ...s, isBaseline: true }));
     setBaselineSchedules(baselineItems);
 
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         for (const item of baselineItems) {
@@ -574,7 +576,8 @@ export default function App() {
         alert('Baseline 저장 중 오류가 발생했습니다.');
       }
     } else {
-      alert('현재 공정표가 Baseline으로 저장되었습니다.');
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(baselineItems));
+      alert('현재 공정표가 로컬 저장소에 Baseline으로 저장되었습니다.');
     }
   };
 
