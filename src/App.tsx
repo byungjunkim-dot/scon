@@ -93,12 +93,21 @@ const INITIAL_SETTINGS: AppSettings = {
 };
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('auth');
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('cp_current_user');
+    return saved ? 'projects' : 'auth';
+  });
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('cp_current_user');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [mainMenu, setMainMenu] = useState<MainMenu>('dashboard');
   const [tabMode, setTabMode] = useState<TabMode>('gantt');
   const [documentTab, setDocumentTab] = useState<DocumentTab>('daily-report');
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<Project[]>(() => {
+    const saved = localStorage.getItem('cp_projects');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [baselineSchedules, setBaselineSchedules] = useState<ScheduleItem[]>([]);
@@ -143,35 +152,27 @@ export default function App() {
   // Load initial data
   useEffect(() => {
     const loadData = async () => {
+      // 1. Always load from localStorage first as baseline
+      loadFromLocalStorage();
+
+      // 2. Then try Supabase if configured
       if (isSupabaseConfigured) {
         try {
           const projectsData = await supabaseService.getProjects();
-          if (projectsData && projectsData.length > 0) setProjects(projectsData);
+          if (projectsData && projectsData.length > 0) {
+            setProjects(projectsData);
+          }
           
           const settingsData = await supabaseService.getSettings();
           if (settingsData) setSettings(settingsData);
-
-          const savedUser = localStorage.getItem('cp_current_user');
-          if (savedUser) {
-            const user = JSON.parse(savedUser);
-            setCurrentUser(user);
-            setViewMode('projects');
-          }
         } catch (error) {
           console.error('Error loading data from Supabase:', error);
-          // Fallback to localStorage
-          loadFromLocalStorage();
         }
-      } else {
-        loadFromLocalStorage();
       }
     };
 
     const loadFromLocalStorage = () => {
-      const savedProjects = localStorage.getItem('cp_projects');
       const savedSettings = localStorage.getItem('cp_settings');
-
-      if (savedProjects) setProjects(JSON.parse(savedProjects));
       if (savedSettings) {
         const parsedSettings = JSON.parse(savedSettings);
         
@@ -194,12 +195,6 @@ export default function App() {
         setSettings(parsedSettings);
       }
 
-      const savedUser = localStorage.getItem('cp_current_user');
-      if (savedUser) {
-        const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        setViewMode('projects');
-      }
     };
 
     loadData();
@@ -207,32 +202,8 @@ export default function App() {
 
   // Save data on change
   useEffect(() => {
-    localStorage.setItem('cp_projects', JSON.stringify(projects));
-  }, [projects]);
-
-  useEffect(() => {
-  if (currentUser) {
-    localStorage.setItem('cp_current_user', JSON.stringify(currentUser));
-  } else {
-    localStorage.removeItem('cp_current_user');
-  }
+    // currentUser is handled in handleLogin/handleLogout
   }, [currentUser]);
-
-  useEffect(() => {
-    if (currentProjectId) {
-      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(schedules));
-    }
-  }, [schedules, currentProjectId]);
-
-  useEffect(() => {
-    if (currentProjectId) {
-      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(baselineSchedules));
-    }
-  }, [baselineSchedules, currentProjectId]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_settings', JSON.stringify(settings));
-  }, [settings]);
 
   // Load schedules and settings when project changes
   useEffect(() => {
@@ -255,34 +226,43 @@ export default function App() {
       if (isSupabaseConfigured) {
         try {
           const data = await supabaseService.getSchedules(currentProjectId);
-          setSchedules(data.filter(s => !s.isBaseline));
-          setBaselineSchedules(data.filter(s => s.isBaseline));
+          if (data && data.length > 0) {
+            setSchedules(data.filter(s => !s.isBaseline));
+            setBaselineSchedules(data.filter(s => s.isBaseline));
+          } else {
+            // If Supabase returns empty, try loading from localStorage
+            loadSchedulesFromLocalStorage();
+          }
         } catch (error) {
           console.error('Error loading schedules from Supabase:', error);
+          loadSchedulesFromLocalStorage();
         }
       } else {
-        // Fallback to localStorage
-        const savedSchedules = localStorage.getItem(`cp_schedules_${currentProjectId}`);
-        const savedBaseline = localStorage.getItem(`cp_baseline_${currentProjectId}`);
-        
-        // Migration from old global keys if project-specific keys don't exist
-        if (!savedSchedules && localStorage.getItem('cp_schedules')) {
-          const oldSchedules = localStorage.getItem('cp_schedules');
-          if (oldSchedules) setSchedules(JSON.parse(oldSchedules));
-        } else if (savedSchedules) {
-          setSchedules(JSON.parse(savedSchedules));
-        } else {
-          setSchedules([]);
-        }
+        loadSchedulesFromLocalStorage();
+      }
+    };
 
-        if (!savedBaseline && localStorage.getItem('cp_baseline')) {
-          const oldBaseline = localStorage.getItem('cp_baseline');
-          if (oldBaseline) setBaselineSchedules(JSON.parse(oldBaseline));
-        } else if (savedBaseline) {
-          setBaselineSchedules(JSON.parse(savedBaseline));
-        } else {
-          setBaselineSchedules([]);
-        }
+    const loadSchedulesFromLocalStorage = () => {
+      const savedSchedules = localStorage.getItem(`cp_schedules_${currentProjectId}`);
+      const savedBaseline = localStorage.getItem(`cp_baseline_${currentProjectId}`);
+      
+      // Migration from old global keys if project-specific keys don't exist
+      if (!savedSchedules && localStorage.getItem('cp_schedules')) {
+        const oldSchedules = localStorage.getItem('cp_schedules');
+        if (oldSchedules) setSchedules(JSON.parse(oldSchedules));
+      } else if (savedSchedules) {
+        setSchedules(JSON.parse(savedSchedules));
+      } else {
+        setSchedules([]);
+      }
+
+      if (!savedBaseline && localStorage.getItem('cp_baseline')) {
+        const oldBaseline = localStorage.getItem('cp_baseline');
+        if (oldBaseline) setBaselineSchedules(JSON.parse(oldBaseline));
+      } else if (savedBaseline) {
+        setBaselineSchedules(JSON.parse(savedBaseline));
+      } else {
+        setBaselineSchedules([]);
       }
     };
 
@@ -368,6 +348,9 @@ export default function App() {
     };
     const updatedProjects = [...projects, newProject];
     setProjects(updatedProjects);
+    
+    // Always save to localStorage as backup
+    localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
     if (isSupabaseConfigured) {
       try {
@@ -375,8 +358,6 @@ export default function App() {
       } catch (error) {
         console.error('Error saving project to Supabase:', error);
       }
-    } else {
-      localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
     }
   };
 
@@ -384,10 +365,12 @@ export default function App() {
     const updatedProject = projects.find(p => p.id === id);
     if (updatedProject) {
       const newProject = { ...updatedProject, ...projectData };
-      setProjects(projects.map(p => p.id === id ? newProject : p));
+      const updatedProjects = projects.map(p => p.id === id ? newProject : p);
+      setProjects(updatedProjects);
+      
+      // Always save to localStorage as backup
+      localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
-      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
       if (isSupabaseConfigured) {
         try {
           await supabaseService.saveProject(newProject);
@@ -399,10 +382,12 @@ export default function App() {
   };
 
   const handleUpdateProject = async (updatedProject: Project) => {
-    setProjects(projects.map(p => p.id === updatedProject.id ? updatedProject : p));
+    const updatedProjects = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
+    setProjects(updatedProjects);
+    
+    // Always save to localStorage as backup
+    localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveProject(updatedProject);
@@ -420,19 +405,19 @@ export default function App() {
   const confirmDeleteProject = async () => {
     if (!projectToDeleteId) return;
     
-    setProjects(projects.filter(p => p.id !== projectToDeleteId));
+    const updatedProjects = projects.filter(p => p.id !== projectToDeleteId);
+    setProjects(updatedProjects);
     
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+    // Always save to localStorage as backup
+    localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
+    
     if (isSupabaseConfigured) {
       try {
         await supabaseService.deleteProject(projectToDeleteId);
       } catch (error) {
         console.error('Error deleting project from Supabase:', error);
-        alert('프로젝트 삭제 중 오류가 발생했습니다.');
+        alert('프로젝트 삭제 중 오류가 발생했습니다. (로컬에서는 삭제되었습니다)');
       }
-    } else {
-      localStorage.setItem('cp_projects', JSON.stringify(projects.filter(p => p.id !== projectToDeleteId)));
     }
     
     setProjectToDeleteId(null);
@@ -473,14 +458,17 @@ export default function App() {
     setSchedules(updatedSchedules);
     setIsFormOpen(false);
 
+    // Always save to localStorage as backup
+    if (currentProjectId) {
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
+    }
+
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveSchedule(newItem);
       } catch (error) {
         console.error('Error saving schedule to Supabase:', error);
       }
-    } else if (currentProjectId) {
-      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
     }
   };
 
@@ -490,24 +478,31 @@ export default function App() {
     setSelectedItemId(null);
     setIsFormOpen(false);
 
+    // Always save to localStorage as backup
+    if (currentProjectId) {
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
+    }
+
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveSchedule(item);
       } catch (error) {
         console.error('Error saving schedule to Supabase:', error);
       }
-    } else if (currentProjectId) {
-      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
     }
   };
 
   const handleDeleteSchedule = async (id: string) => {
-    setSchedules(schedules.filter(s => s.id !== id));
+    const updatedSchedules = schedules.filter(s => s.id !== id);
+    setSchedules(updatedSchedules);
     setSelectedItemId(null);
     setIsFormOpen(false);
 
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+    // Always save to localStorage as backup
+    if (currentProjectId) {
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
+    }
+
     if (isSupabaseConfigured) {
       try {
         await supabaseService.deleteSchedule(id);
@@ -565,6 +560,9 @@ export default function App() {
     const baselineItems = schedules.map(s => ({ ...s, isBaseline: true }));
     setBaselineSchedules(baselineItems);
 
+    // Always save to localStorage as backup
+    localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(baselineItems));
+
     if (isSupabaseConfigured) {
       try {
         for (const item of baselineItems) {
@@ -573,10 +571,9 @@ export default function App() {
         alert('현재 공정표가 Supabase Baseline으로 저장되었습니다.');
       } catch (error) {
         console.error('Error saving baseline to Supabase:', error);
-        alert('Baseline 저장 중 오류가 발생했습니다.');
+        alert('Baseline 저장 중 오류가 발생했습니다. (로컬에는 저장되었습니다)');
       }
     } else {
-      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(baselineItems));
       alert('현재 공정표가 로컬 저장소에 Baseline으로 저장되었습니다.');
     }
   };
@@ -593,15 +590,19 @@ export default function App() {
 
   const handleSaveSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
+    
+    // Always save to localStorage as backup
+    localStorage.setItem('cp_settings', JSON.stringify(newSettings));
 
     if (currentProjectId) {
       const updatedProjects = projects.map(p => 
         p.id === currentProjectId ? { ...p, settings: newSettings } : p
       );
       setProjects(updatedProjects);
+      
+      // Always save to localStorage as backup
+      localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
-      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
       if (isSupabaseConfigured) {
         try {
           const updatedProject = updatedProjects.find(p => p.id === currentProjectId);
@@ -614,8 +615,6 @@ export default function App() {
       }
     } else {
       // Global settings fallback
-      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
       if (isSupabaseConfigured) {
         try {
           await supabaseService.saveSettings(newSettings);
@@ -628,15 +627,33 @@ export default function App() {
 
   const handleAddBaselineSchedule = (item: Omit<ScheduleItem, 'id'>) => {
     const newItem: ScheduleItem = { ...item, id: Date.now().toString(), isBaseline: true };
-    setBaselineSchedules([...baselineSchedules, newItem]);
+    const updatedBaseline = [...baselineSchedules, newItem];
+    setBaselineSchedules(updatedBaseline);
+    
+    // Always save to localStorage as backup
+    if (currentProjectId) {
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+    }
   };
 
   const handleDeleteBaselineSchedule = (id: string) => {
-    setBaselineSchedules(baselineSchedules.filter(s => s.id !== id));
+    const updatedBaseline = baselineSchedules.filter(s => s.id !== id);
+    setBaselineSchedules(updatedBaseline);
+    
+    // Always save to localStorage as backup
+    if (currentProjectId) {
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+    }
   };
 
   const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
-    setBaselineSchedules(baselineSchedules.map(s => s.id === item.id ? item : s));
+    const updatedBaseline = baselineSchedules.map(s => s.id === item.id ? item : s);
+    setBaselineSchedules(updatedBaseline);
+    
+    // Always save to localStorage as backup
+    if (currentProjectId) {
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+    }
     
     const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
       (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
