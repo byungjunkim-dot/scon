@@ -15,6 +15,7 @@ export type Status = '예정' | '진행' | '완료' | '지연';
 
 export interface ScheduleItem {
   id: string;
+  projectId: string;
   category: Category;
   subCategory: string;
   taskName: string;
