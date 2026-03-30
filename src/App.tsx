@@ -158,13 +158,21 @@ export default function App() {
       // 2. Then try Supabase if configured
       if (isSupabaseConfigured) {
         try {
+          console.log('Fetching projects from Supabase...');
           const projectsData = await supabaseService.getProjects();
-          if (projectsData && projectsData.length > 0) {
+          console.log('Supabase projects fetched:', projectsData?.length || 0);
+          
+          if (projectsData) {
+            // If we have data in Supabase, it's our source of truth
             setProjects(projectsData);
+            localStorage.setItem('cp_projects', JSON.stringify(projectsData));
           }
           
           const settingsData = await supabaseService.getSettings();
-          if (settingsData) setSettings(settingsData);
+          if (settingsData) {
+            setSettings(settingsData);
+            localStorage.setItem('cp_settings', JSON.stringify(settingsData));
+          }
         } catch (error) {
           console.error('Error loading data from Supabase:', error);
         }
@@ -342,7 +350,7 @@ export default function App() {
   const handleAddProject = async (projectData: Omit<Project, 'id' | 'createdAt'>) => {
     const newProject: Project = {
       ...projectData,
-      id: Date.now().toString(),
+      id: `p-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       createdAt: new Date().toLocaleDateString(),
       settings: INITIAL_SETTINGS
     };
@@ -354,9 +362,12 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       try {
+        console.log('Saving new project to Supabase:', newProject.id);
         await supabaseService.saveProject(newProject);
+        console.log('Project saved to Supabase successfully');
       } catch (error) {
         console.error('Error saving project to Supabase:', error);
+        alert('Supabase 저장 중 오류가 발생했습니다. 다른 사용자가 이 프로젝트를 보지 못할 수 있습니다.');
       }
     }
   };
@@ -426,10 +437,12 @@ export default function App() {
   };
 
   const handleDeleteProjects = async (ids: string[]) => {
-    setProjects(projects.filter(p => !ids.includes(p.id)));
+    const updatedProjects = projects.filter(p => !ids.includes(p.id));
+    setProjects(updatedProjects);
     
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+    // Always save to localStorage as backup
+    localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
+    
     if (isSupabaseConfigured) {
       try {
         for (const id of ids) {
@@ -439,8 +452,6 @@ export default function App() {
         console.error('Error deleting projects from Supabase:', error);
         alert('프로젝트 삭제 중 오류가 발생했습니다.');
       }
-    } else {
-      localStorage.setItem('cp_projects', JSON.stringify(projects.filter(p => !ids.includes(p.id))));
     }
     
     setViewMode('projects');
@@ -452,8 +463,13 @@ export default function App() {
     setMainMenu('dashboard');
   };
 
-  const handleAddSchedule = async (item: Omit<ScheduleItem, 'id'>) => {
-    const newItem: ScheduleItem = { ...item, id: Date.now().toString() };
+  const handleAddSchedule = async (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
+    if (!currentProjectId) return;
+    const newItem: ScheduleItem = { 
+      ...item, 
+      id: `s-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      projectId: currentProjectId 
+    };
     const updatedSchedules = [...schedules, newItem];
     setSchedules(updatedSchedules);
     setIsFormOpen(false);
@@ -542,8 +558,6 @@ export default function App() {
     const samples = SAMPLE_SCHEDULES.map(s => ({ ...s, projectId: currentProjectId }));
     setSchedules(samples);
 
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         for (const sample of samples) {
@@ -625,8 +639,14 @@ export default function App() {
     }
   };
 
-  const handleAddBaselineSchedule = (item: Omit<ScheduleItem, 'id'>) => {
-    const newItem: ScheduleItem = { ...item, id: Date.now().toString(), isBaseline: true };
+  const handleAddBaselineSchedule = (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
+    if (!currentProjectId) return;
+    const newItem: ScheduleItem = { 
+      ...item, 
+      id: `b-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      projectId: currentProjectId,
+      isBaseline: true 
+    };
     const updatedBaseline = [...baselineSchedules, newItem];
     setBaselineSchedules(updatedBaseline);
     
@@ -655,8 +675,6 @@ export default function App() {
       localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
     }
     
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveSchedule(item);
@@ -704,6 +722,12 @@ export default function App() {
               <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
             </div>
             <div className="flex items-center gap-4">
+              {isSupabaseConfigured && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-600 rounded-md text-[10px] font-bold border border-green-100">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  <span>SUPABASE CONNECTED</span>
+                </div>
+              )}
               {currentUser?.role === 'admin' && (
                 <button 
                   onClick={() => setViewMode('user-management')}
