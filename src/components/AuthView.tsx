@@ -57,9 +57,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
       return;
     }
 
-    // Check if Supabase is configured
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+    // Check if Supabase is configured (already using imported isSupabaseConfigured)
 
     // Admin check
     if (isLogin && (
