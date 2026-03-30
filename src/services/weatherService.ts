@@ -1,6 +1,24 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+let aiClient: GoogleGenAI | null = null;
+
+function getAiClient() {
+  if (aiClient) return aiClient;
+  
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  if (!apiKey) {
+    console.warn('Gemini API key is missing. AI features will be disabled.');
+    return null;
+  }
+  
+  try {
+    aiClient = new GoogleGenAI({ apiKey });
+    return aiClient;
+  } catch (error) {
+    console.error('Failed to initialize Gemini AI:', error);
+    return null;
+  }
+}
 
 export interface WeatherData {
   temperature: string;
@@ -15,6 +33,8 @@ export async function fetchWeather(location: string, date?: string): Promise<Wea
   if (!location) return null;
 
   const targetDate = date || new Date().toISOString().split('T')[0];
+  const ai = getAiClient();
+  if (!ai) return null;
 
   try {
     const response = await ai.models.generateContent({
