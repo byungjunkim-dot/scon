@@ -72,6 +72,7 @@ import {
 } from './constants';
 import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
+import { supabase } from './lib/supabase';
 import { isSupabaseConfigured } from './lib/supabase';
 import { supabaseService } from './services/supabaseService';
 
@@ -366,6 +367,8 @@ export default function App() {
     };
     setProjects([...projects, newProject]);
 
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveProject(newProject);
@@ -396,6 +399,8 @@ export default function App() {
   const handleUpdateProject = async (updatedProject: Project) => {
     setProjects(projects.map(p => p.id === updatedProject.id ? updatedProject : p));
 
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveProject(updatedProject);
@@ -415,6 +420,8 @@ export default function App() {
     
     setProjects(projects.filter(p => p.id !== projectToDeleteId));
     
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.deleteProject(projectToDeleteId);
@@ -434,6 +441,8 @@ export default function App() {
   const handleDeleteProjects = async (ids: string[]) => {
     setProjects(projects.filter(p => !ids.includes(p.id)));
     
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         for (const id of ids) {
@@ -461,6 +470,8 @@ export default function App() {
     setSchedules([...schedules, newItem]);
     setIsFormOpen(false);
 
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveSchedule(newItem);
@@ -475,6 +486,8 @@ export default function App() {
     setSelectedItemId(null);
     setIsFormOpen(false);
 
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveSchedule(item);
@@ -489,6 +502,8 @@ export default function App() {
     setSelectedItemId(null);
     setIsFormOpen(false);
 
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         await supabaseService.deleteSchedule(id);
@@ -528,6 +543,8 @@ export default function App() {
     const samples = SAMPLE_SCHEDULES.map(s => ({ ...s, projectId: currentProjectId }));
     setSchedules(samples);
 
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         for (const sample of samples) {
@@ -544,6 +561,8 @@ export default function App() {
     const baselineItems = schedules.map(s => ({ ...s, isBaseline: true }));
     setBaselineSchedules(baselineItems);
 
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     if (isSupabaseConfigured) {
       try {
         for (const item of baselineItems) {
@@ -592,6 +611,8 @@ export default function App() {
       }
     } else {
       // Global settings fallback
+      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
       if (isSupabaseConfigured) {
         try {
           await supabaseService.saveSettings(newSettings);

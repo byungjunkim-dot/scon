@@ -7,16 +7,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      console.log('HTML head script executing...');
-      window.onerror = function(msg, url, line, col, error) {
-        console.error('GLOBAL ERROR:', typeof msg === 'string' ? msg : msg.message, url, line, error);
-        return false;
-      };
-      window.addEventListener('unhandledrejection', function(event) {
-        console.error('UNHANDLED PROMISE REJECTION:', event.reason);
-      });
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
