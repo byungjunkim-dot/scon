@@ -5,7 +5,7 @@ import { differenceInDays, parseISO, format } from 'date-fns';
 import { Plus, Save, Trash2, RotateCcw, Database } from 'lucide-react';
 
 interface ScheduleFormProps {
-  onAdd: (item: Omit<ScheduleItem, 'id'>) => void;
+  onAdd: (item: Omit<ScheduleItem, 'id' | 'projectId'>) => void;
   onUpdate: (item: ScheduleItem) => void;
   onDelete: (id: string) => void;
   onReset: () => void;
@@ -16,7 +16,7 @@ interface ScheduleFormProps {
 const ScheduleForm: React.FC<ScheduleFormProps> = ({ 
   onAdd, onUpdate, onDelete, onReset, selectedItem, settings
 }) => {
-  const initialForm: Omit<ScheduleItem, 'id'> = {
+  const initialForm: Omit<ScheduleItem, 'id' | 'projectId'> = {
     category: '공통관리',
     subCategory: '',
     taskName: '',
@@ -35,11 +35,11 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
     memo: ''
   };
 
-  const [formData, setFormData] = useState<Omit<ScheduleItem, 'id'>>(initialForm);
+  const [formData, setFormData] = useState<Omit<ScheduleItem, 'id' | 'projectId'>>(initialForm);
 
   useEffect(() => {
     if (selectedItem) {
-      const { id, ...rest } = selectedItem;
+      const { id, projectId, ...rest } = selectedItem;
       setFormData(rest);
     } else {
       setFormData(initialForm);
@@ -90,7 +90,7 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedItem) {
-      onUpdate({ ...formData, id: selectedItem.id });
+      onUpdate({ ...formData, id: selectedItem.id, projectId: selectedItem.projectId });
     } else {
       onAdd(formData);
     }
