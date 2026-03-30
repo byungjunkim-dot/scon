@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, Trash2, Download, Upload, Loader2, Save, FileText, Edit2, AlertTriangle } from 'lucide-react';
-import { DailyReport, DailyTask, DailyEquipment, DailyIssue, DailyPhoto, Project, AppSettings, ApprovalRecord } from '../types';
+import { DailyReport, DailyTask, DailyEquipment, DailyIssue, DailyPhoto, Project, AppSettings, ApprovalRecord, User } from '../types';
 import { compressImage } from '../utils/image';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -10,12 +10,15 @@ import { TaskModal } from './TaskModal';
 import { PhotoModal } from './PhotoModal';
 import { PersonnelModal } from './PersonnelModal';
 import { EquipmentModal } from './EquipmentModal';
+import { UserSelectModal } from './UserSelectModal';
 import { fetchWeather } from '../services/weatherService';
 import { supabaseService } from '../services/supabaseService';
 
 interface DailyReportViewProps {
   project: Project | null;
   settings: AppSettings;
+  currentUser: User | null;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 const initialReport = (projectId: string): DailyReport => ({
@@ -51,13 +54,30 @@ const initialReport = (projectId: string): DailyReport => ({
   }
 });
 
-export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, settings }) => {
+export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, settings, currentUser, onDirtyChange }) => {
   const [report, setReport] = useState<DailyReport>(initialReport(project?.id || ''));
+  const [lastSavedReport, setLastSavedReport] = useState<string>('');
+  const [isDirty, setIsDirty] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (statusMessage) {
+      const timer = setTimeout(() => setStatusMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [statusMessage]);
+
+  const showStatus = (msg: string) => {
+    console.log('Status:', msg);
+    setStatusMessage(msg);
+  };
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [isPersonnelModalOpen, setIsPersonnelModalOpen] = useState(false);
   const [isEquipmentModalOpen, setIsEquipmentModalOpen] = useState(false);
+  const [isUserSelectModalOpen, setIsUserSelectModalOpen] = useState(false);
+  const [userSelectType, setUserSelectType] = useState<'author' | 'reviewer' | 'approver'>('author');
   const [taskModalType, setTaskModalType] = useState<'today' | 'tomorrow'>('today');
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [editingPhoto, setEditingPhoto] = useState<DailyPhoto | null>(null);
@@ -101,19 +121,24 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
     });
   };
 
-  const handleApproval = (nextStatus: '승인요청' | '검토완료' | '승인') => {
+  const isReadOnly = report.approvalStatus !== '작성중' && report.approvalStatus !== '재작성요청';
+
+  const handleApproval = (nextStatus: '승인요청' | '검토완료' | '승인' | '재작성요청') => {
     let message = '';
     let user = '';
     
     if (nextStatus === '승인요청') {
       message = '승인요청하시겠습니까?';
-      user = report.author || '작성자';
+      user = report.author || currentUser?.name || '작성자';
     } else if (nextStatus === '검토완료') {
       message = '검토완료 하시겠습니까?';
-      user = report.reviewer || '검토자';
+      user = report.reviewer || currentUser?.name || '검토자';
     } else if (nextStatus === '승인') {
       message = '승인하시겠습니까?';
-      user = report.approver || '승인자';
+      user = report.approver || currentUser?.name || '승인자';
+    } else if (nextStatus === '재작성요청') {
+      message = '재작성을 요청하시겠습니까? (일보가 다시 수정 가능한 상태가 됩니다)';
+      user = currentUser?.name || '검토자/승인자';
     }
 
     setConfirmModal({
@@ -124,7 +149,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
         const newRecord: ApprovalRecord = {
           status: nextStatus,
           timestamp: new Date().toISOString(),
-          user: user
+          user: currentUser?.name || user
         };
         
         setReport(prev => ({
@@ -135,6 +160,18 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
       }
     });
+  };
+
+  const handleOpenUserSelectModal = (type: 'author' | 'reviewer' | 'approver') => {
+    setUserSelectType(type);
+    setIsUserSelectModalOpen(true);
+  };
+
+  const handleSelectUser = (user: User) => {
+    setReport(prev => ({
+      ...prev,
+      [userSelectType]: user.name
+    }));
   };
 
   const prevDateRef = useRef('');
@@ -153,6 +190,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
           const existingReport = reports.find(r => r.date === report.date);
           if (existingReport) {
             setReport(existingReport);
+            setLastSavedReport(JSON.stringify(existingReport));
             return;
           }
         } catch (err) {
@@ -167,15 +205,18 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
         const existingReport = reports.find(r => r.date === report.date);
         if (existingReport) {
           setReport(existingReport);
+          setLastSavedReport(JSON.stringify(existingReport));
           return;
         }
       }
 
       // If no report exists for this date, reset to initial state but keep the selected date
-      setReport({
+      const newReport = {
         ...initialReport(project.id),
         date: report.date
-      });
+      };
+      setReport(newReport);
+      setLastSavedReport(JSON.stringify(newReport));
     };
 
     if (project && (report.date !== prevDateRef.current || project.id !== prevProjectIdRef.current)) {
@@ -205,6 +246,23 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
     }
   }, [project, report.date]);
 
+  useEffect(() => {
+    const currentReportStr = JSON.stringify(report);
+    const dirty = lastSavedReport ? currentReportStr !== lastSavedReport : false;
+    console.log('DailyReportView dirty state check:', { 
+      dirty, 
+      isDirty, 
+      lastSavedReportSet: !!lastSavedReport,
+      reportId: report.id,
+      date: report.date
+    });
+    if (dirty !== isDirty) {
+      console.log('DailyReportView calling onDirtyChange:', dirty);
+      setIsDirty(dirty);
+      onDirtyChange?.(dirty);
+    }
+  }, [report, lastSavedReport, onDirtyChange, isDirty]);
+
   const handleSave = async () => {
     if (!project) return;
 
@@ -214,37 +272,54 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
     if (isSupabaseConfigured) {
       try {
         await supabaseService.saveDailyReport(report);
-        alert('Supabase에 저장되었습니다.');
+        const reportStr = JSON.stringify(report);
+        setLastSavedReport(reportStr);
+        setIsDirty(false);
+        onDirtyChange?.(false);
+        showStatus('Supabase에 저장되었습니다.');
         return;
       } catch (err) {
         console.error('Failed to save report to Supabase:', err);
-        alert('Supabase 저장에 실패했습니다. 로컬 저장소에 저장합니다.');
+        showStatus('Supabase 저장에 실패했습니다. 로컬 저장소에 저장합니다.');
       }
     }
 
     const savedReportsStr = localStorage.getItem(`cp_daily_reports_${project.id}`);
     let reports: DailyReport[] = savedReportsStr ? JSON.parse(savedReportsStr) : [];
     
-    // Check if a report for this date already exists (excluding current report if it has the same ID)
-    const existingDateIndex = reports.findIndex(r => r.date === report.date && r.id !== report.id);
-    
-    if (existingDateIndex >= 0) {
-      if (confirm('해당 날짜에 이미 작성된 일보가 있습니다. 덮어씌우시겠습니까?')) {
+    const saveToLocal = () => {
+      console.log('DailyReportView saving to local storage...');
+      const existingDateIndex = reports.findIndex(r => r.date === report.date && r.id !== report.id);
+      if (existingDateIndex >= 0) {
         reports[existingDateIndex] = report;
       } else {
-        return;
+        const existingIdIndex = reports.findIndex(r => r.id === report.id);
+        if (existingIdIndex >= 0) {
+          reports[existingIdIndex] = report;
+        } else {
+          reports.push(report);
+        }
       }
+      localStorage.setItem(`cp_daily_reports_${project.id}`, JSON.stringify(reports));
+      const reportStr = JSON.stringify(report);
+      console.log('DailyReportView setting lastSavedReport:', reportStr.substring(0, 50) + '...');
+      setLastSavedReport(reportStr);
+      setIsDirty(false);
+      onDirtyChange?.(false);
+      showStatus('저장되었습니다.');
+    };
+
+    const existingDateIndex = reports.findIndex(r => r.date === report.date && r.id !== report.id);
+    if (existingDateIndex >= 0) {
+      setConfirmModal({
+        isOpen: true,
+        title: '덮어씌우기 확인',
+        message: '해당 날짜에 이미 작성된 일보가 있습니다. 덮어씌우시겠습니까?',
+        onConfirm: saveToLocal
+      });
     } else {
-      const existingIdIndex = reports.findIndex(r => r.id === report.id);
-      if (existingIdIndex >= 0) {
-        reports[existingIdIndex] = report;
-      } else {
-        reports.push(report);
-      }
+      saveToLocal();
     }
-    
-    localStorage.setItem(`cp_daily_reports_${project.id}`, JSON.stringify(reports));
-    alert('저장되었습니다.');
   };
 
   const handleExportPDF = async () => {
@@ -260,7 +335,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
       pdf.save(`공사일보_${report.date}.pdf`);
     } catch (error) {
       console.error('PDF export failed:', error);
-      alert('PDF 다운로드에 실패했습니다.');
+      showStatus('PDF 다운로드에 실패했습니다.');
     }
   };
 
@@ -354,7 +429,20 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
   const totalPersonnel = report.personnel.direct + report.personnel.outsourced + report.personnel.other;
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col bg-white relative">
+      <AnimatePresence>
+        {statusMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-[300] px-6 py-3 bg-gray-900 text-white rounded-full shadow-2xl text-sm font-bold flex items-center gap-3"
+          >
+            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+            {statusMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Header */}
       <div className="px-6 py-4 flex justify-between items-center border-b border-gray-100 bg-gray-50 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -367,7 +455,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleSave} className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-bold">
+          <button 
+            onClick={handleSave} 
+            disabled={isReadOnly}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-bold ${
+              isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+            }`}
+          >
             <Save size={16} /> 저장
           </button>
           <button onClick={handleExportPDF} className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-bold">
@@ -398,13 +492,46 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                     </tr>
                     <tr>
                       <td className="border border-gray-900 p-1 h-16 align-bottom relative">
-                        <input type="text" value={report.author} onChange={e => setReport({...report, author: e.target.value})} className="w-full text-center focus:outline-none bg-transparent absolute bottom-2 left-0" placeholder="이름" />
+                        <button 
+                          onClick={() => handleOpenUserSelectModal('author')}
+                          disabled={isReadOnly}
+                          className={`w-full h-full flex flex-col items-center justify-center transition-colors ${isReadOnly ? 'cursor-default' : 'hover:bg-gray-50'}`}
+                        >
+                          <span className="text-xs text-gray-900 font-bold">{report.author || '선택'}</span>
+                          {report.approvalHistory?.find(h => h.status === '승인요청') && (
+                            <span className="text-[9px] text-gray-500 mt-1 leading-tight">
+                              {format(new Date(report.approvalHistory.find(h => h.status === '승인요청')!.timestamp), 'MM/dd HH:mm')}
+                            </span>
+                          )}
+                        </button>
                       </td>
                       <td className="border border-gray-900 p-1 h-16 align-bottom relative">
-                        <input type="text" value={report.reviewer} onChange={e => setReport({...report, reviewer: e.target.value})} className="w-full text-center focus:outline-none bg-transparent absolute bottom-2 left-0" placeholder="이름" />
+                        <button 
+                          onClick={() => handleOpenUserSelectModal('reviewer')}
+                          disabled={isReadOnly}
+                          className={`w-full h-full flex flex-col items-center justify-center transition-colors ${isReadOnly ? 'cursor-default' : 'hover:bg-gray-50'}`}
+                        >
+                          <span className="text-xs text-gray-900 font-bold">{report.reviewer || '선택'}</span>
+                          {report.approvalHistory?.find(h => h.status === '검토완료') && (
+                            <span className="text-[9px] text-gray-500 mt-1 leading-tight">
+                              {format(new Date(report.approvalHistory.find(h => h.status === '검토완료')!.timestamp), 'MM/dd HH:mm')}
+                            </span>
+                          )}
+                        </button>
                       </td>
                       <td className="border border-gray-900 p-1 h-16 align-bottom relative">
-                        <input type="text" value={report.approver} onChange={e => setReport({...report, approver: e.target.value})} className="w-full text-center focus:outline-none bg-transparent absolute bottom-2 left-0" placeholder="이름" />
+                        <button 
+                          onClick={() => handleOpenUserSelectModal('approver')}
+                          disabled={isReadOnly}
+                          className={`w-full h-full flex flex-col items-center justify-center transition-colors ${isReadOnly ? 'cursor-default' : 'hover:bg-gray-50'}`}
+                        >
+                          <span className="text-xs text-gray-900 font-bold">{report.approver || '선택'}</span>
+                          {report.approvalHistory?.find(h => h.status === '승인') && (
+                            <span className="text-[9px] text-gray-500 mt-1 leading-tight">
+                              {format(new Date(report.approvalHistory.find(h => h.status === '승인')!.timestamp), 'MM/dd HH:mm')}
+                            </span>
+                          )}
+                        </button>
                       </td>
                     </tr>
                     <tr>
@@ -412,10 +539,10 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                       <td className="border border-gray-900 p-1">
                         <button 
                           onClick={() => handleApproval('승인요청')} 
-                          disabled={report.approvalStatus !== '작성중'}
+                          disabled={(report.approvalStatus !== '작성중' && report.approvalStatus !== '재작성요청') || (report.author !== currentUser?.name && currentUser?.role !== 'admin')}
                           className={`w-full text-[10px] py-1 rounded transition-colors ${
                             report.approvalStatus === '승인요청' ? 'bg-blue-600 text-white font-bold' : 
-                            report.approvalStatus === '작성중' ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold' : 
+                            (report.approvalStatus === '작성중' || report.approvalStatus === '재작성요청') && (report.author === currentUser?.name || currentUser?.role === 'admin') ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold' : 
                             'bg-gray-100 text-gray-400 cursor-not-allowed'
                           }`}
                         >
@@ -423,30 +550,50 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                         </button>
                       </td>
                       <td className="border border-gray-900 p-1">
-                        <button 
-                          onClick={() => handleApproval('검토완료')} 
-                          disabled={report.approvalStatus !== '승인요청'}
-                          className={`w-full text-[10px] py-1 rounded transition-colors ${
-                            report.approvalStatus === '검토완료' ? 'bg-orange-600 text-white font-bold' : 
-                            report.approvalStatus === '승인요청' ? 'bg-orange-50 text-orange-700 hover:bg-orange-100 font-bold' : 
-                            'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          검토완료
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          <button 
+                            onClick={() => handleApproval('검토완료')} 
+                            disabled={report.approvalStatus !== '승인요청' || (report.reviewer !== currentUser?.name && currentUser?.role !== 'admin')}
+                            className={`w-full text-[10px] py-1 rounded transition-colors ${
+                              report.approvalStatus === '검토완료' ? 'bg-orange-600 text-white font-bold' : 
+                              report.approvalStatus === '승인요청' && (report.reviewer === currentUser?.name || currentUser?.role === 'admin') ? 'bg-orange-50 text-orange-700 hover:bg-orange-100 font-bold' : 
+                              'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            검토완료
+                          </button>
+                          {report.approvalStatus === '승인요청' && (report.reviewer === currentUser?.name || currentUser?.role === 'admin') && (
+                            <button 
+                              onClick={() => handleApproval('재작성요청')}
+                              className="w-full text-[9px] py-0.5 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 transition-colors font-bold"
+                            >
+                              재작성요청
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="border border-gray-900 p-1">
-                        <button 
-                          onClick={() => handleApproval('승인')} 
-                          disabled={report.approvalStatus !== '검토완료'}
-                          className={`w-full text-[10px] py-1 rounded transition-colors ${
-                            report.approvalStatus === '승인' ? 'bg-green-600 text-white font-bold' : 
-                            report.approvalStatus === '검토완료' ? 'bg-green-50 text-green-700 hover:bg-green-100 font-bold' : 
-                            'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          승인
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          <button 
+                            onClick={() => handleApproval('승인')} 
+                            disabled={report.approvalStatus !== '검토완료' || (report.approver !== currentUser?.name && currentUser?.role !== 'admin')}
+                            className={`w-full text-[10px] py-1 rounded transition-colors ${
+                              report.approvalStatus === '승인' ? 'bg-green-600 text-white font-bold' : 
+                              report.approvalStatus === '검토완료' && (report.approver === currentUser?.name || currentUser?.role === 'admin') ? 'bg-green-50 text-green-700 hover:bg-green-100 font-bold' : 
+                              'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            승인
+                          </button>
+                          {report.approvalStatus === '검토완료' && (report.approver === currentUser?.name || currentUser?.role === 'admin') && (
+                            <button 
+                              onClick={() => handleApproval('재작성요청')}
+                              className="w-full text-[9px] py-0.5 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 transition-colors font-bold"
+                            >
+                              재작성요청
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   </tbody>
@@ -462,7 +609,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                   <td className="border border-gray-900 px-4 py-2 font-medium text-gray-900">{project?.name || '프로젝트 미지정'}</td>
                   <td className="border border-gray-900 bg-gray-100 font-bold px-4 py-2 w-24 text-center text-gray-800">일자</td>
                   <td className="border border-gray-900 px-4 py-2 w-48">
-                    <input type="date" value={report.date} onChange={e => setReport({...report, date: e.target.value})} className="w-full focus:outline-none bg-transparent font-medium text-gray-900" />
+                    <input 
+                      type="date" 
+                      value={report.date} 
+                      onChange={e => setReport({...report, date: e.target.value})} 
+                      disabled={isReadOnly}
+                      className="w-full focus:outline-none bg-transparent font-medium text-gray-900 disabled:text-gray-500" 
+                    />
                   </td>
                 </tr>
                 <tr>
@@ -471,23 +624,53 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                       <div className="flex items-center gap-1">
                         <span className="text-gray-600 text-[10px]">최고기온:</span>
-                        <input type="text" value={report.weather.maxTemp || ''} onChange={e => setReport({...report, weather: {...report.weather, maxTemp: e.target.value}})} className="w-10 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center text-xs" />
+                        <input 
+                          type="text" 
+                          value={report.weather.maxTemp || ''} 
+                          onChange={e => setReport({...report, weather: {...report.weather, maxTemp: e.target.value}})} 
+                          disabled={isReadOnly}
+                          className="w-10 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center text-xs disabled:border-transparent" 
+                        />
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="text-gray-600 text-[10px]">최저기온:</span>
-                        <input type="text" value={report.weather.minTemp || ''} onChange={e => setReport({...report, weather: {...report.weather, minTemp: e.target.value}})} className="w-10 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center text-xs" />
+                        <input 
+                          type="text" 
+                          value={report.weather.minTemp || ''} 
+                          onChange={e => setReport({...report, weather: {...report.weather, minTemp: e.target.value}})} 
+                          disabled={isReadOnly}
+                          className="w-10 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center text-xs disabled:border-transparent" 
+                        />
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="text-gray-600 text-[10px]">풍속:</span>
-                        <input type="text" value={report.weather.windSpeed || ''} onChange={e => setReport({...report, weather: {...report.weather, windSpeed: e.target.value}})} className="w-10 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center text-xs" />
+                        <input 
+                          type="text" 
+                          value={report.weather.windSpeed || ''} 
+                          onChange={e => setReport({...report, weather: {...report.weather, windSpeed: e.target.value}})} 
+                          disabled={isReadOnly}
+                          className="w-10 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center text-xs disabled:border-transparent" 
+                        />
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="text-gray-600 text-[10px]">강수량:</span>
-                        <input type="text" value={report.weather.precipitation || ''} onChange={e => setReport({...report, weather: {...report.weather, precipitation: e.target.value}})} className="w-10 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center text-xs" />
+                        <input 
+                          type="text" 
+                          value={report.weather.precipitation || ''} 
+                          onChange={e => setReport({...report, weather: {...report.weather, precipitation: e.target.value}})} 
+                          disabled={isReadOnly}
+                          className="w-10 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center text-xs disabled:border-transparent" 
+                        />
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="text-gray-600 text-[10px]">상태:</span>
-                        <input type="text" value={report.weather.status || ''} onChange={e => setReport({...report, weather: {...report.weather, status: e.target.value}})} className="w-12 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-xs" />
+                        <input 
+                          type="text" 
+                          value={report.weather.status || ''} 
+                          onChange={e => setReport({...report, weather: {...report.weather, status: e.target.value}})} 
+                          disabled={isReadOnly}
+                          className="w-12 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-xs disabled:border-transparent" 
+                        />
                       </div>
                     </div>
                   </td>
@@ -501,7 +684,8 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                           step="0.01" 
                           value={report.progressRate?.planned || 0} 
                           onChange={e => setReport({...report, progressRate: {...(report.progressRate || {planned: 0, actual: 0}), planned: Number(e.target.value)}})} 
-                          className="w-12 border-b border-gray-300 focus:outline-none text-center text-xs font-bold text-blue-600" 
+                          disabled={isReadOnly}
+                          className="w-12 border-b border-gray-300 focus:outline-none text-center text-xs font-bold text-blue-600 disabled:border-transparent disabled:text-gray-500" 
                         />
                         <span className="text-[10px] text-gray-500">%</span>
                       </div>
@@ -512,7 +696,8 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                           step="0.01" 
                           value={report.progressRate?.actual || 0} 
                           onChange={e => setReport({...report, progressRate: {...(report.progressRate || {planned: 0, actual: 0}), actual: Number(e.target.value)}})} 
-                          className="w-12 border-b border-gray-300 focus:outline-none text-center text-xs font-bold text-green-600" 
+                          disabled={isReadOnly}
+                          className="w-12 border-b border-gray-300 focus:outline-none text-center text-xs font-bold text-green-600 disabled:border-transparent disabled:text-gray-500" 
                         />
                         <span className="text-[10px] text-gray-500">%</span>
                       </div>
@@ -529,7 +714,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                   <span className="bg-gray-900 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">1</span>
                   금일 작업 사항
                 </h3>
-                <button onClick={() => handleOpenTaskModal('today')} className="text-blue-600 hover:text-blue-800 text-sm font-bold flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-md transition-colors">
+                <button 
+                  onClick={() => handleOpenTaskModal('today')} 
+                  disabled={isReadOnly}
+                  className={`text-sm font-bold flex items-center gap-1 px-3 py-1 rounded-md transition-colors ${
+                    isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800 bg-blue-50'
+                  }`}
+                >
                   <Plus size={14} /> 내역 추가
                 </button>
               </div>
@@ -563,7 +754,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                         </span>
                       </td>
                       <td className="border border-gray-900 px-2 py-2 text-center">
-                        <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className={`flex justify-center gap-2 transition-opacity ${isReadOnly ? 'hidden' : 'opacity-0 group-hover:opacity-100'}`}>
                           <button onClick={() => handleOpenTaskModal('today', task)} className="text-blue-500 hover:text-blue-700"><Edit2 size={14} /></button>
                           <button onClick={() => setReport({...report, todayTasks: report.todayTasks.filter(t => t.id !== task.id)})} className="text-red-500 hover:text-red-700"><Trash2 size={14} /></button>
                         </div>
@@ -586,7 +777,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                     <span className="bg-gray-900 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">2</span>
                     출력 인원 현황
                   </h3>
-                  <button onClick={() => setIsPersonnelModalOpen(true)} className="text-blue-600 hover:text-blue-800 text-sm font-bold flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-md transition-colors">
+                  <button 
+                    onClick={() => setIsPersonnelModalOpen(true)} 
+                    disabled={isReadOnly}
+                    className={`text-sm font-bold flex items-center gap-1 px-3 py-1 rounded-md transition-colors ${
+                      isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800 bg-blue-50'
+                    }`}
+                  >
                     <Plus size={14} /> 인원 추가
                   </button>
                 </div>
@@ -644,7 +841,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                     <span className="bg-gray-900 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">3</span>
                     장비 투입 현황
                   </h3>
-                  <button onClick={() => setIsEquipmentModalOpen(true)} className="text-blue-600 hover:text-blue-800 text-sm font-bold flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-md transition-colors">
+                  <button 
+                    onClick={() => setIsEquipmentModalOpen(true)} 
+                    disabled={isReadOnly}
+                    className={`text-sm font-bold flex items-center gap-1 px-3 py-1 rounded-md transition-colors ${
+                      isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800 bg-blue-50'
+                    }`}
+                  >
                     <Plus size={14} /> 장비 추가
                   </button>
                 </div>
@@ -683,7 +886,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                   <span className="bg-gray-900 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">4</span>
                   특기사항 (안전/품질/민원)
                 </h3>
-                <button onClick={() => setReport({...report, issues: [...report.issues, { id: Date.now().toString(), type: '안전', description: '' }]})} className="text-blue-600 hover:text-blue-800 text-sm font-bold flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-md transition-colors">
+                <button 
+                  onClick={() => setReport({...report, issues: [...report.issues, { id: Date.now().toString(), type: '안전', description: '' }]})} 
+                  disabled={isReadOnly}
+                  className={`text-sm font-bold flex items-center gap-1 px-3 py-1 rounded-md transition-colors ${
+                    isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800 bg-blue-50'
+                  }`}
+                >
                   <Plus size={14} /> 사항 추가
                 </button>
               </div>
@@ -699,17 +908,35 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                   {report.issues.map((issue, idx) => (
                     <tr key={issue.id} className="hover:bg-gray-50 group">
                       <td className="border border-gray-900 px-2 py-1 text-center">
-                        <select value={issue.type} onChange={e => { const newIssues = [...report.issues]; newIssues[idx].type = e.target.value as any; setReport({...report, issues: newIssues}); }} className="w-full bg-transparent focus:outline-none text-center font-bold text-gray-700">
+                        <select 
+                          value={issue.type} 
+                          onChange={e => { const newIssues = [...report.issues]; newIssues[idx].type = e.target.value as any; setReport({...report, issues: newIssues}); }} 
+                          disabled={isReadOnly}
+                          className="w-full bg-transparent focus:outline-none text-center font-bold text-gray-700 disabled:appearance-none"
+                        >
                           <option value="안전">안전</option>
                           <option value="품질">품질</option>
                           <option value="민원">민원</option>
                         </select>
                       </td>
                       <td className="border border-gray-900 px-3 py-2">
-                        <input type="text" value={issue.description} onChange={e => { const newIssues = [...report.issues]; newIssues[idx].description = e.target.value; setReport({...report, issues: newIssues}); }} placeholder="특기사항 내용을 입력하세요." className="w-full bg-transparent focus:outline-none" />
+                        <input 
+                          type="text" 
+                          value={issue.description} 
+                          onChange={e => { const newIssues = [...report.issues]; newIssues[idx].description = e.target.value; setReport({...report, issues: newIssues}); }} 
+                          disabled={isReadOnly}
+                          placeholder="특기사항 내용을 입력하세요." 
+                          className="w-full bg-transparent focus:outline-none disabled:placeholder-transparent" 
+                        />
                       </td>
                       <td className="border border-gray-900 px-2 py-1 text-center">
-                        <button onClick={() => setReport({...report, issues: report.issues.filter(i => i.id !== issue.id)})} className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
+                        <button 
+                          onClick={() => setReport({...report, issues: report.issues.filter(i => i.id !== issue.id)})} 
+                          disabled={isReadOnly}
+                          className={`text-red-400 hover:text-red-600 transition-opacity ${isReadOnly ? 'hidden' : 'opacity-0 group-hover:opacity-100'}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -727,7 +954,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                   <span className="bg-gray-900 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">5</span>
                   사진 대지
                 </h3>
-                <button onClick={() => fileInputRef.current?.click()} className="text-blue-600 hover:text-blue-800 text-sm font-bold flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-md transition-colors">
+                <button 
+                  onClick={() => fileInputRef.current?.click()} 
+                  disabled={isReadOnly}
+                  className={`text-sm font-bold flex items-center gap-1 px-3 py-1 rounded-md transition-colors ${
+                    isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800 bg-blue-50'
+                  }`}
+                >
                   {isCompressing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} 
                   사진 추가
                 </button>
@@ -739,22 +972,26 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                     {report.photos.map((photo, index) => (
                       <div key={photo.id} className="relative flex flex-col gap-1 group">
                         <div 
-                          className="relative aspect-square rounded-sm overflow-hidden border border-gray-300 shadow-sm cursor-pointer"
-                          onClick={() => handleEditPhoto(photo)}
+                          className={`relative aspect-square rounded-sm overflow-hidden border border-gray-300 shadow-sm ${isReadOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                          onClick={() => !isReadOnly && handleEditPhoto(photo)}
                         >
                           <img src={photo.url} alt={photo.title || `현장 사진 ${index + 1}`} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <Edit2 className="text-white" size={24} />
-                          </div>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setReport({...report, photos: report.photos.filter(p => p.id !== photo.id)});
-                            }}
-                            className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10"
-                          >
-                            <X size={14} />
-                          </button>
+                          {!isReadOnly && (
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <Edit2 className="text-white" size={24} />
+                            </div>
+                          )}
+                          {!isReadOnly && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReport({...report, photos: report.photos.filter(p => p.id !== photo.id)});
+                              }}
+                              className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
                         </div>
                         <div className="px-1">
                           <p className="text-[10px] font-bold text-blue-600 truncate">{photo.category} {photo.subCategory && `> ${photo.subCategory}`}</p>
@@ -780,7 +1017,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                   <span className="bg-gray-900 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">6</span>
                   명일 작업 계획
                 </h3>
-                <button onClick={() => handleOpenTaskModal('tomorrow')} className="text-blue-600 hover:text-blue-800 text-sm font-bold flex items-center gap-1 bg-blue-50 px-3 py-1 rounded-md transition-colors">
+                <button 
+                  onClick={() => handleOpenTaskModal('tomorrow')} 
+                  disabled={isReadOnly}
+                  className={`text-sm font-bold flex items-center gap-1 px-3 py-1 rounded-md transition-colors ${
+                    isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800 bg-blue-50'
+                  }`}
+                >
                   <Plus size={14} /> 계획 추가
                 </button>
               </div>
@@ -808,7 +1051,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                       </td>
                       <td className="border border-gray-900 px-2 py-2 text-center">{task.amount}</td>
                       <td className="border border-gray-900 px-2 py-2 text-center">
-                        <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className={`flex justify-center gap-2 transition-opacity ${isReadOnly ? 'hidden' : 'opacity-0 group-hover:opacity-100'}`}>
                           <button onClick={() => handleOpenTaskModal('tomorrow', task)} className="text-blue-500 hover:text-blue-700"><Edit2 size={14} /></button>
                           <button onClick={() => setReport({...report, tomorrowTasks: report.tomorrowTasks.filter(t => t.id !== task.id)})} className="text-red-500 hover:text-red-700"><Trash2 size={14} /></button>
                         </div>
@@ -855,6 +1098,16 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
         onSave={handleSaveEquipment}
         initialEquipment={report.equipment}
         settings={settings}
+      />
+
+      <UserSelectModal
+        isOpen={isUserSelectModalOpen}
+        onClose={() => setIsUserSelectModalOpen(false)}
+        onSelect={handleSelectUser}
+        title={
+          userSelectType === 'author' ? '작성자' : 
+          userSelectType === 'reviewer' ? '검토자' : '승인자'
+        }
       />
 
       {/* Confirmation Modal */}

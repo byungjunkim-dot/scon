@@ -122,7 +122,11 @@ const SortableRow: React.FC<SortableRowProps> = ({
           >
             <GripVertical size={14} />
           </div>
-          <div className="text-xs font-medium text-gray-700 truncate">{item.subCategory}</div>
+          <div className="text-xs text-gray-700 truncate">
+            <span className="font-bold">{item.subCategory}</span>
+            <span className="mx-1 text-gray-400">/</span>
+            <span className="font-normal text-gray-600">{item.taskName}</span>
+          </div>
         </div>
       </div>
 
@@ -189,6 +193,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
   // Input state for new baseline item
   const [newCategory, setNewCategory] = useState<Category>(settings.categories[0]);
   const [newSubCategory, setNewSubCategory] = useState('');
+  const [newTaskName, setNewTaskName] = useState('');
   const [newStartDate, setNewStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [newEndDate, setNewEndDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
 
@@ -196,6 +201,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
     setEditingId(item.id);
     setNewCategory(item.category);
     setNewSubCategory(item.subCategory);
+    setNewTaskName(item.taskName);
     setNewStartDate(item.startDate);
     setNewEndDate(item.endDate);
   };
@@ -203,6 +209,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
   const handleClear = () => {
     setEditingId(null);
     setNewSubCategory('');
+    setNewTaskName('');
     setNewStartDate(format(new Date(), 'yyyy-MM-dd'));
     setNewEndDate(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
   };
@@ -211,6 +218,11 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
     if (!newCategory || !settings.taskMaster[newCategory]) return [];
     return Object.keys(settings.taskMaster[newCategory]);
   }, [newCategory, settings.taskMaster]);
+
+  const taskNames = useMemo(() => {
+    if (!newCategory || !newSubCategory || !settings.taskMaster[newCategory]?.[newSubCategory]) return [];
+    return settings.taskMaster[newCategory][newSubCategory];
+  }, [newCategory, newSubCategory, settings.taskMaster]);
 
   const toggleCategory = (category: Category) => {
     const newSet = new Set(collapsedCategories);
@@ -340,7 +352,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
   };
 
   const handleAddOrUpdate = () => {
-    if (!newSubCategory) return;
+    if (!newSubCategory || !newTaskName) return;
     
     if (editingId) {
       const existingItem = items.find(i => i.id === editingId);
@@ -349,7 +361,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
           ...existingItem,
           category: newCategory,
           subCategory: newSubCategory,
-          taskName: newSubCategory, // Use subCategory as taskName for baseline
+          taskName: newTaskName,
           startDate: newStartDate,
           endDate: newEndDate,
           duration: differenceInDays(new Date(newEndDate), new Date(newStartDate)) + 1
@@ -360,7 +372,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
       onAdd({
         category: newCategory,
         subCategory: newSubCategory,
-        taskName: newSubCategory, // Use subCategory as taskName for baseline
+        taskName: newTaskName,
         startDate: newStartDate,
         endDate: newEndDate,
         duration: differenceInDays(new Date(newEndDate), new Date(newStartDate)) + 1,
@@ -484,12 +496,29 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">세부공종</label>
             <select 
               value={newSubCategory}
-              onChange={(e) => setNewSubCategory(e.target.value)}
+              onChange={(e) => {
+                setNewSubCategory(e.target.value);
+                if (!editingId) setNewTaskName(e.target.value);
+              }}
               className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
             >
               <option value="">선택하세요</option>
               {subCategories.map(sub => <option key={sub} value={sub}>{sub}</option>)}
             </select>
+          </div>
+          <div className="flex-1 space-y-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">작업내용</label>
+            <input 
+              type="text"
+              value={newTaskName}
+              onChange={(e) => setNewTaskName(e.target.value)}
+              list="baseline-task-options"
+              placeholder="작업내용 입력 또는 선택"
+              className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            />
+            <datalist id="baseline-task-options">
+              {taskNames.map(task => <option key={task} value={task} />)}
+            </datalist>
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">시작일</label>
@@ -511,7 +540,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
           </div>
           <button 
             onClick={handleAddOrUpdate}
-            disabled={!newSubCategory}
+            disabled={!newSubCategory || !newTaskName}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {editingId ? <Plus size={16} className="rotate-45" /> : <Plus size={16} />}

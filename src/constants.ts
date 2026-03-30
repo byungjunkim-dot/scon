@@ -4,7 +4,7 @@ export const CATEGORIES: Category[] = [
   '공통관리', '건축', '토목', '전기', '통신', '기계', '조경', '구조', '소방', '철거', '인테리어'
 ];
 
-export const STATUSES: Status[] = ['예정', '진행중', '완료', '지연'];
+export const STATUSES: Status[] = ['예정', '진행', '완료', '지연'];
 
 export const CATEGORY_COLORS: Record<Category, string> = {
   '공통관리': '#64748b',
@@ -197,7 +197,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
     endDate: '2026-03-10',
     duration: 5,
     progress: 80,
-    status: '진행중',
+    status: '진행',
     predecessor: '1',
     contractor: '한전이엔지',
     memo: '도면 확인 필수'
@@ -330,7 +330,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
     endDate: '2026-03-14',
     duration: 7,
     progress: 90,
-    status: '진행중',
+    status: '진행',
     predecessor: '1',
     contractor: '세이프텍',
     memo: ''

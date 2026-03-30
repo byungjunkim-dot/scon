@@ -8,24 +8,31 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: AppSettings;
   onSave: (newSettings: AppSettings) => void;
+  projectName?: string;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
-  onSave
+  onSave,
+  projectName
 }) => {
   const [localSettings, setLocalSettings] = useState<AppSettings>({ ...settings });
-  const [activeTab, setActiveTab] = useState<'categories' | 'tasks' | 'locations' | 'contractors'>('categories');
+  const [activeTab, setActiveTab] = useState<'categories' | 'tasks' | 'locations' | 'contractors' | 'equipment'>('categories');
   const [selectedCategory, setSelectedCategory] = useState<Category>(localSettings.categories[0]);
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('');
+
+  // Sync local settings when props change
+  React.useEffect(() => {
+    setLocalSettings({ ...settings });
+  }, [settings]);
 
   if (!isOpen) return null;
 
   const handleAddItem = (listKey: keyof AppSettings, value: string) => {
     if (!value.trim()) return;
-    const currentList = localSettings[listKey] as string[];
+    const currentList = (localSettings[listKey] || []) as string[];
     if (currentList.includes(value)) return;
     
     setLocalSettings({
@@ -35,22 +42,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleRemoveItem = (listKey: keyof AppSettings, index: number) => {
-    const currentList = localSettings[listKey] as string[];
+    const currentList = (localSettings[listKey] || []) as string[];
+    if (!currentList[index]) return;
+    
     const itemToRemove = currentList[index];
     const newList = [...currentList];
     newList.splice(index, 1);
     
-    const newColors = { ...localSettings.categoryColors };
-    const newTextColors = { ...localSettings.categoryTextColors };
-    delete newColors[itemToRemove];
-    delete newTextColors[itemToRemove];
-
-    setLocalSettings({
+    const newSettings = {
       ...localSettings,
-      [listKey]: newList,
-      categoryColors: newColors,
-      categoryTextColors: newTextColors
-    });
+      [listKey]: newList
+    };
+
+    if (listKey === 'categories') {
+      const newColors = { ...localSettings.categoryColors };
+      const newTextColors = { ...localSettings.categoryTextColors };
+      delete newColors[itemToRemove];
+      delete newTextColors[itemToRemove];
+      newSettings.categoryColors = newColors;
+      newSettings.categoryTextColors = newTextColors;
+    }
+
+    setLocalSettings(newSettings);
   };
 
   const handleColorChange = (category: string, color: string) => {
@@ -172,7 +185,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="p-6 border-bottom flex justify-between items-center bg-slate-50">
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Save className="w-6 h-6 text-blue-600" />
-            시스템 설정 관리
+            {projectName ? `${projectName} 설정` : '시스템 설정 관리'}
           </h2>
           <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
             <X className="w-6 h-6 text-slate-500" />
@@ -205,6 +218,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               className={`p-3 text-left rounded-xl transition-all ${activeTab === 'contractors' ? 'bg-blue-600 text-white shadow-md' : 'hover:bg-slate-200 text-slate-600'}`}
             >
               담당업체
+            </button>
+            <button 
+              onClick={() => setActiveTab('equipment')}
+              className={`p-3 text-left rounded-xl transition-all ${activeTab === 'equipment' ? 'bg-blue-600 text-white shadow-md' : 'hover:bg-slate-200 text-slate-600'}`}
+            >
+              장비 관리
             </button>
           </div>
 
@@ -462,6 +481,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       ))}
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'equipment' && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-slate-700">장비 마스터 관리</h3>
+                <p className="text-sm text-slate-500">공사일보 작성 시 선택할 수 있는 장비 목록을 미리 설정합니다.</p>
+                <div className="flex gap-2">
+                  <input 
+                    id="new-equipment"
+                    type="text" 
+                    placeholder="새 장비명 입력 (예: 굴착기, 지게차)"
+                    className="flex-1 p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleAddItem('equipmentMaster', e.currentTarget.value);
+                        e.currentTarget.value = '';
+                      }
+                    }}
+                  />
+                  <button 
+                    onClick={() => {
+                      const input = document.getElementById('new-equipment') as HTMLInputElement;
+                      handleAddItem('equipmentMaster', input.value);
+                      input.value = '';
+                    }}
+                    className="bg-blue-600 text-white px-6 rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="w-5 h-5" /> 추가
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {(localSettings.equipmentMaster || []).map((eq, idx) => (
+                    <div key={eq} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border group">
+                      <span className="font-medium text-slate-700">{eq}</span>
+                      <button 
+                        onClick={() => handleRemoveItem('equipmentMaster', idx)}
+                        className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

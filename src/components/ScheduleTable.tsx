@@ -114,7 +114,7 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({ items, onSelect, onDelete
                       <div className="xl:hidden w-full flex justify-center mt-0.5">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold border
                           ${item.status === '완료' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                            item.status === '진행중' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                            item.status === '진행' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                             item.status === '지연' ? 'bg-rose-50 text-rose-600 border-rose-100' :
                             'bg-amber-50 text-amber-600 border-amber-100'}
                         `}>
@@ -126,7 +126,7 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({ items, onSelect, onDelete
                   <td className="hidden xl:table-cell px-6 py-4 text-center">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border
                       ${item.status === '완료' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                        item.status === '진행중' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                        item.status === '진행' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                         item.status === '지연' ? 'bg-rose-50 text-rose-600 border-rose-100' :
                         'bg-amber-50 text-amber-600 border-amber-100'}
                     `}>

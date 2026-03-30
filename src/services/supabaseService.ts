@@ -15,6 +15,11 @@ export const supabaseService = {
     return data[0] as Project;
   },
 
+  async deleteProject(id: string) {
+    const { error } = await supabase.from('projects').delete().eq('id', id);
+    if (error) throw error;
+  },
+
   // Schedules
   async getSchedules(projectId: string) {
     const { data, error } = await supabase.from('schedules').select('*').eq('projectId', projectId);
@@ -80,5 +85,16 @@ export const supabaseService = {
     const { data, error } = await supabase.from('daily_reports').upsert(report).select();
     if (error) throw error;
     return data[0];
+  },
+
+  // Connection Test
+  async testConnection() {
+    try {
+      const { error } = await supabase.from('projects').select('id').limit(1);
+      if (error) throw error;
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error };
+    }
   }
 };

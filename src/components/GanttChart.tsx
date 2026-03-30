@@ -257,7 +257,11 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
                         <div key={item.id} className="flex h-6 xl:h-12 border-b border-gray-50 last:border-0 group hover:bg-gray-50/50 transition-colors">
                           {/* Task Label (Sticky) */}
                           <div className="sticky left-0 z-30 w-[18vw] xl:w-[250px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex flex-col justify-center group-hover:bg-gray-50/50 transition-colors overflow-hidden">
-                            <div className="text-[10px] xl:text-xs font-semibold text-gray-800 truncate">{item.taskName}</div>
+                            <div className="text-[10px] xl:text-xs text-gray-800 truncate">
+                              <span className="font-bold">{item.subCategory}</span>
+                              <span className="mx-1 text-gray-400">/</span>
+                              <span className="font-normal text-gray-600">{item.taskName}</span>
+                            </div>
                             <div className="text-[8px] xl:text-[9px] text-gray-400 font-medium truncate">{item.dongBlock} {item.floor} {item.zone}</div>
                           </div>
 

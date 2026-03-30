@@ -11,7 +11,7 @@ export type Category =
   | '철거' 
   | '인테리어';
 
-export type Status = '예정' | '진행중' | '완료' | '지연';
+export type Status = '예정' | '진행' | '완료' | '지연';
 
 export interface ScheduleItem {
   id: string;
@@ -58,6 +58,7 @@ export interface Project {
   startDate?: string;
   endDate?: string;
   createdAt: string;
+  settings?: AppSettings;
 }
 
 export interface AppSettings {
@@ -69,6 +70,7 @@ export interface AppSettings {
   floors: string[];
   zones: string[];
   contractors: Record<string, string[]>;
+  equipmentMaster?: string[];
 }
 
 export interface DailyTask {
@@ -124,7 +126,7 @@ export interface User {
 }
 
 export interface ApprovalRecord {
-  status: '작성중' | '승인요청' | '검토완료' | '승인';
+  status: '작성중' | '승인요청' | '검토완료' | '승인' | '재작성요청';
   timestamp: string;
   user: string;
   comment?: string;
@@ -145,7 +147,7 @@ export interface DailyReport {
   author: string;
   reviewer: string;
   approver: string;
-  approvalStatus: '작성중' | '승인요청' | '검토완료' | '승인';
+  approvalStatus: '작성중' | '승인요청' | '검토완료' | '승인' | '재작성요청';
   approvalHistory?: ApprovalRecord[];
   weather: {
     temperature: string;
@@ -170,4 +172,49 @@ export interface DailyReport {
     planned: number;
     actual: number;
   };
+}
+
+export interface ConcretePlan {
+  id: string;
+  projectId: string;
+  date: string;
+  location: string;
+  concreteType: string;
+  plannedVolume: number;
+  startTime: string;
+  endTime: string;
+  status: string;
+  photos: DailyPhoto[];
+  author: string;
+}
+
+export interface InspectionRequest {
+  id: string;
+  projectId: string;
+  date: string;
+  category: string;
+  subCategory: string;
+  taskName: string;
+  location: string;
+  description: string;
+  status: string;
+  photos: DailyPhoto[];
+  author: string;
+  reviewer: string;
+  approver: string;
+}
+
+export interface MaterialApproval {
+  id: string;
+  projectId: string;
+  date: string;
+  materialName: string;
+  specification: string;
+  manufacturer: string;
+  supplier: string;
+  quantity: string;
+  status: string;
+  photos: DailyPhoto[];
+  author: string;
+  approver: string;
 }

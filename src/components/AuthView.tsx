@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Building2, Mail, Lock, User as UserIcon, Phone, Briefcase, Code, Key, ArrowRight, LogIn } from 'lucide-react';
 import { User } from '../types';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { supabaseService } from '../services/supabaseService';
 
 const LogoIcon = ({ size = 32, className = "" }: { size?: number, className?: string }) => (
@@ -30,6 +31,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
     contact: '',
     email: '',
     password: '',
+    confirmPassword: '',
     affiliation: '',
     discipline: '',
     signupCode: ''
@@ -49,6 +51,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
       if (role === '일반' || role === '기타' || !role) return '브론즈';
       return role as any;
     };
+
+    if (!isLogin && formData.password !== formData.confirmPassword) {
+      setError('비밀번호가 일치하지 않습니다.');
+      return;
+    }
 
     // Check if Supabase is configured
     const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
@@ -119,6 +126,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
           errorMessage = 'Supabase에 users 테이블이 생성되지 않았습니다. SQL Editor에서 테이블을 생성해주세요.';
         } else if (err.message?.includes('row-level security')) {
           errorMessage = 'Supabase RLS(Row Level Security) 정책으로 인해 접근이 차단되었습니다. 정책을 추가하거나 RLS를 비활성화해주세요.';
+        } else if (err.message?.includes('Failed to fetch')) {
+          errorMessage = 'Supabase 서버에 연결할 수 없습니다. 네트워크 상태나 환경변수 설정을 확인해주세요.';
         } else {
           errorMessage = `서버 오류: ${err.message || '알 수 없는 오류'}`;
         }
@@ -261,6 +270,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
               />
             </div>
+
+            {!isLogin && (
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input 
+                  type="password" 
+                  name="confirmPassword"
+                  placeholder="비밀번호 확인" 
+                  required={!isLogin}
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
+                />
+              </div>
+            )}
 
             <AnimatePresence mode="wait">
               {!isLogin && (

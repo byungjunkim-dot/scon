@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Plus, FolderOpen, Calendar, MapPin, Search, Building2, Upload, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import { Plus, FolderOpen, Calendar, MapPin, Search, Building2, Upload, Image as ImageIcon, X, Loader2, Trash2 } from 'lucide-react';
 import { Project, User } from '../types';
 import { compressImage } from '../utils/image';
 
@@ -9,10 +9,11 @@ interface ProjectListProps {
   onSelect: (id: string) => void;
   onAdd: (projectData: Omit<Project, 'id' | 'createdAt'>) => void;
   onEdit?: (id: string, projectData: Omit<Project, 'id' | 'createdAt'>) => void;
+  onOpenDeleteModal: () => void;
   currentUser: User | null;
 }
 
-const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, onEdit, currentUser }) => {
+const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, onEdit, onOpenDeleteModal, currentUser }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
@@ -32,6 +33,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const canAddProject = currentUser?.userRole === '골드' || currentUser?.userRole === '실버' || currentUser?.role === 'admin';
+  const canDeleteProject = currentUser?.userRole === '골드' || currentUser?.role === 'admin';
 
   const filteredProjects = projects.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -157,13 +159,21 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
               />
             </div>
             {canAddProject && (
-              <button 
-                onClick={() => setIsAdding(true)}
-                className="fixed bottom-8 right-6 z-50 sm:static sm:z-auto bg-blue-600 text-white w-14 h-14 sm:w-auto sm:h-auto rounded-full sm:rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-2xl shadow-blue-500/40 sm:shadow-lg sm:shadow-blue-500/20 whitespace-nowrap sm:px-6 sm:py-2"
-              >
-                <Plus size={24} className="sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">신규 현장 등록</span>
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={onOpenDeleteModal}
+                  className="bg-red-50 text-red-600 px-4 py-2 rounded-xl font-bold hover:bg-red-100 transition-all text-sm"
+                >
+                  삭제
+                </button>
+                <button 
+                  onClick={() => setIsAdding(true)}
+                  className="fixed bottom-8 right-6 z-50 sm:static sm:z-auto bg-blue-600 text-white w-14 h-14 sm:w-auto sm:h-auto rounded-full sm:rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-2xl shadow-blue-500/40 sm:shadow-lg sm:shadow-blue-500/20 whitespace-nowrap sm:px-6 sm:py-2"
+                >
+                  <Plus size={24} className="sm:w-5 sm:h-5" />
+                  <span className="hidden sm:inline">신규 현장 등록</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -179,7 +189,10 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
-              onClick={() => {
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest('button[title="프로젝트 삭제"]')) {
+                  return;
+                }
                 if (canAccess) {
                   onSelect(project.id);
                 } else {

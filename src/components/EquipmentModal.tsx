@@ -103,13 +103,21 @@ export const EquipmentModal: React.FC<EquipmentModalProps> = ({ isOpen, onClose,
                         </select>
                       </td>
                       <td className="border border-gray-200 px-2 py-1">
-                        <input 
-                          type="text" 
-                          value={p.type} 
-                          onChange={(e) => handleChange(p.id, 'type', e.target.value)}
-                          placeholder="장비명 입력"
-                          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                        />
+                        <div className="relative">
+                          <input 
+                            type="text" 
+                            list={`equipment-list-${p.id}`}
+                            value={p.type} 
+                            onChange={(e) => handleChange(p.id, 'type', e.target.value)}
+                            placeholder="장비명 입력 또는 선택"
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                          <datalist id={`equipment-list-${p.id}`}>
+                            {settings?.equipmentMaster?.map(item => (
+                              <option key={item} value={item} />
+                            ))}
+                          </datalist>
+                        </div>
                       </td>
                       <td className="border border-gray-200 px-2 py-1">
                         <input 

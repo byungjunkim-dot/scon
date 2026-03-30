@@ -23,7 +23,8 @@ import {
   ArrowLeftRight,
   Database,
   FileText,
-  User as UserIcon
+  User as UserIcon,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -43,6 +44,8 @@ const LogoIcon = ({ size = 20, className = "" }: { size?: number, className?: st
 );
 
 import ProjectList from './components/ProjectList';
+import { ConfirmModal } from './components/ConfirmModal';
+import DeleteProjectModal from './components/DeleteProjectModal';
 import ScheduleForm from './components/ScheduleForm';
 import ScheduleTable from './components/ScheduleTable';
 import GanttChart from './components/GanttChart';
@@ -68,13 +71,26 @@ import {
   CATEGORY_TEXT_COLORS
 } from './constants';
 import { SettingsModal } from './components/SettingsModal';
+import { ProfileModal } from './components/ProfileModal';
 import { supabase } from './lib/supabase';
+import { isSupabaseConfigured } from './lib/supabase';
 import { supabaseService } from './services/supabaseService';
 
 type ViewMode = 'auth' | 'projects' | 'project-detail' | 'user-management';
 type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings';
 type TabMode = 'gantt' | 'table' | 'comparison' | 'baseline';
 type DocumentTab = 'daily-report' | 'inspection' | 'material' | 'concrete';
+
+const INITIAL_SETTINGS: AppSettings = {
+  categories: CATEGORIES,
+  categoryColors: CATEGORY_COLORS,
+  categoryTextColors: CATEGORY_TEXT_COLORS,
+  taskMaster: TASK_MASTER,
+  dongBlocks: INITIAL_DONG_BLOCKS,
+  floors: INITIAL_FLOORS,
+  zones: INITIAL_ZONES,
+  contractors: INITIAL_CONTRACTORS
+};
 
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('auth');
@@ -88,17 +104,35 @@ export default function App() {
   const [baselineSchedules, setBaselineSchedules] = useState<ScheduleItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>({
-    categories: CATEGORIES,
-    categoryColors: CATEGORY_COLORS,
-    categoryTextColors: CATEGORY_TEXT_COLORS,
-    taskMaster: TASK_MASTER,
-    dongBlocks: INITIAL_DONG_BLOCKS,
-    floors: INITIAL_FLOORS,
-    zones: INITIAL_ZONES,
-    contractors: INITIAL_CONTRACTORS
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDailyReportDirty, setIsDailyReportDirty] = useState(false);
+  
+  useEffect(() => {
+    console.log('App: isDailyReportDirty changed to:', isDailyReportDirty);
+  }, [isDailyReportDirty]);
+
+  useEffect(() => {
+    const isDailyReport = mainMenu === 'documents' && documentTab === 'daily-report';
+    if (!isDailyReport) {
+      setIsDailyReportDirty(false);
+    }
+  }, [mainMenu, documentTab]);
+  const [unsavedChangesModal, setUnsavedChangesModal] = useState<{
+    isOpen: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    onConfirm: () => {}
   });
+  const [projectToDeleteId, setProjectToDeleteId] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(INITIAL_SETTINGS);
+
+  useEffect(() => {
+    console.log('App.tsx isDailyReportDirty changed:', isDailyReportDirty);
+  }, [isDailyReportDirty]);
 
   // Filters
   const [filterCategory, setFilterCategory] = useState<Category | '전체'>('전체');
@@ -109,10 +143,6 @@ export default function App() {
   // Load initial data
   useEffect(() => {
     const loadData = async () => {
-      // Check if Supabase is configured
-      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
-
       if (isSupabaseConfigured) {
         try {
           const projectsData = await supabaseService.getProjects();
@@ -139,13 +169,9 @@ export default function App() {
 
     const loadFromLocalStorage = () => {
       const savedProjects = localStorage.getItem('cp_projects');
-      const savedSchedules = localStorage.getItem('cp_schedules');
-      const savedBaseline = localStorage.getItem('cp_baseline');
       const savedSettings = localStorage.getItem('cp_settings');
 
       if (savedProjects) setProjects(JSON.parse(savedProjects));
-      if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
-      if (savedBaseline) setBaselineSchedules(JSON.parse(savedBaseline));
       if (savedSettings) {
         const parsedSettings = JSON.parse(savedSettings);
         
@@ -193,28 +219,38 @@ export default function App() {
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('cp_schedules', JSON.stringify(schedules));
-  }, [schedules]);
+    if (currentProjectId) {
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(schedules));
+    }
+  }, [schedules, currentProjectId]);
 
   useEffect(() => {
-    localStorage.setItem('cp_baseline', JSON.stringify(baselineSchedules));
-  }, [baselineSchedules]);
+    if (currentProjectId) {
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(baselineSchedules));
+    }
+  }, [baselineSchedules, currentProjectId]);
 
   useEffect(() => {
     localStorage.setItem('cp_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Load schedules when project changes
+  // Load schedules and settings when project changes
   useEffect(() => {
-    const loadSchedules = async () => {
+    const loadProjectData = async () => {
       if (!currentProjectId) {
         setSchedules([]);
         setBaselineSchedules([]);
+        setSettings(INITIAL_SETTINGS);
         return;
       }
 
-      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+      // Sync settings from project
+      const project = projects.find(p => p.id === currentProjectId);
+      if (project && project.settings) {
+        setSettings(project.settings);
+      } else {
+        setSettings(INITIAL_SETTINGS);
+      }
 
       if (isSupabaseConfigured) {
         try {
@@ -226,20 +262,56 @@ export default function App() {
         }
       } else {
         // Fallback to localStorage
-        const savedSchedules = localStorage.getItem('cp_schedules');
-        const savedBaseline = localStorage.getItem('cp_baseline');
-        if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
-        if (savedBaseline) setBaselineSchedules(JSON.parse(savedBaseline));
+        const savedSchedules = localStorage.getItem(`cp_schedules_${currentProjectId}`);
+        const savedBaseline = localStorage.getItem(`cp_baseline_${currentProjectId}`);
+        
+        // Migration from old global keys if project-specific keys don't exist
+        if (!savedSchedules && localStorage.getItem('cp_schedules')) {
+          const oldSchedules = localStorage.getItem('cp_schedules');
+          if (oldSchedules) setSchedules(JSON.parse(oldSchedules));
+        } else if (savedSchedules) {
+          setSchedules(JSON.parse(savedSchedules));
+        } else {
+          setSchedules([]);
+        }
+
+        if (!savedBaseline && localStorage.getItem('cp_baseline')) {
+          const oldBaseline = localStorage.getItem('cp_baseline');
+          if (oldBaseline) setBaselineSchedules(JSON.parse(oldBaseline));
+        } else if (savedBaseline) {
+          setBaselineSchedules(JSON.parse(savedBaseline));
+        } else {
+          setBaselineSchedules([]);
+        }
       }
     };
 
-    loadSchedules();
-  }, [currentProjectId]);
+    loadProjectData();
+  }, [currentProjectId, projects]);
 
   const currentProject = useMemo(() => 
     projects.find(p => p.id === currentProjectId), 
     [projects, currentProjectId]
   );
+
+  const computedSchedules = useMemo(() => {
+    return schedules.map(s => {
+      const baseline = baselineSchedules.find(b => b.id === s.id);
+      let status = s.status;
+      
+      if (s.progress === 100) {
+        status = '완료';
+      } else if (baseline) {
+        const currentEnd = new Date(s.endDate);
+        const baselineEnd = new Date(baseline.endDate);
+        status = currentEnd > baselineEnd ? '지연' : '진행';
+      } else if (status !== '완료') {
+        status = '진행'; // Default if no baseline and not 100%
+      }
+      
+      return { ...s, status };
+    });
+  }, [schedules, baselineSchedules]);
 
   const filterScheduleItem = (s: ScheduleItem) => {
     const matchCategory = filterCategory === '전체' || s.category === filterCategory;
@@ -257,8 +329,8 @@ export default function App() {
   };
 
   const filteredSchedules = useMemo(() => {
-    return schedules.filter(filterScheduleItem).sort(sortScheduleItem);
-  }, [schedules, filterCategory, filterStatus, searchTerm, settings.categories]);
+    return computedSchedules.filter(filterScheduleItem).sort(sortScheduleItem);
+  }, [computedSchedules, filterCategory, filterStatus, searchTerm, settings.categories]);
 
   const filteredBaselineSchedules = useMemo(() => {
     const filteredActualIds = new Set(filteredSchedules.map(s => s.id));
@@ -278,17 +350,20 @@ export default function App() {
     setViewMode('projects');
   };
   const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('cp_current_user');
-    setViewMode('auth');
-    setCurrentProjectId(null);
+    checkUnsavedChanges(() => {
+      setCurrentUser(null);
+      localStorage.removeItem('cp_current_user');
+      setViewMode('auth');
+      setCurrentProjectId(null);
+    });
   };
 
   const handleAddProject = async (projectData: Omit<Project, 'id' | 'createdAt'>) => {
     const newProject: Project = {
       ...projectData,
       id: Date.now().toString(),
-      createdAt: new Date().toLocaleDateString()
+      createdAt: new Date().toLocaleDateString(),
+      settings: INITIAL_SETTINGS
     };
     setProjects([...projects, newProject]);
 
@@ -333,6 +408,55 @@ export default function App() {
         console.error('Error saving project to Supabase:', error);
       }
     }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    setProjectToDeleteId(id);
+    setIsConfirmModalOpen(true);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!projectToDeleteId) return;
+    
+    setProjects(projects.filter(p => p.id !== projectToDeleteId));
+    
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.deleteProject(projectToDeleteId);
+      } catch (error) {
+        console.error('Error deleting project from Supabase:', error);
+        alert('프로젝트 삭제 중 오류가 발생했습니다.');
+      }
+    } else {
+      localStorage.setItem('cp_projects', JSON.stringify(projects.filter(p => p.id !== projectToDeleteId)));
+    }
+    
+    setProjectToDeleteId(null);
+    setIsConfirmModalOpen(false);
+    setViewMode('projects');
+  };
+
+  const handleDeleteProjects = async (ids: string[]) => {
+    setProjects(projects.filter(p => !ids.includes(p.id)));
+    
+    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+    if (isSupabaseConfigured) {
+      try {
+        for (const id of ids) {
+          await supabaseService.deleteProject(id);
+        }
+      } catch (error) {
+        console.error('Error deleting projects from Supabase:', error);
+        alert('프로젝트 삭제 중 오류가 발생했습니다.');
+      }
+    } else {
+      localStorage.setItem('cp_projects', JSON.stringify(projects.filter(p => !ids.includes(p.id))));
+    }
+    
+    setViewMode('projects');
   };
 
   const handleSelectProject = (id: string) => {
@@ -394,6 +518,21 @@ export default function App() {
     setIsFormOpen(true);
   };
 
+  const checkUnsavedChanges = (action: () => void) => {
+    console.log('Checking unsaved changes:', { mainMenu, documentTab, isDailyReportDirty });
+    if (mainMenu === 'documents' && documentTab === 'daily-report' && isDailyReportDirty) {
+      setUnsavedChangesModal({
+        isOpen: true,
+        onConfirm: () => {
+          setIsDailyReportDirty(false);
+          action();
+        }
+      });
+      return;
+    }
+    action();
+  };
+
   const handleOpenNewForm = () => {
     setSelectedItemId(null);
     setIsFormOpen(true);
@@ -452,13 +591,34 @@ export default function App() {
   const handleSaveSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
 
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
-    if (isSupabaseConfigured) {
-      try {
-        await supabaseService.saveSettings(newSettings);
-      } catch (error) {
-        console.error('Error saving settings to Supabase:', error);
+    if (currentProjectId) {
+      const updatedProjects = projects.map(p => 
+        p.id === currentProjectId ? { ...p, settings: newSettings } : p
+      );
+      setProjects(updatedProjects);
+
+      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+      if (isSupabaseConfigured) {
+        try {
+          const updatedProject = updatedProjects.find(p => p.id === currentProjectId);
+          if (updatedProject) {
+            await supabaseService.saveProject(updatedProject);
+          }
+        } catch (error) {
+          console.error('Error saving project settings to Supabase:', error);
+        }
+      }
+    } else {
+      // Global settings fallback
+      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+      if (isSupabaseConfigured) {
+        try {
+          await supabaseService.saveSettings(newSettings);
+        } catch (error) {
+          console.error('Error saving global settings to Supabase:', error);
+        }
       }
     }
   };
@@ -490,68 +650,82 @@ export default function App() {
     setBaselineSchedules(newItems);
   };
 
+  const projectToDelete = projects.find(p => p.id === projectToDeleteId);
+  const projectName = projectToDelete ? projectToDelete.name : '이 프로젝트';
+
   if (viewMode === 'auth') return <AuthView onLogin={handleLogin} />;
+
+  const SupabaseWarning = () => !isSupabaseConfigured ? (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-center gap-2 text-amber-800 text-xs font-bold">
+      <AlertTriangle size={14} />
+      <span>Supabase가 연결되지 않았습니다. 데이터가 브라우저에만 저장되며 다른 사용자와 공유되지 않습니다. [Settings] 메뉴에서 환경변수를 설정해주세요.</span>
+    </div>
+  ) : null;
 
   if (viewMode === 'user-management') return (
     <UserManagement onBack={() => setViewMode('projects')} />
   );
 
-  if (viewMode === 'projects') return (
-    <div className="h-screen flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div 
-            className="bg-blue-600 p-1.5 rounded-lg flex items-center justify-center text-white shadow-sm"
-            title="S-CON"
-          >
-            <LogoIcon size={20} />
-          </div>
-          <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
-        </div>
-        <div className="flex items-center gap-4">
-          {currentUser?.role === 'admin' && (
-            <button 
-              onClick={() => setViewMode('user-management')}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all text-sm font-bold"
-            >
-              <UserIcon size={16} />
-              <span>회원 관리</span>
-            </button>
-          )}
-          <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-100">
-            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
-              {currentUser?.name.charAt(0)}
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-bold text-gray-900">{currentUser?.name}</span>
-              <span className="text-[10px] text-gray-400 font-medium">{currentUser?.affiliation}</span>
-            </div>
-          </div>
-          <button 
-            onClick={handleLogout}
-            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-            title="로그아웃"
-          >
-            <LogOut size={20} />
-          </button>
-        </div>
-      </div>
-      <div className="flex-1 overflow-hidden">
-        <ProjectList 
-          projects={projects} 
-          onSelect={handleSelectProject} 
-          onAdd={handleAddProject} 
-          onEdit={handleEditProject}
-          currentUser={currentUser}
-        />
-      </div>
-    </div>
-  );
-
   return (
     <div className="flex h-screen bg-[#F9FAFB] overflow-hidden font-sans text-gray-900">
-      {/* Sidebar (Desktop only) */}
-      <aside className="hidden xl:flex w-64 bg-white border-r border-gray-200 flex-col flex-shrink-0 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
+      <SupabaseWarning />
+      
+      {viewMode === 'projects' ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Projects View Header */}
+          <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div 
+                className="bg-blue-600 p-1.5 rounded-lg flex items-center justify-center text-white shadow-sm"
+                title="S-CON"
+              >
+                <LogoIcon size={20} />
+              </div>
+              <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
+            </div>
+            <div className="flex items-center gap-4">
+              {currentUser?.role === 'admin' && (
+                <button 
+                  onClick={() => setViewMode('user-management')}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all text-sm font-bold"
+                >
+                  <UserIcon size={16} />
+                  <span>회원 관리</span>
+                </button>
+              )}
+              <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                  {currentUser?.name.charAt(0)}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-gray-900">{currentUser?.name}</span>
+                  <span className="text-[10px] text-gray-400 font-medium">{currentUser?.affiliation}</span>
+                </div>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                title="로그아웃"
+              >
+                <LogOut size={20} />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ProjectList 
+              projects={projects} 
+              onSelect={handleSelectProject} 
+              onAdd={handleAddProject} 
+              onEdit={handleEditProject}
+              onOpenDeleteModal={() => setIsDeleteModalOpen(true)}
+              currentUser={currentUser}
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Sidebar (Desktop only) */}
+          <aside className="hidden xl:flex w-64 bg-white border-r border-gray-200 flex-col flex-shrink-0 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
         <div className="p-6 flex items-center gap-3">
           <div 
             className="bg-blue-600 p-2 rounded-xl flex items-center justify-center text-white shadow-md"
@@ -567,28 +741,28 @@ export default function App() {
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Main Menu</span>
           </div>
           <button 
-            onClick={() => setMainMenu('dashboard')}
+            onClick={() => checkUnsavedChanges(() => setMainMenu('dashboard'))}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'dashboard' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             <LayoutDashboard size={18} className={mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} />
             <span>대쉬 보드</span>
           </button>
           <button 
-            onClick={() => setMainMenu('schedule')}
+            onClick={() => checkUnsavedChanges(() => setMainMenu('schedule'))}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'schedule' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             <BarChart3 size={18} className={mainMenu === 'schedule' ? 'text-blue-600' : 'text-gray-400'} />
             <span>공정 관리</span>
           </button>
           <button 
-            onClick={() => setMainMenu('documents')}
+            onClick={() => checkUnsavedChanges(() => setMainMenu('documents'))}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'documents' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             <FileText size={18} className={mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} />
             <span>문서 관리</span>
           </button>
           <button 
-            onClick={() => setMainMenu('drawings')}
+            onClick={() => checkUnsavedChanges(() => setMainMenu('drawings'))}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'drawings' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             <Building size={18} className={mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} />
@@ -602,32 +776,32 @@ export default function App() {
               </div>
               <div className="space-y-1 px-1">
                 <button 
-                  onClick={() => setTabMode('gantt')}
+                  onClick={() => checkUnsavedChanges(() => setTabMode('comparison'))}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'comparison' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                  <ArrowLeftRight size={18} className={tabMode === 'comparison' ? 'text-blue-600' : 'text-gray-400'} />
+                  <span>계획vs실행</span>
+                </button>
+                <button 
+                  onClick={() => checkUnsavedChanges(() => setTabMode('baseline'))}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'baseline' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                  <Save size={18} className={tabMode === 'baseline' ? 'text-blue-600' : 'text-gray-400'} />
+                  <span>Baseline 계획</span>
+                </button>
+                <button 
+                  onClick={() => checkUnsavedChanges(() => setTabMode('gantt'))}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'gantt' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <BarChart3 size={18} className={tabMode === 'gantt' ? 'text-blue-600' : 'text-gray-400'} />
                   <span>간트차트</span>
                 </button>
                 <button 
-                  onClick={() => setTabMode('table')}
+                  onClick={() => checkUnsavedChanges(() => setTabMode('table'))}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'table' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <TableIcon size={18} className={tabMode === 'table' ? 'text-blue-600' : 'text-gray-400'} />
                   <span>공정 목록</span>
-                </button>
-                <button 
-                  onClick={() => setTabMode('comparison')}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'comparison' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <ArrowLeftRight size={18} className={tabMode === 'comparison' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>계획 vs 실행 비교</span>
-                </button>
-                <button 
-                  onClick={() => setTabMode('baseline')}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'baseline' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <Save size={18} className={tabMode === 'baseline' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>Baseline 계획</span>
                 </button>
               </div>
             </>
@@ -640,28 +814,28 @@ export default function App() {
               </div>
               <div className="space-y-1 px-1">
                 <button 
-                  onClick={() => setDocumentTab('daily-report')}
+                  onClick={() => checkUnsavedChanges(() => setDocumentTab('daily-report'))}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'daily-report' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <FileText size={18} className={documentTab === 'daily-report' ? 'text-blue-600' : 'text-gray-400'} />
                   <span>공사 일보</span>
                 </button>
                 <button 
-                  onClick={() => setDocumentTab('inspection')}
+                  onClick={() => checkUnsavedChanges(() => setDocumentTab('inspection'))}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'inspection' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <FileText size={18} className={documentTab === 'inspection' ? 'text-blue-600' : 'text-gray-400'} />
                   <span>검측요청서</span>
                 </button>
                 <button 
-                  onClick={() => setDocumentTab('material')}
+                  onClick={() => checkUnsavedChanges(() => setDocumentTab('material'))}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'material' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <FileText size={18} className={documentTab === 'material' ? 'text-blue-600' : 'text-gray-400'} />
                   <span>자재승인서</span>
                 </button>
                 <button 
-                  onClick={() => setDocumentTab('concrete')}
+                  onClick={() => checkUnsavedChanges(() => setDocumentTab('concrete'))}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'concrete' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <FileText size={18} className={documentTab === 'concrete' ? 'text-blue-600' : 'text-gray-400'} />
@@ -676,14 +850,14 @@ export default function App() {
           {currentUser?.userRole !== '브론즈' && (
             <>
               <button 
-                onClick={() => setIsSettingsOpen(true)}
+                onClick={() => checkUnsavedChanges(() => setIsSettingsOpen(true))}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
               >
                 <Settings size={18} className="text-gray-400" />
-                <span>관리자 모드</span>
+                <span>설정 모드</span>
               </button>
               <button 
-                onClick={handleLoadSamples}
+                onClick={() => checkUnsavedChanges(handleLoadSamples)}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
               >
                 <Database size={18} className="text-gray-400" />
@@ -692,7 +866,7 @@ export default function App() {
             </>
           )}
           <button 
-            onClick={() => setViewMode('projects')}
+            onClick={() => checkUnsavedChanges(() => setViewMode('projects'))}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
           >
             <ChevronLeft size={18} className="text-gray-400" />
@@ -700,13 +874,20 @@ export default function App() {
           </button>
           {currentUser?.role === 'admin' && (
             <button 
-              onClick={() => setViewMode('user-management')}
+              onClick={() => checkUnsavedChanges(() => setViewMode('user-management'))}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
             >
               <UserIcon size={18} className="text-gray-400" />
               <span>회원 관리</span>
             </button>
           )}
+          <button 
+            onClick={() => checkUnsavedChanges(() => setIsProfileModalOpen(true))}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
+          >
+            <UserIcon size={18} className="text-gray-400" />
+            <span>내 프로필</span>
+          </button>
           <button 
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all text-sm font-medium"
@@ -768,6 +949,18 @@ export default function App() {
           {mainMenu === 'schedule' && (
             <div className="flex overflow-x-auto no-scrollbar px-2 pb-2 gap-2 border-t border-gray-100 pt-2">
               <button 
+                onClick={() => setTabMode('comparison')}
+                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'comparison' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+              >
+                <span>계획vs실행</span>
+              </button>
+              <button 
+                onClick={() => setTabMode('baseline')}
+                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'baseline' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+              >
+                <span>Baseline 계획</span>
+              </button>
+              <button 
                 onClick={() => setTabMode('gantt')}
                 className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'gantt' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
               >
@@ -778,18 +971,6 @@ export default function App() {
                 className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'table' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
               >
                 <span>공정 목록</span>
-              </button>
-              <button 
-                onClick={() => setTabMode('comparison')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'comparison' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>계획 vs 실행 비교</span>
-              </button>
-              <button 
-                onClick={() => setTabMode('baseline')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'baseline' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>Baseline 계획</span>
               </button>
             </div>
           )}
@@ -846,7 +1027,7 @@ export default function App() {
               />
             </div>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-              <button onClick={() => setTabMode('baseline')} className={`p-2 bg-white hover:bg-gray-50 border-r border-gray-200 transition-colors ${tabMode === 'baseline' ? 'text-blue-600' : 'text-gray-600'}`} title="Baseline 계획">
+              <button onClick={handleSaveBaseline} className="p-2 bg-white hover:bg-gray-50 border-r border-gray-200 transition-colors text-gray-600" title="현재 공정을 Baseline으로 저장">
                 <Save size={16} />
               </button>
               <button onClick={handleExport} className="p-2 bg-white hover:bg-gray-50 text-gray-600 border-r border-gray-200 transition-colors" title="내보내기">
@@ -965,6 +1146,8 @@ export default function App() {
                   <DailyReportView 
                     project={currentProject || null}
                     settings={settings}
+                    currentUser={currentUser}
+                    onDirtyChange={setIsDailyReportDirty}
                   />
                 </motion.div>
               )}
@@ -1044,9 +1227,11 @@ export default function App() {
                   <BaselineGantt 
                     items={baselineSchedules} 
                     onAdd={handleAddBaselineSchedule}
+                    onUpdate={handleUpdateBaselineSchedule}
                     onDelete={handleDeleteBaselineSchedule}
                     onReorder={handleReorderBaselineSchedules}
                     settings={settings}
+                    zoom={zoom}
                   />
                 </motion.div>
               )}
@@ -1107,12 +1292,56 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+    </>
+  )}
 
       <SettingsModal 
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSave={handleSaveSettings}
+        projectName={currentProject?.name}
+      />
+
+      {currentUser && (
+        <ProfileModal 
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          user={currentUser}
+          onUpdateUser={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            localStorage.setItem('cp_current_user', JSON.stringify(updatedUser));
+          }}
+        />
+      )}
+
+      <DeleteProjectModal 
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        projects={projects}
+        onDelete={handleDeleteProjects}
+      />
+
+      <ConfirmModal 
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={confirmDeleteProject}
+        title="프로젝트 삭제"
+        message={`${projectName} 프로젝트를 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`}
+        confirmText="삭제"
+        cancelText="취소"
+        type="danger"
+      />
+
+      <ConfirmModal 
+        isOpen={unsavedChangesModal.isOpen}
+        onClose={() => setUnsavedChangesModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={unsavedChangesModal.onConfirm}
+        title="변경사항 확인"
+        message="저장되지 않은 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?"
+        confirmText="이동"
+        cancelText="머무르기"
+        type="warning"
       />
     </div>
   );

@@ -60,6 +60,11 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
     const { name, value } = e.target;
     let updatedData = { ...formData, [name]: value };
 
+    if (name === 'progress') {
+      const numValue = parseInt(value) || 0;
+      updatedData.progress = Math.min(100, Math.max(0, numValue));
+    }
+
     // Reset dependent fields when parent changes
     if (name === 'category') {
       updatedData.subCategory = '';
@@ -156,16 +161,19 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
 
       <div className="space-y-1.5">
         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">작업내용</label>
-        <select 
+        <input 
+          type="text"
           name="taskName" 
+          list="task-options"
           value={formData.taskName} 
           onChange={handleChange}
           required
+          placeholder="작업 내용을 입력하거나 선택하세요"
           className="w-full bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs font-medium text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-        >
-          <option value="">선택</option>
-          {taskNames.map(task => <option key={task} value={task}>{task}</option>)}
-        </select>
+        />
+        <datalist id="task-options">
+          {taskNames.map(task => <option key={task} value={task} />)}
+        </datalist>
       </div>
 
       {/* Schedule Info */}
@@ -196,8 +204,14 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">진행률</label>
-            <span className="text-[10px] font-bold text-blue-600">{formData.progress}%</span>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">진행률 (%)</label>
+            <div className="flex items-center gap-1">
+              <input 
+                type="number" name="progress" min="0" max="100" value={formData.progress} onChange={handleChange}
+                className="w-12 bg-gray-50 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-bold text-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-right"
+              />
+              <span className="text-[10px] font-bold text-gray-400">%</span>
+            </div>
           </div>
           <div className="h-[30px] flex items-center">
             <input 
@@ -205,15 +219,6 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
               className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600"
             />
           </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">상태</label>
-          <select 
-            name="status" value={formData.status} onChange={handleChange}
-            className="w-full bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs font-medium text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-          >
-            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
         </div>
         <div className="space-y-1.5">
           <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">담당업체</label>
