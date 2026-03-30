@@ -166,6 +166,7 @@ export const INITIAL_CONTRACTORS: Record<string, string[]> = {
 export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   {
     id: '1',
+    projectId: 'sample-project',
     category: '공통관리',
     subCategory: '착수·계획',
     taskName: '착수회의',
@@ -185,6 +186,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '2',
+    projectId: 'sample-project',
     category: '전기',
     subCategory: '전선관·박스',
     taskName: '벽체 매입 전선관 시공',
@@ -204,6 +206,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '3',
+    projectId: 'sample-project',
     category: '기계',
     subCategory: '냉온수배관',
     taskName: '주배관 먹매김',
@@ -223,6 +226,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '4',
+    projectId: 'sample-project',
     category: '소방',
     subCategory: '감지기·발신기',
     taskName: '연기감지기 설치',
@@ -242,6 +246,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '5',
+    projectId: 'sample-project',
     category: '인테리어',
     subCategory: '목공사',
     taskName: '가구 제작 설치',
@@ -261,6 +266,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '6',
+    projectId: 'sample-project',
     category: '건축',
     subCategory: '바닥마감',
     taskName: '데코타일 시공',
@@ -280,6 +286,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '7',
+    projectId: 'sample-project',
     category: '전기',
     subCategory: '조명',
     taskName: '매입등 설치',
@@ -299,6 +306,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '8',
+    projectId: 'sample-project',
     category: '기계',
     subCategory: '덕트',
     taskName: '주덕트 설치',
@@ -318,6 +326,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '9',
+    projectId: 'sample-project',
     category: '소방',
     subCategory: '소화배관',
     taskName: '소화주배관 설치',
@@ -337,6 +346,7 @@ export const SAMPLE_SCHEDULES: ScheduleItem[] = [
   },
   {
     id: '10',
+    projectId: 'sample-project',
     category: '인테리어',
     subCategory: '도장·필름',
     taskName: '수성/유성 도장',
