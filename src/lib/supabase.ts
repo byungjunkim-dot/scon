@@ -8,6 +8,31 @@ export const isSupabaseConfigured = Boolean(
   !import.meta.env.VITE_SUPABASE_URL.includes('placeholder')
 );
 
+// Helper to create an awaitable dummy result
+const createDummyResult = (data: any = []) => {
+  const result = { data, error: null };
+  const promise = Promise.resolve(result);
+  
+  // Make the result itself look like a chainable Supabase query
+  const chainable: any = {
+    ...result,
+    then: (onfulfilled?: any) => promise.then(onfulfilled),
+    catch: (onrejected?: any) => promise.catch(onrejected),
+    finally: (onfinally?: any) => promise.finally(onfinally),
+    eq: () => chainable,
+    select: () => chainable,
+    single: () => createDummyResult(Array.isArray(data) ? data[0] || null : data),
+    order: () => chainable,
+    limit: () => chainable,
+    upsert: () => chainable,
+    delete: () => chainable,
+    insert: () => chainable,
+    update: () => chainable,
+  };
+  
+  return chainable;
+};
+
 export function getSupabase() {
   if (supabaseClient) return supabaseClient;
   
@@ -15,29 +40,23 @@ export function getSupabase() {
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
   
   try {
-    // Only attempt to create if URL is actually a URL
     if (!supabaseUrl.startsWith('http')) {
-      throw new Error('Invalid Supabase URL: ' + supabaseUrl);
+      throw new Error('Invalid Supabase URL');
     }
     supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
     return supabaseClient;
   } catch (error) {
-    console.error('Failed to initialize Supabase:', error);
-    // Return a dummy object to prevent immediate crashes
+    console.warn('Using dummy Supabase client due to initialization error:', error);
+    
+    // Return a fully chainable and awaitable dummy object
     return {
-      from: () => ({
-        select: () => ({ 
-          eq: () => ({ 
-            single: () => Promise.resolve({ data: null, error: null }),
-            limit: () => Promise.resolve({ data: [], error: null })
-          }),
-          order: () => Promise.resolve({ data: [], error: null }),
-          limit: () => Promise.resolve({ data: [], error: null }),
-          then: (cb: any) => cb({ data: [], error: null })
-        }),
-        upsert: () => ({ select: () => Promise.resolve({ data: [], error: null }) }),
-        delete: () => ({ eq: () => Promise.resolve({ error: null }) })
-      })
+      from: () => createDummyResult([]),
+      auth: {
+        getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      }
     };
   }
 }
+
+export const supabase = getSupabase();

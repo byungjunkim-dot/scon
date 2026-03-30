@@ -6,13 +6,13 @@ export const supabaseService = {
   async getProjects() {
     const { data, error } = await getSupabase().from('projects').select('*');
     if (error) throw error;
-    return data as Project[];
+    return (data || []) as Project[];
   },
 
   async saveProject(project: Project) {
     const { data, error } = await getSupabase().from('projects').upsert(project).select();
     if (error) throw error;
-    return data[0] as Project;
+    return (data?.[0] || project) as Project;
   },
 
   async deleteProject(id: string) {
@@ -24,13 +24,13 @@ export const supabaseService = {
   async getSchedules(projectId: string) {
     const { data, error } = await getSupabase().from('schedules').select('*').eq('projectId', projectId);
     if (error) throw error;
-    return data as ScheduleItem[];
+    return (data || []) as ScheduleItem[];
   },
 
   async saveSchedule(item: ScheduleItem) {
     const { data, error } = await getSupabase().from('schedules').upsert(item).select();
     if (error) throw error;
-    return data[0] as ScheduleItem;
+    return (data?.[0] || item) as ScheduleItem;
   },
 
   async deleteSchedule(id: string) {
@@ -42,19 +42,19 @@ export const supabaseService = {
   async getUsers() {
     const { data, error } = await getSupabase().from('users').select('*');
     if (error) throw error;
-    return data as User[];
+    return (data || []) as User[];
   },
 
   async saveUser(user: User) {
     const { data, error } = await getSupabase().from('users').upsert(user).select();
     if (error) throw error;
-    return data[0] as User;
+    return (data?.[0] || user) as User;
   },
 
   async getUserByEmail(email: string) {
     const { data, error } = await getSupabase().from('users').select('*').eq('email', email).single();
     if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows returned"
-    return data as User | null;
+    return (data || null) as User | null;
   },
 
   async deleteUser(id: string) {
@@ -66,7 +66,7 @@ export const supabaseService = {
   async getSettings() {
     const { data, error } = await getSupabase().from('settings').select('*').single();
     if (error && error.code !== 'PGRST116') throw error;
-    return data?.settings as AppSettings | null;
+    return (data?.settings || null) as AppSettings | null;
   },
 
   async saveSettings(settings: AppSettings) {
@@ -78,13 +78,13 @@ export const supabaseService = {
   async getDailyReports(projectId: string) {
     const { data, error } = await getSupabase().from('daily_reports').select('*').eq('projectId', projectId);
     if (error) throw error;
-    return data as any[];
+    return (data || []) as any[];
   },
 
   async saveDailyReport(report: any) {
     const { data, error } = await getSupabase().from('daily_reports').upsert(report).select();
     if (error) throw error;
-    return data[0];
+    return data?.[0] || report;
   },
 
   // Connection Test
