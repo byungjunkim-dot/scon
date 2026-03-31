@@ -87,7 +87,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ project, sch
               <div>
                 <p className="text-sm text-gray-500 mb-1">총 예산</p>
                 <p className="font-semibold text-gray-900">
-                  {project.budget ? `₩${project.budget.toLocaleString()}` : '미지정'}
+                  {project.totalBudget ? `₩${project.totalBudget.toLocaleString()}` : '미지정'}
                 </p>
               </div>
               <div className="md:col-span-2">

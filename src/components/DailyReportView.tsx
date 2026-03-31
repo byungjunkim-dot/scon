@@ -227,24 +227,35 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
   }, [project?.id, report.date]);
 
   useEffect(() => {
-    if (project && !report.author) {
-      // Auto-fetch weather for new report if not already set
-      if (project.location) {
-        const autoFetchWeather = async () => {
-          const data = await fetchWeather(project.location!, report.date);
+  if (project && !report.author) {
+    if (project.latitude && project.longitude) {
+      const autoFetchWeather = async () => {
+        try {
+          const data = await fetchWeather(
+            project.latitude,
+            project.longitude,
+            report.date
+          );
+
           if (data) {
             setReport(prev => ({
               ...prev,
               weather: {
+                ...prev.weather,
                 ...data
               }
             }));
           }
-        };
-        autoFetchWeather();
-      }
+        } catch (error) {
+          console.error('날씨 자동 조회 실패:', error);
+        }
+      };
+
+      autoFetchWeather();
     }
-  }, [project, report.date]);
+  }
+}, [project, report.date]);
+
 
   useEffect(() => {
     const currentReportStr = JSON.stringify(report);
@@ -964,7 +975,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                   {isCompressing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} 
                   사진 추가
                 </button>
-                <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" multiple className="hidden" />
+                <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" className="hidden" />
               </div>
               <div className="border-2 border-gray-900 bg-white p-4 min-h-[200px]">
                 {report.photos.length > 0 ? (

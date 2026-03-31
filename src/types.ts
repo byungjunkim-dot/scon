@@ -33,6 +33,8 @@ export interface ScheduleItem {
   contractor: string;
   memo: string;
   isBaseline?: boolean; // For comparison
+  sortOrder?: number;
+  sourceScheduleId?: string | null;
 }
 
 export interface Drawing {
@@ -50,6 +52,9 @@ export interface Project {
   name: string;
   projectCode?: string;
   location?: string;
+  resolvedAddress?: string;
+  latitude?: number;
+  longitude?: number;
   description: string;
   imageUrl?: string;
   totalArea?: number;

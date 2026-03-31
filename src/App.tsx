@@ -3,21 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, Component, ReactNode, ErrorInfo } from 'react';
-import { 
-  Building2, 
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Building2,
   Building,
-  LayoutDashboard, 
-  Settings, 
-  LogOut, 
-  Search, 
-  Filter, 
-  Download, 
-  Upload, 
-  Save, 
-  ChevronLeft, 
-  BarChart3, 
-  CalendarDays, 
+  LayoutDashboard,
+  Settings,
+  LogOut,
+  Search,
+  Filter,
+  Download,
+  Upload,
+  Save,
+  ChevronLeft,
+  BarChart3,
+  CalendarDays,
   Table as TableIcon,
   Plus,
   ArrowLeftRight,
@@ -29,11 +29,11 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 const LogoIcon = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="currentColor" 
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
     className={className}
   >
     <path d="M6 2l5 9H1l5-9z" />
@@ -58,9 +58,9 @@ import { AuthView } from './components/AuthView';
 import { UserManagement } from './components/UserManagement';
 
 import { Project, ScheduleItem, Category, Status, AppSettings, User } from './types';
-import { 
-  SAMPLE_SCHEDULES, 
-  CATEGORIES, 
+import {
+  SAMPLE_SCHEDULES,
+  CATEGORIES,
   STATUSES,
   TASK_MASTER,
   INITIAL_DONG_BLOCKS,
@@ -72,7 +72,6 @@ import {
 } from './constants';
 import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
-import { supabase } from './lib/supabase';
 import { isSupabaseConfigured } from './lib/supabase';
 import { supabaseService } from './services/supabaseService';
 
@@ -93,14 +92,12 @@ const INITIAL_SETTINGS: AppSettings = {
 };
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const saved = localStorage.getItem('cp_current_user');
-    return saved ? 'projects' : 'auth';
-  });
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('cp_current_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+const [viewMode, setViewMode] = useState<ViewMode>('auth');
+
+const [currentUser, setCurrentUser] = useState<User | null>(() => {
+  const saved = localStorage.getItem('cp_current_user');
+  return saved ? JSON.parse(saved) : null;
+});
   const [mainMenu, setMainMenu] = useState<MainMenu>('dashboard');
   const [tabMode, setTabMode] = useState<TabMode>('gantt');
   const [documentTab, setDocumentTab] = useState<DocumentTab>('daily-report');
@@ -116,7 +113,7 @@ export default function App() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDailyReportDirty, setIsDailyReportDirty] = useState(false);
-  
+
   useEffect(() => {
     console.log('App: isDailyReportDirty changed to:', isDailyReportDirty);
   }, [isDailyReportDirty]);
@@ -127,6 +124,7 @@ export default function App() {
       setIsDailyReportDirty(false);
     }
   }, [mainMenu, documentTab]);
+
   const [unsavedChangesModal, setUnsavedChangesModal] = useState<{
     isOpen: boolean;
     onConfirm: () => void;
@@ -143,31 +141,28 @@ export default function App() {
     console.log('App.tsx isDailyReportDirty changed:', isDailyReportDirty);
   }, [isDailyReportDirty]);
 
-  // Filters
   const [filterCategory, setFilterCategory] = useState<Category | '전체'>('전체');
   const [filterStatus, setFilterStatus] = useState<Status | '전체'>('전체');
   const [searchTerm, setSearchTerm] = useState('');
   const [zoom, setZoom] = useState<'day' | 'week' | 'month'>('day');
 
-  // Load initial data
+  const createBaselineId = (sourceId: string) => `b-${sourceId}`;
+
   useEffect(() => {
     const loadData = async () => {
-      // 1. Always load from localStorage first as baseline
       loadFromLocalStorage();
 
-      // 2. Then try Supabase if configured
       if (isSupabaseConfigured) {
         try {
           console.log('Fetching projects from Supabase...');
           const projectsData = await supabaseService.getProjects();
           console.log('Supabase projects fetched:', projectsData?.length || 0);
-          
+
           if (projectsData) {
-            // If we have data in Supabase, it's our source of truth
             setProjects(projectsData);
             localStorage.setItem('cp_projects', JSON.stringify(projectsData));
           }
-          
+
           const settingsData = await supabaseService.getSettings();
           if (settingsData) {
             setSettings(settingsData);
@@ -183,8 +178,7 @@ export default function App() {
       const savedSettings = localStorage.getItem('cp_settings');
       if (savedSettings) {
         const parsedSettings = JSON.parse(savedSettings);
-        
-        // Migration: Ensure categoryColors and categoryTextColors exist
+
         if (!parsedSettings.categoryColors) {
           parsedSettings.categoryColors = CATEGORY_COLORS;
         }
@@ -192,7 +186,6 @@ export default function App() {
           parsedSettings.categoryTextColors = CATEGORY_TEXT_COLORS;
         }
 
-        // Migration: Convert contractors from array to object if necessary
         if (Array.isArray(parsedSettings.contractors)) {
           const newContractors: Record<string, string[]> = {};
           CATEGORIES.forEach(cat => {
@@ -202,18 +195,11 @@ export default function App() {
         }
         setSettings(parsedSettings);
       }
-
     };
 
     loadData();
   }, []);
 
-  // Save data on change
-  useEffect(() => {
-    // currentUser is handled in handleLogin/handleLogout
-  }, [currentUser]);
-
-  // Load schedules and settings when project changes
   useEffect(() => {
     const loadProjectData = async () => {
       if (!currentProjectId) {
@@ -223,7 +209,6 @@ export default function App() {
         return;
       }
 
-      // Sync settings from project
       const project = projects.find(p => p.id === currentProjectId);
       if (project && project.settings) {
         setSettings(project.settings);
@@ -238,7 +223,6 @@ export default function App() {
             setSchedules(data.filter(s => !s.isBaseline));
             setBaselineSchedules(data.filter(s => s.isBaseline));
           } else {
-            // If Supabase returns empty, try loading from localStorage
             loadSchedulesFromLocalStorage();
           }
         } catch (error) {
@@ -253,8 +237,7 @@ export default function App() {
     const loadSchedulesFromLocalStorage = () => {
       const savedSchedules = localStorage.getItem(`cp_schedules_${currentProjectId}`);
       const savedBaseline = localStorage.getItem(`cp_baseline_${currentProjectId}`);
-      
-      // Migration from old global keys if project-specific keys don't exist
+
       if (!savedSchedules && localStorage.getItem('cp_schedules')) {
         const oldSchedules = localStorage.getItem('cp_schedules');
         if (oldSchedules) setSchedules(JSON.parse(oldSchedules));
@@ -277,16 +260,19 @@ export default function App() {
     loadProjectData();
   }, [currentProjectId, projects]);
 
-  const currentProject = useMemo(() => 
-    projects.find(p => p.id === currentProjectId), 
+  const currentProject = useMemo(
+    () => projects.find(p => p.id === currentProjectId),
     [projects, currentProjectId]
   );
 
   const computedSchedules = useMemo(() => {
     return schedules.map(s => {
-      const baseline = baselineSchedules.find(b => b.id === s.id);
+      const baseline = baselineSchedules.find(
+        b => (b.sourceScheduleId ?? b.id) === s.id
+      );
+
       let status = s.status;
-      
+
       if (s.progress === 100) {
         status = '완료';
       } else if (baseline) {
@@ -294,9 +280,9 @@ export default function App() {
         const baselineEnd = new Date(baseline.endDate);
         status = currentEnd > baselineEnd ? '지연' : '진행';
       } else if (status !== '완료') {
-        status = '진행'; // Default if no baseline and not 100%
+        status = '진행';
       }
-      
+
       return { ...s, status };
     });
   }, [schedules, baselineSchedules]);
@@ -304,9 +290,11 @@ export default function App() {
   const filterScheduleItem = (s: ScheduleItem) => {
     const matchCategory = filterCategory === '전체' || s.category === filterCategory;
     const matchStatus = filterStatus === '전체' || s.status === filterStatus;
-    const matchSearch = s.taskName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        s.subCategory.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        s.contractor.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchSearch =
+      s.taskName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.subCategory.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.contractor.toLowerCase().includes(searchTerm.toLowerCase());
+
     return matchCategory && matchStatus && matchSearch;
   };
 
@@ -323,21 +311,21 @@ export default function App() {
   const filteredBaselineSchedules = useMemo(() => {
     const filteredActualIds = new Set(filteredSchedules.map(s => s.id));
     return baselineSchedules
-      .filter(s => filteredActualIds.has(s.id) || filterScheduleItem(s))
+      .filter(s => filteredActualIds.has(s.sourceScheduleId ?? s.id) || filterScheduleItem(s))
       .sort(sortScheduleItem);
   }, [baselineSchedules, filteredSchedules, filterCategory, filterStatus, searchTerm, settings.categories]);
 
-  const selectedItem = useMemo(() => 
-    schedules.find(s => s.id === selectedItemId) || null,
+  const selectedItem = useMemo(
+    () => schedules.find(s => s.id === selectedItemId) || null,
     [schedules, selectedItemId]
   );
 
-  // Handlers
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     localStorage.setItem('cp_current_user', JSON.stringify(user));
     setViewMode('projects');
   };
+
   const handleLogout = () => {
     checkUnsavedChanges(() => {
       setCurrentUser(null);
@@ -350,14 +338,13 @@ export default function App() {
   const handleAddProject = async (projectData: Omit<Project, 'id' | 'createdAt'>) => {
     const newProject: Project = {
       ...projectData,
-      id: `p-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       createdAt: new Date().toLocaleDateString(),
       settings: INITIAL_SETTINGS
     };
+
     const updatedProjects = [...projects, newProject];
     setProjects(updatedProjects);
-    
-    // Always save to localStorage as backup
     localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
     if (isSupabaseConfigured) {
@@ -378,8 +365,6 @@ export default function App() {
       const newProject = { ...updatedProject, ...projectData };
       const updatedProjects = projects.map(p => p.id === id ? newProject : p);
       setProjects(updatedProjects);
-      
-      // Always save to localStorage as backup
       localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
       if (isSupabaseConfigured) {
@@ -395,8 +380,6 @@ export default function App() {
   const handleUpdateProject = async (updatedProject: Project) => {
     const updatedProjects = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
     setProjects(updatedProjects);
-    
-    // Always save to localStorage as backup
     localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
     if (isSupabaseConfigured) {
@@ -415,13 +398,11 @@ export default function App() {
 
   const confirmDeleteProject = async () => {
     if (!projectToDeleteId) return;
-    
+
     const updatedProjects = projects.filter(p => p.id !== projectToDeleteId);
     setProjects(updatedProjects);
-    
-    // Always save to localStorage as backup
     localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
-    
+
     if (isSupabaseConfigured) {
       try {
         await supabaseService.deleteProject(projectToDeleteId);
@@ -430,7 +411,7 @@ export default function App() {
         alert('프로젝트 삭제 중 오류가 발생했습니다. (로컬에서는 삭제되었습니다)');
       }
     }
-    
+
     setProjectToDeleteId(null);
     setIsConfirmModalOpen(false);
     setViewMode('projects');
@@ -439,10 +420,8 @@ export default function App() {
   const handleDeleteProjects = async (ids: string[]) => {
     const updatedProjects = projects.filter(p => !ids.includes(p.id));
     setProjects(updatedProjects);
-    
-    // Always save to localStorage as backup
     localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
-    
+
     if (isSupabaseConfigured) {
       try {
         for (const id of ids) {
@@ -453,7 +432,7 @@ export default function App() {
         alert('프로젝트 삭제 중 오류가 발생했습니다.');
       }
     }
-    
+
     setViewMode('projects');
   };
 
@@ -464,69 +443,71 @@ export default function App() {
   };
 
   const handleAddSchedule = async (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
-    if (!currentProjectId) return;
-    const newItem: ScheduleItem = { 
-      ...item, 
-      id: `s-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      projectId: currentProjectId 
-    };
-    const updatedSchedules = [...schedules, newItem];
-    setSchedules(updatedSchedules);
-    setIsFormOpen(false);
+  if (!currentProjectId) return;
 
-    // Always save to localStorage as backup
-    if (currentProjectId) {
-      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
-    }
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabaseService.saveSchedule(newItem);
-      } catch (error) {
-        console.error('Error saving schedule to Supabase:', error);
-      }
-    }
+  const newItem: ScheduleItem = {
+    ...item,
+    id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    projectId: currentProjectId,
+    sortOrder: schedules.length
   };
 
-  const handleUpdateSchedule = async (item: ScheduleItem) => {
-    const updatedSchedules = schedules.map(s => s.id === item.id ? item : s);
-    setSchedules(updatedSchedules);
-    setSelectedItemId(null);
-    setIsFormOpen(false);
+  const updatedSchedules = [...schedules, newItem];
+  setSchedules(updatedSchedules);
+  localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
+  setIsFormOpen(false);
 
-    // Always save to localStorage as backup
-    if (currentProjectId) {
-      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
+  if (isSupabaseConfigured) {
+    try {
+      await supabaseService.saveSchedule(newItem);
+    } catch (error) {
+      console.error('Error saving schedule to Supabase:', error);
+      alert('공정은 화면에는 추가되었지만 Supabase 저장은 실패했습니다. 콘솔 에러를 확인해주세요.');
     }
+  }
+  };
 
-    if (isSupabaseConfigured) {
-      try {
-        await supabaseService.saveSchedule(item);
-      } catch (error) {
-        console.error('Error saving schedule to Supabase:', error);
-      }
+const handleUpdateSchedule = async (item: ScheduleItem) => {
+  const updatedSchedules = schedules.map(s => s.id === item.id ? item : s);
+  setSchedules(updatedSchedules);
+
+  if (currentProjectId) {
+    localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
+  }
+
+  setSelectedItemId(null);
+  setIsFormOpen(false);
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabaseService.saveSchedule(item);
+    } catch (error) {
+      console.error('Error saving schedule to Supabase:', error);
+      alert('공정 수정은 화면에 반영되었지만 Supabase 저장은 실패했습니다.');
     }
+  }
   };
 
   const handleDeleteSchedule = async (id: string) => {
-    const updatedSchedules = schedules.filter(s => s.id !== id);
-    setSchedules(updatedSchedules);
-    setSelectedItemId(null);
-    setIsFormOpen(false);
+  const updatedSchedules = schedules.filter(s => s.id !== id);
+  setSchedules(updatedSchedules);
 
-    // Always save to localStorage as backup
-    if (currentProjectId) {
-      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
-    }
+  if (currentProjectId) {
+    localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
+  }
 
-    if (isSupabaseConfigured) {
-      try {
-        await supabaseService.deleteSchedule(id);
-      } catch (error) {
-        console.error('Error deleting schedule from Supabase:', error);
-      }
+  setSelectedItemId(null);
+  setIsFormOpen(false);
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabaseService.deleteSchedule(id);
+    } catch (error) {
+      console.error('Error deleting schedule from Supabase:', error);
+      alert('공정 삭제는 화면에 반영되었지만 Supabase 삭제는 실패했습니다.');
     }
-  };
+  }
+};
 
   const handleSelectItem = (item: ScheduleItem) => {
     setSelectedItemId(item.id);
@@ -555,40 +536,60 @@ export default function App() {
 
   const handleLoadSamples = async () => {
     if (!currentProjectId) return;
-    const samples = SAMPLE_SCHEDULES.map(s => ({ ...s, projectId: currentProjectId }));
-    setSchedules(samples);
 
-    if (isSupabaseConfigured) {
-      try {
+    const samples = SAMPLE_SCHEDULES.map((s, index) => ({
+      ...s,
+      projectId: currentProjectId,
+      sortOrder: index
+    }));
+
+    try {
+      if (isSupabaseConfigured) {
         for (const sample of samples) {
           await supabaseService.saveSchedule(sample);
         }
-      } catch (error) {
-        console.error('Error saving samples to Supabase:', error);
       }
+
+      setSchedules(samples);
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(samples));
+    } catch (error) {
+      console.error('Error saving samples to Supabase:', error);
+      alert('샘플 데이터 저장에 실패했습니다.');
     }
   };
 
   const handleSaveBaseline = async () => {
     if (!currentProjectId) return;
-    const baselineItems = schedules.map(s => ({ ...s, isBaseline: true }));
-    setBaselineSchedules(baselineItems);
 
-    // Always save to localStorage as backup
-    localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(baselineItems));
+    try {
+      const baselineItems: ScheduleItem[] = schedules.map((item, index) => ({
+        ...item,
+        id: createBaselineId(item.id),
+        isBaseline: true,
+        sourceScheduleId: item.id,
+        sortOrder: index
+      }));
 
-    if (isSupabaseConfigured) {
-      try {
+      setBaselineSchedules(baselineItems);
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(baselineItems));
+
+      if (isSupabaseConfigured) {
+        const allSchedules = await supabaseService.getSchedules(currentProjectId);
+        const existingBaselineItems = allSchedules.filter(item => item.isBaseline);
+
+        for (const item of existingBaselineItems) {
+          await supabaseService.deleteSchedule(item.id);
+        }
+
         for (const item of baselineItems) {
           await supabaseService.saveSchedule(item);
         }
-        alert('현재 공정표가 Supabase Baseline으로 저장되었습니다.');
-      } catch (error) {
-        console.error('Error saving baseline to Supabase:', error);
-        alert('Baseline 저장 중 오류가 발생했습니다. (로컬에는 저장되었습니다)');
       }
-    } else {
-      alert('현재 공정표가 로컬 저장소에 Baseline으로 저장되었습니다.');
+
+      alert('Baseline 계획이 저장되었습니다.');
+    } catch (error) {
+      console.error('Error saving baseline:', error);
+      alert('Baseline 계획 저장에 실패했습니다.');
     }
   };
 
@@ -604,17 +605,13 @@ export default function App() {
 
   const handleSaveSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
-    
-    // Always save to localStorage as backup
     localStorage.setItem('cp_settings', JSON.stringify(newSettings));
 
     if (currentProjectId) {
-      const updatedProjects = projects.map(p => 
+      const updatedProjects = projects.map(p =>
         p.id === currentProjectId ? { ...p, settings: newSettings } : p
       );
       setProjects(updatedProjects);
-      
-      // Always save to localStorage as backup
       localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
       if (isSupabaseConfigured) {
@@ -628,7 +625,6 @@ export default function App() {
         }
       }
     } else {
-      // Global settings fallback
       if (isSupabaseConfigured) {
         try {
           await supabaseService.saveSettings(newSettings);
@@ -639,53 +635,94 @@ export default function App() {
     }
   };
 
-  const handleAddBaselineSchedule = (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
+const handleAddBaselineSchedule = async (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
+  if (!currentProjectId) return;
+
+  const newItem: ScheduleItem = {
+    ...item,
+    id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    projectId: currentProjectId,
+    isBaseline: true,
+    sourceScheduleId: null,
+    sortOrder: baselineSchedules.length
+  };
+
+  // 1) 먼저 화면에 바로 반영
+  const updatedBaseline = [...baselineSchedules, newItem];
+  setBaselineSchedules(updatedBaseline);
+  localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+
+  // 2) 그 다음 Supabase 저장
+  if (isSupabaseConfigured) {
+    try {
+      await supabaseService.saveSchedule(newItem);
+    } catch (error) {
+      console.error('Error adding baseline schedule:', error);
+      alert('Baseline 공정은 화면에는 추가되었지만 Supabase 저장은 실패했습니다.');
+    }
+  }
+};
+
+const handleDeleteBaselineSchedule = async (id: string) => {
+  if (!currentProjectId) return;
+
+  const updatedBaseline = baselineSchedules.filter(s => s.id !== id);
+  setBaselineSchedules(updatedBaseline);
+  localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabaseService.deleteSchedule(id);
+    } catch (error) {
+      console.error('Error deleting baseline schedule:', error);
+      alert('Baseline 공정 삭제는 화면에 반영되었지만 Supabase 삭제는 실패했습니다.');
+    }
+  }
+};
+
+const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
+  if (!currentProjectId) return;
+
+  const updatedItem: ScheduleItem = {
+    ...item,
+    isBaseline: true
+  };
+
+  const updatedBaseline = baselineSchedules.map(s => s.id === updatedItem.id ? updatedItem : s);
+  setBaselineSchedules(updatedBaseline);
+  localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabaseService.saveSchedule(updatedItem);
+    } catch (error) {
+      console.error('Error updating baseline schedule in Supabase:', error);
+      alert('Baseline 공정 수정은 화면에 반영되었지만 Supabase 저장은 실패했습니다.');
+    }
+  }
+};
+
+  const handleReorderBaselineSchedules = async (newItems: ScheduleItem[]) => {
     if (!currentProjectId) return;
-    const newItem: ScheduleItem = { 
-      ...item, 
-      id: `b-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      projectId: currentProjectId,
-      isBaseline: true 
-    };
-    const updatedBaseline = [...baselineSchedules, newItem];
-    setBaselineSchedules(updatedBaseline);
-    
-    // Always save to localStorage as backup
-    if (currentProjectId) {
-      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
-    }
-  };
 
-  const handleDeleteBaselineSchedule = (id: string) => {
-    const updatedBaseline = baselineSchedules.filter(s => s.id !== id);
-    setBaselineSchedules(updatedBaseline);
-    
-    // Always save to localStorage as backup
-    if (currentProjectId) {
-      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
-    }
-  };
+    const reorderedItems = newItems.map((item, index) => ({
+      ...item,
+      sortOrder: index
+    }));
 
-  const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
-    const updatedBaseline = baselineSchedules.map(s => s.id === item.id ? item : s);
-    setBaselineSchedules(updatedBaseline);
-    
-    // Always save to localStorage as backup
-    if (currentProjectId) {
-      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
-    }
-    
-    if (isSupabaseConfigured) {
-      try {
-        await supabaseService.saveSchedule(item);
-      } catch (error) {
-        console.error('Error updating baseline schedule in Supabase:', error);
+    try {
+      if (isSupabaseConfigured) {
+        for (const item of reorderedItems) {
+          await supabaseService.saveSchedule(item);
+        }
       }
-    }
-  };
 
-  const handleReorderBaselineSchedules = (newItems: ScheduleItem[]) => {
-    setBaselineSchedules(newItems);
+      setBaselineSchedules(reorderedItems);
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(reorderedItems));
+    } catch (error) {
+      console.error('Error reordering baseline schedules:', error);
+      alert('Baseline 순서 저장에 실패했습니다.');
+    }
   };
 
   const projectToDelete = projects.find(p => p.id === projectToDeleteId);
@@ -707,13 +744,12 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#F9FAFB] overflow-hidden font-sans text-gray-900">
       <SupabaseWarning />
-      
+
       {viewMode === 'projects' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Projects View Header */}
           <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div 
+              <div
                 className="bg-blue-600 p-1.5 rounded-lg flex items-center justify-center text-white shadow-sm"
                 title="S-CON"
               >
@@ -729,7 +765,7 @@ export default function App() {
                 </div>
               )}
               {currentUser?.role === 'admin' && (
-                <button 
+                <button
                   onClick={() => setViewMode('user-management')}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all text-sm font-bold"
                 >
@@ -746,7 +782,7 @@ export default function App() {
                   <span className="text-[10px] text-gray-400 font-medium">{currentUser?.affiliation}</span>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={handleLogout}
                 className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                 title="로그아웃"
@@ -756,10 +792,10 @@ export default function App() {
             </div>
           </div>
           <div className="flex-1 overflow-hidden">
-            <ProjectList 
-              projects={projects} 
-              onSelect={handleSelectProject} 
-              onAdd={handleAddProject} 
+            <ProjectList
+              projects={projects}
+              onSelect={handleSelectProject}
+              onAdd={handleAddProject}
               onEdit={handleEditProject}
               onOpenDeleteModal={() => setIsDeleteModalOpen(true)}
               currentUser={currentUser}
@@ -768,578 +804,576 @@ export default function App() {
         </div>
       ) : (
         <>
-          {/* Sidebar (Desktop only) */}
           <aside className="hidden xl:flex w-64 bg-white border-r border-gray-200 flex-col flex-shrink-0 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
-        <div className="p-6 flex items-center gap-3">
-          <div 
-            className="bg-blue-600 p-2 rounded-xl flex items-center justify-center text-white shadow-md"
-            title="S-CON"
-          >
-            <LogoIcon size={22} />
-          </div>
-          <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
-        </div>
-
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          <div className="px-3 mb-2">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Main Menu</span>
-          </div>
-          <button 
-            onClick={() => checkUnsavedChanges(() => setMainMenu('dashboard'))}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'dashboard' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <LayoutDashboard size={18} className={mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} />
-            <span>대쉬 보드</span>
-          </button>
-          <button 
-            onClick={() => checkUnsavedChanges(() => setMainMenu('schedule'))}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'schedule' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <BarChart3 size={18} className={mainMenu === 'schedule' ? 'text-blue-600' : 'text-gray-400'} />
-            <span>공정 관리</span>
-          </button>
-          <button 
-            onClick={() => checkUnsavedChanges(() => setMainMenu('documents'))}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'documents' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <FileText size={18} className={mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} />
-            <span>문서 관리</span>
-          </button>
-          <button 
-            onClick={() => checkUnsavedChanges(() => setMainMenu('drawings'))}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'drawings' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            <Building size={18} className={mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} />
-            <span>도면 보기</span>
-          </button>
-
-          {mainMenu === 'schedule' && (
-            <>
-              <div className="pt-6 px-3 mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Action Menu</span>
+            <div className="p-6 flex items-center gap-3">
+              <div
+                className="bg-blue-600 p-2 rounded-xl flex items-center justify-center text-white shadow-md"
+                title="S-CON"
+              >
+                <LogoIcon size={22} />
               </div>
-              <div className="space-y-1 px-1">
-                <button 
-                  onClick={() => checkUnsavedChanges(() => setTabMode('comparison'))}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'comparison' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <ArrowLeftRight size={18} className={tabMode === 'comparison' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>계획vs실행</span>
-                </button>
-                <button 
-                  onClick={() => checkUnsavedChanges(() => setTabMode('baseline'))}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'baseline' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <Save size={18} className={tabMode === 'baseline' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>Baseline 계획</span>
-                </button>
-                <button 
-                  onClick={() => checkUnsavedChanges(() => setTabMode('gantt'))}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'gantt' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <BarChart3 size={18} className={tabMode === 'gantt' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>간트차트</span>
-                </button>
-                <button 
-                  onClick={() => checkUnsavedChanges(() => setTabMode('table'))}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'table' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <TableIcon size={18} className={tabMode === 'table' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>공정 목록</span>
-                </button>
-              </div>
-            </>
-          )}
+              <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
+            </div>
 
-          {mainMenu === 'documents' && (
-            <>
-              <div className="pt-6 px-3 mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Action Menu</span>
+            <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+              <div className="px-3 mb-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Main Menu</span>
               </div>
-              <div className="space-y-1 px-1">
-                <button 
-                  onClick={() => checkUnsavedChanges(() => setDocumentTab('daily-report'))}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'daily-report' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <FileText size={18} className={documentTab === 'daily-report' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>공사 일보</span>
-                </button>
-                <button 
-                  onClick={() => checkUnsavedChanges(() => setDocumentTab('inspection'))}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'inspection' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <FileText size={18} className={documentTab === 'inspection' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>검측요청서</span>
-                </button>
-                <button 
-                  onClick={() => checkUnsavedChanges(() => setDocumentTab('material'))}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'material' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <FileText size={18} className={documentTab === 'material' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>자재승인서</span>
-                </button>
-                <button 
-                  onClick={() => checkUnsavedChanges(() => setDocumentTab('concrete'))}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'concrete' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <FileText size={18} className={documentTab === 'concrete' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>타설계획서</span>
-                </button>
-              </div>
-            </>
-          )}
-        </nav>
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('dashboard'))}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'dashboard' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <LayoutDashboard size={18} className={mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>대쉬 보드</span>
+              </button>
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('schedule'))}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'schedule' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <BarChart3 size={18} className={mainMenu === 'schedule' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>공정 관리</span>
+              </button>
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('documents'))}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'documents' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <FileText size={18} className={mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>문서 관리</span>
+              </button>
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('drawings'))}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'drawings' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <Building size={18} className={mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>도면 보기</span>
+              </button>
 
-        <div className="p-4 border-t border-gray-100 space-y-1">
-          {currentUser?.userRole !== '브론즈' && (
-            <>
-              <button 
-                onClick={() => checkUnsavedChanges(() => setIsSettingsOpen(true))}
+              {mainMenu === 'schedule' && (
+                <>
+                  <div className="pt-6 px-3 mb-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Action Menu</span>
+                  </div>
+                  <div className="space-y-1 px-1">
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setTabMode('comparison'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'comparison' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <ArrowLeftRight size={18} className={tabMode === 'comparison' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>계획vs실행</span>
+                    </button>
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setTabMode('baseline'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'baseline' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <Save size={18} className={tabMode === 'baseline' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>Baseline 계획</span>
+                    </button>
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setTabMode('gantt'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'gantt' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <BarChart3 size={18} className={tabMode === 'gantt' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>간트차트</span>
+                    </button>
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setTabMode('table'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${tabMode === 'table' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <TableIcon size={18} className={tabMode === 'table' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>공정 목록</span>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {mainMenu === 'documents' && (
+                <>
+                  <div className="pt-6 px-3 mb-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Action Menu</span>
+                  </div>
+                  <div className="space-y-1 px-1">
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setDocumentTab('daily-report'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'daily-report' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <FileText size={18} className={documentTab === 'daily-report' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>공사 일보</span>
+                    </button>
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setDocumentTab('inspection'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'inspection' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <FileText size={18} className={documentTab === 'inspection' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>검측요청서</span>
+                    </button>
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setDocumentTab('material'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'material' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <FileText size={18} className={documentTab === 'material' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>자재승인서</span>
+                    </button>
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setDocumentTab('concrete'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'concrete' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <FileText size={18} className={documentTab === 'concrete' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>타설계획서</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </nav>
+
+            <div className="p-4 border-t border-gray-100 space-y-1">
+              {currentUser?.userRole !== '브론즈' && (
+                <>
+                  <button
+                    onClick={() => checkUnsavedChanges(() => setIsSettingsOpen(true))}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
+                  >
+                    <Settings size={18} className="text-gray-400" />
+                    <span>설정 모드</span>
+                  </button>
+                  <button
+                    onClick={() => checkUnsavedChanges(handleLoadSamples)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
+                  >
+                    <Database size={18} className="text-gray-400" />
+                    <span>샘플 데이터 로드</span>
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => checkUnsavedChanges(() => setViewMode('projects'))}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
               >
-                <Settings size={18} className="text-gray-400" />
-                <span>설정 모드</span>
+                <ChevronLeft size={18} className="text-gray-400" />
+                <span>프로젝트 목록</span>
               </button>
-              <button 
-                onClick={() => checkUnsavedChanges(handleLoadSamples)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
-              >
-                <Database size={18} className="text-gray-400" />
-                <span>샘플 데이터 로드</span>
-              </button>
-            </>
-          )}
-          <button 
-            onClick={() => checkUnsavedChanges(() => setViewMode('projects'))}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
-          >
-            <ChevronLeft size={18} className="text-gray-400" />
-            <span>프로젝트 목록</span>
-          </button>
-          {currentUser?.role === 'admin' && (
-            <button 
-              onClick={() => checkUnsavedChanges(() => setViewMode('user-management'))}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
-            >
-              <UserIcon size={18} className="text-gray-400" />
-              <span>회원 관리</span>
-            </button>
-          )}
-          <button 
-            onClick={() => checkUnsavedChanges(() => setIsProfileModalOpen(true))}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
-          >
-            <UserIcon size={18} className="text-gray-400" />
-            <span>내 프로필</span>
-          </button>
-          <button 
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all text-sm font-medium"
-          >
-            <LogOut size={18} />
-            <span>로그 아웃</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Mobile Top Navigation */}
-        <div className="xl:hidden bg-white border-b border-gray-200 flex flex-col z-30">
-          <div className="p-4 flex items-center justify-between border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <div className="bg-blue-600 p-1 rounded-md shadow-sm">
-                <Building2 size={16} className="text-white" />
-              </div>
-              <h1 className="text-base font-bold tracking-tight text-gray-900 truncate max-w-[150px]">{currentProject?.name}</h1>
-            </div>
-            <button 
-              onClick={() => setViewMode('projects')}
-              className="text-gray-500 p-2 rounded-lg hover:bg-gray-50"
-            >
-              <ChevronLeft size={20} />
-            </button>
-          </div>
-          <div className="flex overflow-x-auto no-scrollbar px-2 py-2 gap-2">
-            <button 
-              onClick={() => setMainMenu('dashboard')}
-              className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'dashboard' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
-            >
-              <LayoutDashboard size={16} className={mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} />
-              <span>대쉬 보드</span>
-            </button>
-            <button 
-              onClick={() => setMainMenu('schedule')}
-              className={`hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'schedule' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
-            >
-              <BarChart3 size={16} className={mainMenu === 'schedule' ? 'text-blue-600' : 'text-gray-400'} />
-              <span>공정 관리</span>
-            </button>
-            <button 
-              onClick={() => setMainMenu('documents')}
-              className={`hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'documents' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
-            >
-              <FileText size={16} className={mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} />
-              <span>문서 관리</span>
-            </button>
-            <button 
-              onClick={() => setMainMenu('drawings')}
-              className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'drawings' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
-            >
-              <Building size={16} className={mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} />
-              <span>도면 보기</span>
-            </button>
-          </div>
-          {mainMenu === 'schedule' && (
-            <div className="flex overflow-x-auto no-scrollbar px-2 pb-2 gap-2 border-t border-gray-100 pt-2">
-              <button 
-                onClick={() => setTabMode('comparison')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'comparison' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>계획vs실행</span>
-              </button>
-              <button 
-                onClick={() => setTabMode('baseline')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'baseline' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>Baseline 계획</span>
-              </button>
-              <button 
-                onClick={() => setTabMode('gantt')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'gantt' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>간트차트</span>
-              </button>
-              <button 
-                onClick={() => setTabMode('table')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'table' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>공정 목록</span>
-              </button>
-            </div>
-          )}
-          {mainMenu === 'documents' && (
-            <div className="flex overflow-x-auto no-scrollbar px-2 pb-2 gap-2 border-t border-gray-100 pt-2">
-              <button 
-                onClick={() => setDocumentTab('daily-report')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'daily-report' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>공사 일보</span>
-              </button>
-              <button 
-                onClick={() => setDocumentTab('inspection')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'inspection' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>검측요청서</span>
-              </button>
-              <button 
-                onClick={() => setDocumentTab('material')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'material' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>자재승인서</span>
-              </button>
-              <button 
-                onClick={() => setDocumentTab('concrete')}
-                className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'concrete' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-              >
-                <span>타설계획서</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Header (Desktop only) */}
-        <header className="hidden xl:flex bg-white border-b border-gray-200 px-8 py-4 items-center justify-between z-30">
-          <div className="flex items-center gap-4">
-            <h2 className="text-xl font-bold text-gray-900 tracking-tight">{currentProject?.name}</h2>
-            <div className="h-4 w-px bg-gray-200" />
-            <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
-              <CalendarDays size={14} />
-              <span>{new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-              <input 
-                type="text" 
-                placeholder="Search..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-4 py-1.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm w-56"
-              />
-            </div>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-              <button onClick={handleSaveBaseline} className="p-2 bg-white hover:bg-gray-50 border-r border-gray-200 transition-colors text-gray-600" title="현재 공정을 Baseline으로 저장">
-                <Save size={16} />
-              </button>
-              <button onClick={handleExport} className="p-2 bg-white hover:bg-gray-50 text-gray-600 border-r border-gray-200 transition-colors" title="내보내기">
-                <Download size={16} />
-              </button>
-              <button className="p-2 bg-white hover:bg-gray-50 text-gray-600 transition-colors" title="불러오기">
-                <Upload size={16} />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* Filter Bar */}
-        {mainMenu === 'schedule' && (
-          <div className="bg-white border-b border-gray-200 px-4 xl:px-8 py-2.5 flex items-center gap-2 xl:gap-4 overflow-x-auto no-scrollbar z-20">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              <Filter size={12} />
-              <span className="hidden xl:inline">Filters</span>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <select 
-                value={filterCategory} 
-                onChange={(e) => setFilterCategory(e.target.value as any)}
-                className="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-              >
-                <option value="전체">모든 공종</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-
-              <select 
-                value={filterStatus} 
-                onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-              >
-                <option value="전체">모든 상태</option>
-                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            <div className="ml-auto flex items-center gap-3">
-              {(tabMode === 'gantt' || tabMode === 'table') && (
+              {currentUser?.role === 'admin' && (
                 <button
-                  onClick={handleOpenNewForm}
-                  className="hidden lg:flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 active:scale-95 transition-all shadow-sm"
+                  onClick={() => checkUnsavedChanges(() => setViewMode('user-management'))}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
                 >
-                  <Plus size={16} />
-                  <span>신규 공정 등록</span>
+                  <UserIcon size={18} className="text-gray-400" />
+                  <span>회원 관리</span>
                 </button>
               )}
-              {(tabMode === 'gantt' || tabMode === 'comparison' || tabMode === 'baseline') && (
-                <div className="flex items-center border border-gray-200 p-0.5 rounded-lg bg-gray-50 shadow-sm">
-                  <button 
-                    onClick={() => setZoom('day')}
-                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'day' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              <button
+                onClick={() => checkUnsavedChanges(() => setIsProfileModalOpen(true))}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
+              >
+                <UserIcon size={18} className="text-gray-400" />
+                <span>내 프로필</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all text-sm font-medium"
+              >
+                <LogOut size={18} />
+                <span>로그 아웃</span>
+              </button>
+            </div>
+          </aside>
+
+          <main className="flex-1 flex flex-col overflow-hidden relative">
+            <div className="xl:hidden bg-white border-b border-gray-200 flex flex-col z-30">
+              <div className="p-4 flex items-center justify-between border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <div className="bg-blue-600 p-1 rounded-md shadow-sm">
+                    <Building2 size={16} className="text-white" />
+                  </div>
+                  <h1 className="text-base font-bold tracking-tight text-gray-900 truncate max-w-[150px]">{currentProject?.name}</h1>
+                </div>
+                <button
+                  onClick={() => setViewMode('projects')}
+                  className="text-gray-500 p-2 rounded-lg hover:bg-gray-50"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+              </div>
+              <div className="flex overflow-x-auto no-scrollbar px-2 py-2 gap-2">
+                <button
+                  onClick={() => setMainMenu('dashboard')}
+                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'dashboard' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
+                >
+                  <LayoutDashboard size={16} className={mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} />
+                  <span>대쉬 보드</span>
+                </button>
+                <button
+                  onClick={() => setMainMenu('schedule')}
+                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'schedule' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
+                >
+                  <BarChart3 size={16} className={mainMenu === 'schedule' ? 'text-blue-600' : 'text-gray-400'} />
+                  <span>공정 관리</span>
+                </button>
+                <button
+                  onClick={() => setMainMenu('documents')}
+                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'documents' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
+                >
+                  <FileText size={16} className={mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} />
+                  <span>문서 관리</span>
+                </button>
+                <button
+                  onClick={() => setMainMenu('drawings')}
+                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'drawings' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
+                >
+                  <Building size={16} className={mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} />
+                  <span>도면 보기</span>
+                </button>
+              </div>
+              {mainMenu === 'schedule' && (
+                <div className="flex overflow-x-auto no-scrollbar px-2 pb-2 gap-2 border-t border-gray-100 pt-2">
+                  <button
+                    onClick={() => setTabMode('comparison')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'comparison' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
                   >
-                    <span className="hidden xl:inline">일간</span><span className="xl:hidden">일</span>
+                    <span>계획vs실행</span>
                   </button>
-                  <button 
-                    onClick={() => setZoom('week')}
-                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'week' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  <button
+                    onClick={() => setTabMode('baseline')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'baseline' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
                   >
-                    <span className="hidden xl:inline">주간</span><span className="xl:hidden">주</span>
+                    <span>Baseline 계획</span>
                   </button>
-                  <button 
-                    onClick={() => setZoom('month')}
-                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'month' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  <button
+                    onClick={() => setTabMode('gantt')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'gantt' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
                   >
-                    <span className="hidden xl:inline">월간</span><span className="xl:hidden">월</span>
+                    <span>간트차트</span>
+                  </button>
+                  <button
+                    onClick={() => setTabMode('table')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${tabMode === 'table' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <span>공정 목록</span>
+                  </button>
+                </div>
+              )}
+              {mainMenu === 'documents' && (
+                <div className="flex overflow-x-auto no-scrollbar px-2 pb-2 gap-2 border-t border-gray-100 pt-2">
+                  <button
+                    onClick={() => setDocumentTab('daily-report')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'daily-report' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <span>공사 일보</span>
+                  </button>
+                  <button
+                    onClick={() => setDocumentTab('inspection')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'inspection' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <span>검측요청서</span>
+                  </button>
+                  <button
+                    onClick={() => setDocumentTab('material')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'material' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <span>자재승인서</span>
+                  </button>
+                  <button
+                    onClick={() => setDocumentTab('concrete')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'concrete' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <span>타설계획서</span>
                   </button>
                 </div>
               )}
             </div>
-          </div>
-        )}
 
-        {/* Content Area */}
-        <div className="flex-1 flex flex-col p-0 xl:p-8 overflow-hidden relative">
-          {/* Main Visualization */}
-          <div className="flex-1 overflow-hidden">
-            <AnimatePresence mode="wait">
-              {mainMenu === 'dashboard' && (
-                <motion.div 
-                  key="dashboard"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="h-full"
-                >
-                  <DashboardView 
-                  project={currentProject || null} 
-                  onUpdateProject={handleUpdateProject} 
-                  settings={settings}
-                />
-                </motion.div>
-              )}
-              {mainMenu === 'drawings' && (
-                <motion.div 
-                  key="drawings"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="h-full"
-                >
-                  <DrawingsView project={currentProject || null} currentUser={currentUser} />
-                </motion.div>
-              )}
-              {mainMenu === 'documents' && documentTab === 'daily-report' && (
-                <motion.div 
-                  key="daily-report"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
-                >
-                  <DailyReportView 
-                    project={currentProject || null}
-                    settings={settings}
-                    currentUser={currentUser}
-                    onDirtyChange={setIsDailyReportDirty}
-                  />
-                </motion.div>
-              )}
-              {mainMenu === 'documents' && documentTab !== 'daily-report' && (
-                <motion.div 
-                  key={`doc-${documentTab}`}
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex items-center justify-center"
-                >
-                  <div className="text-center text-gray-500">
-                    <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                    <p className="text-lg font-medium text-gray-900">준비 중입니다</p>
-                    <p className="text-sm mt-1">해당 문서 기능은 곧 추가될 예정입니다.</p>
-                  </div>
-                </motion.div>
-              )}
-              {mainMenu === 'schedule' && tabMode === 'gantt' && (
-                <motion.div 
-                  key="gantt"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="h-full"
-                >
-                  <GanttChart 
-                    items={filteredSchedules} 
-                    zoom={zoom} 
-                    onSelect={handleSelectItem}
-                    settings={settings}
-                  />
-                </motion.div>
-              )}
-              {mainMenu === 'schedule' && tabMode === 'table' && (
-                <motion.div 
-                  key="table"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="h-full"
-                >
-                  <ScheduleTable 
-                    items={filteredSchedules} 
-                    onSelect={handleSelectItem}
-                    onDelete={handleDeleteSchedule}
-                    selectedId={selectedItemId}
-                    settings={settings}
-                  />
-                </motion.div>
-              )}
-              {mainMenu === 'schedule' && tabMode === 'comparison' && (
-                <motion.div 
-                  key="comparison"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="h-full"
-                >
-                  <BaselineComparison 
-                    items={filteredSchedules} 
-                    baselineItems={filteredBaselineSchedules} 
-                    zoom={zoom}
-                    categories={settings.categories}
-                    settings={settings}
-                  />
-                </motion.div>
-              )}
-              {mainMenu === 'schedule' && tabMode === 'baseline' && (
-                <motion.div 
-                  key="baseline"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="h-full"
-                >
-                  <BaselineGantt 
-                    items={baselineSchedules} 
-                    onAdd={handleAddBaselineSchedule}
-                    onUpdate={handleUpdateBaselineSchedule}
-                    onDelete={handleDeleteBaselineSchedule}
-                    onReorder={handleReorderBaselineSchedules}
-                    settings={settings}
-                    zoom={zoom}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-
-        {/* Mobile Floating Action Button */}
-        {mainMenu === 'schedule' && (
-          <button
-            onClick={handleOpenNewForm}
-            className={`flex lg:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg items-center justify-center hover:bg-blue-700 active:scale-95 transition-all z-50`}
-          >
-            <Plus size={24} />
-          </button>
-        )}
-      </main>
-
-      {/* Popup Form Modal */}
-      <AnimatePresence>
-        {isFormOpen && (
-          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-[2px] z-[100] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-gray-200"
-            >
-              <div className="px-8 py-6 flex justify-between items-center border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <div className="bg-blue-50 p-2 rounded-lg text-blue-600">
-                    {selectedItemId ? <Save size={20} /> : <Plus size={20} />}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">{selectedItemId ? '공정 정보 수정' : '신규 공정 등록'}</h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Schedule Management</p>
-                  </div>
+            <header className="hidden xl:flex bg-white border-b border-gray-200 px-8 py-4 items-center justify-between z-30">
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-bold text-gray-900 tracking-tight">{currentProject?.name}</h2>
+                <div className="h-4 w-px bg-gray-200" />
+                <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+                  <CalendarDays size={14} />
+                  <span>{new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                 </div>
-                <button 
-                  onClick={() => setIsFormOpen(false)}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
-                >
-                  <Plus size={24} className="rotate-45" />
-                </button>
               </div>
-              
-              <div className="p-8 max-h-[80vh] overflow-y-auto no-scrollbar">
-                <ScheduleForm 
-                  onAdd={handleAddSchedule}
-                  onUpdate={handleUpdateSchedule}
-                  onDelete={handleDeleteSchedule}
-                  onReset={() => setSelectedItemId(null)}
-                  selectedItem={selectedItem}
-                  settings={settings}
-                />
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </>
-  )}
 
-      <SettingsModal 
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 pr-4 py-1.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm w-56"
+                  />
+                </div>
+                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                  <button onClick={handleSaveBaseline} className="p-2 bg-white hover:bg-gray-50 border-r border-gray-200 transition-colors text-gray-600" title="현재 공정을 Baseline으로 저장">
+                    <Save size={16} />
+                  </button>
+                  <button onClick={handleExport} className="p-2 bg-white hover:bg-gray-50 text-gray-600 border-r border-gray-200 transition-colors" title="내보내기">
+                    <Download size={16} />
+                  </button>
+                  <button className="p-2 bg-white hover:bg-gray-50 text-gray-600 transition-colors" title="불러오기">
+                    <Upload size={16} />
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            {mainMenu === 'schedule' && (
+              <div className="bg-white border-b border-gray-200 px-4 xl:px-8 py-2.5 flex items-center gap-2 xl:gap-4 overflow-x-auto no-scrollbar z-20">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  <Filter size={12} />
+                  <span className="hidden xl:inline">Filters</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value as any)}
+                    className="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+                  >
+                    <option value="전체">모든 공종</option>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value as any)}
+                    className="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+                  >
+                    <option value="전체">모든 상태</option>
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+
+                <div className="ml-auto flex items-center gap-3">
+                  {(tabMode === 'gantt' || tabMode === 'table') && (
+                    <button
+                      onClick={handleOpenNewForm}
+                      className="hidden lg:flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 active:scale-95 transition-all shadow-sm"
+                    >
+                      <Plus size={16} />
+                      <span>신규 공정 등록</span>
+                    </button>
+                  )}
+                  {(tabMode === 'gantt' || tabMode === 'comparison' || tabMode === 'baseline') && (
+                    <div className="flex items-center border border-gray-200 p-0.5 rounded-lg bg-gray-50 shadow-sm">
+                      <button
+                        onClick={() => setZoom('day')}
+                        className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'day' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        <span className="hidden xl:inline">일간</span><span className="xl:hidden">일</span>
+                      </button>
+                      <button
+                        onClick={() => setZoom('week')}
+                        className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'week' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        <span className="hidden xl:inline">주간</span><span className="xl:hidden">주</span>
+                      </button>
+                      <button
+                        onClick={() => setZoom('month')}
+                        className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${zoom === 'month' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        <span className="hidden xl:inline">월간</span><span className="xl:hidden">월</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex-1 flex flex-col p-0 xl:p-8 overflow-hidden relative">
+              <div className="flex-1 overflow-hidden">
+                <AnimatePresence mode="wait">
+                  {mainMenu === 'dashboard' && (
+                    <motion.div
+                      key="dashboard"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full"
+                    >
+                      <DashboardView
+                        project={currentProject || null}
+                        onUpdateProject={handleUpdateProject}
+                        settings={settings}
+                      />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'drawings' && (
+                    <motion.div
+                      key="drawings"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full"
+                    >
+                      <DrawingsView project={currentProject || null} currentUser={currentUser} />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'documents' && documentTab === 'daily-report' && (
+                    <motion.div
+                      key="daily-report"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+                    >
+                      <DailyReportView
+                        project={currentProject || null}
+                        settings={settings}
+                        currentUser={currentUser}
+                        onDirtyChange={setIsDailyReportDirty}
+                      />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'documents' && documentTab !== 'daily-report' && (
+                    <motion.div
+                      key={`doc-${documentTab}`}
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex items-center justify-center"
+                    >
+                      <div className="text-center text-gray-500">
+                        <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                        <p className="text-lg font-medium text-gray-900">준비 중입니다</p>
+                        <p className="text-sm mt-1">해당 문서 기능은 곧 추가될 예정입니다.</p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'schedule' && tabMode === 'gantt' && (
+                    <motion.div
+                      key="gantt"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full"
+                    >
+                      <GanttChart
+                        items={filteredSchedules}
+                        zoom={zoom}
+                        onSelect={handleSelectItem}
+                        settings={settings}
+                      />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'schedule' && tabMode === 'table' && (
+                    <motion.div
+                      key="table"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full"
+                    >
+                      <ScheduleTable
+                        items={filteredSchedules}
+                        onSelect={handleSelectItem}
+                        onDelete={handleDeleteSchedule}
+                        selectedId={selectedItemId}
+                        settings={settings}
+                      />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'schedule' && tabMode === 'comparison' && (
+                    <motion.div
+                      key="comparison"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full"
+                    >
+                      <BaselineComparison
+                        items={filteredSchedules}
+                        baselineItems={filteredBaselineSchedules}
+                        zoom={zoom}
+                        categories={settings.categories}
+                        settings={settings}
+                      />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'schedule' && tabMode === 'baseline' && (
+                    <motion.div
+                      key="baseline"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full"
+                    >
+                      <BaselineGantt
+                        items={baselineSchedules}
+                        onAdd={handleAddBaselineSchedule}
+                        onUpdate={handleUpdateBaselineSchedule}
+                        onDelete={handleDeleteBaselineSchedule}
+                        onReorder={handleReorderBaselineSchedules}
+                        settings={settings}
+                        zoom={zoom}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {mainMenu === 'schedule' && (
+              <button
+                onClick={handleOpenNewForm}
+                className="flex lg:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg items-center justify-center hover:bg-blue-700 active:scale-95 transition-all z-50"
+              >
+                <Plus size={24} />
+              </button>
+            )}
+          </main>
+
+          <AnimatePresence>
+            {isFormOpen && (
+              <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-[2px] z-[100] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-gray-200"
+                >
+                  <div className="px-8 py-6 flex justify-between items-center border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-blue-50 p-2 rounded-lg text-blue-600">
+                        {selectedItemId ? <Save size={20} /> : <Plus size={20} />}
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">{selectedItemId ? '공정 정보 수정' : '신규 공정 등록'}</h3>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Schedule Management</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsFormOpen(false)}
+                      className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+                    >
+                      <Plus size={24} className="rotate-45" />
+                    </button>
+                  </div>
+
+                  <div className="p-8 max-h-[80vh] overflow-y-auto no-scrollbar">
+                    <ScheduleForm
+                      onAdd={handleAddSchedule}
+                      onUpdate={handleUpdateSchedule}
+                      onDelete={handleDeleteSchedule}
+                      onReset={() => setSelectedItemId(null)}
+                      selectedItem={selectedItem}
+                      settings={settings}
+                    />
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
+
+      <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
@@ -1348,7 +1382,7 @@ export default function App() {
       />
 
       {currentUser && (
-        <ProfileModal 
+        <ProfileModal
           isOpen={isProfileModalOpen}
           onClose={() => setIsProfileModalOpen(false)}
           user={currentUser}
@@ -1359,14 +1393,14 @@ export default function App() {
         />
       )}
 
-      <DeleteProjectModal 
+      <DeleteProjectModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         projects={projects}
         onDelete={handleDeleteProjects}
       />
 
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
         onConfirm={confirmDeleteProject}
@@ -1377,7 +1411,7 @@ export default function App() {
         type="danger"
       />
 
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={unsavedChangesModal.isOpen}
         onClose={() => setUnsavedChangesModal(prev => ({ ...prev, isOpen: false }))}
         onConfirm={unsavedChangesModal.onConfirm}
