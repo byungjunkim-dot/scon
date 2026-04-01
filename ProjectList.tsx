@@ -37,10 +37,11 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
   const canAddProject = currentUser?.userRole === '골드' || currentUser?.userRole === '실버' || currentUser?.role === 'admin';
   const canDeleteProject = currentUser?.userRole === '골드' || currentUser?.role === 'admin';
 
-  const filteredProjects = projects.filter(p =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ProjectList.tsx 내의 필터링 부분 예시
+const filteredProjects = projects.filter(project => 
+  // project.user_id가 존재할 때만 비교하도록 수정
+  project.user_id === currentUser?.id
+);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
