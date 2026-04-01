@@ -700,6 +700,7 @@ const handleAddBaselineSchedule = async (item: Omit<ScheduleItem, 'id' | 'projec
     sortOrder: baselineSchedules.length
   };
 
+  // 여기
   // 1) 먼저 화면에 바로 반영
   const updatedBaseline = [...baselineSchedules, newItem];
   setBaselineSchedules(updatedBaseline);
