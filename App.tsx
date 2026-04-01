@@ -811,12 +811,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
             </div>
             <div className="flex items-center gap-4">
-              {isSupabaseConfigured && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-600 rounded-md text-[10px] font-bold border border-green-100">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                  <span>SUPABASE CONNECTED</span>
-                </div>
-              )}
+              
               {currentUser?.role === 'admin' && (
                 <button
                   onClick={() => setViewMode('user-management')}
