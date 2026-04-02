@@ -41,6 +41,7 @@ export const fetchWeather = async (
   const res = await fetch(url);
 
   if (!res.ok) {
+    console.error(`Weather API request failed: ${url}, status: ${res.status}`);
     throw new Error('날씨 조회 실패');
   }
 

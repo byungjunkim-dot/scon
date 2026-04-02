@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Project, ScheduleItem, AppSettings, User, DailyReport } from '../types';
+import { Project, ScheduleItem, AppSettings, User, DailyReport, Drawing, Category, Status } from '../types';
 
 type ScheduleRow = {
   id: string;
@@ -63,14 +63,14 @@ const fromScheduleRow = (row: ScheduleRow): ScheduleItemWithExtra => {
   return {
     id: row.id,
     projectId: row.projectId,
-    category: row.category ?? '',
+    category: (row.category ?? '공통관리') as Category,
     subCategory: row.subCategory ?? '',
     taskName: row.taskName ?? '',
     contractor: row.contractor ?? '',
     startDate: row.startDate ?? '',
     endDate: row.endDate ?? '',
     progress: row.progress ?? 0,
-    status: row.status ?? '',
+    status: (row.status ?? '예정') as Status,
     isBaseline: row.isBaseline ?? false,
     dongBlock: row.dongBlock ?? '',
     floor: row.floor ?? '',
@@ -212,6 +212,52 @@ export const supabaseService = {
 
     if (error) throw error;
     return data;
+  },
+
+// Drawings (도면 데이터 DB 저장/불러오기)
+  async getDrawings(projectId: string) {
+    const { data, error } = await supabase
+      .from('drawings')
+      .select('*')
+      .eq('projectId', projectId);
+
+    if (error) throw error;
+    return data as Drawing[];
+  },
+
+  async saveDrawing(drawing: Drawing) {
+    const { data, error } = await supabase
+      .from('drawings')
+      .upsert(drawing)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as Drawing;
+  },
+
+  async deleteDrawing(id: string) {
+    const { error } = await supabase.from('drawings').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // Storage (도면 및 사진 이미지 파일 업로드용)
+  async uploadImage(blob: Blob, fileName: string, bucketName: string = 'photos') {
+    const { data, error } = await supabase.storage
+      .from(bucketName)
+      .upload(fileName, blob, {
+        cacheControl: '3600',
+        upsert: false // 덮어쓰기 방지
+      });
+
+    if (error) throw error;
+
+    // 업로드된 파일의 공개 URL(Public URL) 가져오기
+    const { data: { publicUrl } } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(data.path);
+
+    return publicUrl;
   },
 
   // Connection Test
