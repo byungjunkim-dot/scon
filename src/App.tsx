@@ -92,20 +92,42 @@ const INITIAL_SETTINGS: AppSettings = {
 };
 
 export default function App() {
-const [viewMode, setViewMode] = useState<ViewMode>('auth');
+// 1. 화면 모드 (유지)
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const savedUser = localStorage.getItem('cp_current_user');
+    const savedView = localStorage.getItem('cp_view_mode') as ViewMode;
+    return savedUser ? (savedView || 'projects') : 'auth';
+  });
 
-const [currentUser, setCurrentUser] = useState<User | null>(() => {
-  const saved = localStorage.getItem('cp_current_user');
-  return saved ? JSON.parse(saved) : null;
-});
-  const [mainMenu, setMainMenu] = useState<MainMenu>('dashboard');
-  const [tabMode, setTabMode] = useState<TabMode>('gantt');
-  const [documentTab, setDocumentTab] = useState<DocumentTab>('daily-report');
+  // 2. 현재 사용자
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('cp_current_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  // 3. 메뉴 및 탭 상태 (유지)
+  const [mainMenu, setMainMenu] = useState<MainMenu>(() => {
+    return (localStorage.getItem('cp_main_menu') as MainMenu) || 'dashboard';
+  });
+  const [tabMode, setTabMode] = useState<TabMode>(() => {
+    return (localStorage.getItem('cp_tab_mode') as TabMode) || 'gantt';
+  });
+  const [documentTab, setDocumentTab] = useState<DocumentTab>(() => {
+    return (localStorage.getItem('cp_document_tab') as DocumentTab) || 'daily-report';
+  });
+
+  // 4. 프로젝트 목록 (★AI가 지워서 에러가 났던 부분 복구!)
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem('cp_projects');
     return saved ? JSON.parse(saved) : [];
   });
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
+  // 5. 현재 선택된 프로젝트 ID (유지)
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
+    return localStorage.getItem('cp_current_project_id');
+  });
+
+  // 6. 기타 필수 상태 변수들 (★이 부분들도 모두 살아있어야 합니다)
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [baselineSchedules, setBaselineSchedules] = useState<ScheduleItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -113,17 +135,6 @@ const [currentUser, setCurrentUser] = useState<User | null>(() => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDailyReportDirty, setIsDailyReportDirty] = useState(false);
-
-  useEffect(() => {
-    console.log('App: isDailyReportDirty changed to:', isDailyReportDirty);
-  }, [isDailyReportDirty]);
-
-  useEffect(() => {
-    const isDailyReport = mainMenu === 'documents' && documentTab === 'daily-report';
-    if (!isDailyReport) {
-      setIsDailyReportDirty(false);
-    }
-  }, [mainMenu, documentTab]);
 
   const [unsavedChangesModal, setUnsavedChangesModal] = useState<{
     isOpen: boolean;
@@ -137,14 +148,40 @@ const [currentUser, setCurrentUser] = useState<User | null>(() => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(INITIAL_SETTINGS);
 
-  useEffect(() => {
-    console.log('App.tsx isDailyReportDirty changed:', isDailyReportDirty);
-  }, [isDailyReportDirty]);
-
   const [filterCategory, setFilterCategory] = useState<Category | '전체'>('전체');
   const [filterStatus, setFilterStatus] = useState<Status | '전체'>('전체');
   const [searchTerm, setSearchTerm] = useState('');
   const [zoom, setZoom] = useState<'day' | 'week' | 'month'>('day');
+
+  useEffect(() => {
+    console.log('App: isDailyReportDirty changed to:', isDailyReportDirty);
+  }, [isDailyReportDirty]);
+
+  // --- 화면 상태 자동 저장 로직 시작 ---
+  useEffect(() => {
+    localStorage.setItem('cp_view_mode', viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (currentProjectId) {
+      localStorage.setItem('cp_current_project_id', currentProjectId);
+    } else {
+      localStorage.removeItem('cp_current_project_id');
+    }
+  }, [currentProjectId]);
+
+  useEffect(() => {
+    localStorage.setItem('cp_main_menu', mainMenu);
+  }, [mainMenu]);
+
+  useEffect(() => {
+    localStorage.setItem('cp_tab_mode', tabMode);
+  }, [tabMode]);
+
+  useEffect(() => {
+    localStorage.setItem('cp_document_tab', documentTab);
+  }, [documentTab]);
+  // --- 화면 상태 자동 저장 로직 끝 ---
 
   const createBaselineId = (sourceId: string) => `b-${sourceId}`;
 
@@ -330,6 +367,14 @@ const [currentUser, setCurrentUser] = useState<User | null>(() => {
     checkUnsavedChanges(() => {
       setCurrentUser(null);
       localStorage.removeItem('cp_current_user');
+      
+      // 로그아웃 시 화면 정보도 함께 초기화
+      localStorage.removeItem('cp_view_mode');
+      localStorage.removeItem('cp_current_project_id');
+      localStorage.removeItem('cp_main_menu');
+      localStorage.removeItem('cp_tab_mode');
+      localStorage.removeItem('cp_document_tab');
+      
       setViewMode('auth');
       setCurrentProjectId(null);
     });
@@ -360,6 +405,10 @@ const [currentUser, setCurrentUser] = useState<User | null>(() => {
   };
 
   const handleEditProject = async (id: string, projectData: Omit<Project, 'id' | 'createdAt'>) => {
+    if (currentUser?.userRole !== '골드' && currentUser?.role !== 'admin') {
+      alert('프로젝트 수정 권한이 없습니다.');
+      return;
+    }
     const updatedProject = projects.find(p => p.id === id);
     if (updatedProject) {
       const newProject = { ...updatedProject, ...projectData };
@@ -378,6 +427,10 @@ const [currentUser, setCurrentUser] = useState<User | null>(() => {
   };
 
   const handleUpdateProject = async (updatedProject: Project) => {
+    if (currentUser?.userRole !== '골드' && currentUser?.role !== 'admin') {
+      alert('프로젝트 수정 권한이 없습니다.');
+      return;
+    }
     const updatedProjects = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
     setProjects(updatedProjects);
     localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
@@ -604,10 +657,11 @@ const handleUpdateSchedule = async (item: ScheduleItem) => {
   };
 
   const handleSaveSettings = async (newSettings: AppSettings) => {
+    // 화면에 즉시 반영
     setSettings(newSettings);
-    localStorage.setItem('cp_settings', JSON.stringify(newSettings));
 
     if (currentProjectId) {
+      // 1. 특정 프로젝트 안에 들어와 있을 때 (프로젝트별 설정 저장)
       const updatedProjects = projects.map(p =>
         p.id === currentProjectId ? { ...p, settings: newSettings } : p
       );
@@ -618,16 +672,23 @@ const handleUpdateSchedule = async (item: ScheduleItem) => {
         try {
           const updatedProject = updatedProjects.find(p => p.id === currentProjectId);
           if (updatedProject) {
+            // Supabase projects 테이블에 통째로 업데이트
             await supabaseService.saveProject(updatedProject);
+            console.log('프로젝트별 설정이 Supabase에 저장되었습니다.');
           }
         } catch (error) {
           console.error('Error saving project settings to Supabase:', error);
+          alert('Supabase 저장에 실패했습니다. (projects 테이블에 settings jsonb 컬럼이 있는지 확인해주세요)');
         }
       }
     } else {
+      // 2. 프로젝트 밖 메인 화면일 때 (기본/글로벌 설정 저장)
+      localStorage.setItem('cp_settings', JSON.stringify(newSettings));
+      
       if (isSupabaseConfigured) {
         try {
           await supabaseService.saveSettings(newSettings);
+          console.log('기본 설정이 Supabase에 저장되었습니다.');
         } catch (error) {
           console.error('Error saving global settings to Supabase:', error);
         }
@@ -647,6 +708,7 @@ const handleAddBaselineSchedule = async (item: Omit<ScheduleItem, 'id' | 'projec
     sortOrder: baselineSchedules.length
   };
 
+  // 여기
   // 1) 먼저 화면에 바로 반영
   const updatedBaseline = [...baselineSchedules, newItem];
   setBaselineSchedules(updatedBaseline);
@@ -758,12 +820,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
             </div>
             <div className="flex items-center gap-4">
-              {isSupabaseConfigured && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-600 rounded-md text-[10px] font-bold border border-green-100">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                  <span>SUPABASE CONNECTED</span>
-                </div>
-              )}
+              
               {currentUser?.role === 'admin' && (
                 <button
                   onClick={() => setViewMode('user-management')}
@@ -812,7 +869,14 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               >
                 <LogoIcon size={22} />
               </div>
-              <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
+              <div className="flex flex-col">
+                <h1 className="text-lg font-bold tracking-tight text-gray-900 leading-none">S-<span className="text-blue-600">CON</span></h1>
+                {currentUser && (
+                  <span className="text-[10px] text-gray-500 font-medium mt-1">
+                    {currentUser.name} / {currentUser.affiliation}
+                  </span>
+                )}
+              </div>
             </div>
 
             <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
@@ -935,13 +999,15 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     <Settings size={18} className="text-gray-400" />
                     <span>설정 모드</span>
                   </button>
-                  <button
-                    onClick={() => checkUnsavedChanges(handleLoadSamples)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
-                  >
-                    <Database size={18} className="text-gray-400" />
-                    <span>샘플 데이터 로드</span>
-                  </button>
+                  {currentUser?.role === 'admin' && (
+                    <button
+                      onClick={() => checkUnsavedChanges(handleLoadSamples)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
+                    >
+                      <Database size={18} className="text-gray-400" />
+                      <span>샘플 데이터 로드</span>
+                    </button>
+                  )}
                 </>
               )}
               <button
@@ -1194,6 +1260,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                         project={currentProject || null}
                         onUpdateProject={handleUpdateProject}
                         settings={settings}
+                        currentUser={currentUser}
                       />
                     </motion.div>
                   )}

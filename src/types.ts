@@ -63,6 +63,7 @@ export interface Project {
   totalBudget?: number;
   startDate?: string;
   endDate?: string;
+  user_id?: string;
   createdAt: string;
   settings?: AppSettings;
 }
