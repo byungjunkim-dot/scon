@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Upload, Loader2, Image as ImageIcon } from 'lucide-react';
 import { Project, Drawing, User } from '../types';
 import { compressImage } from '../utils/image';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { supabaseService } from '../services/supabaseService';
 
 interface DrawingsViewProps {
   project: Project | null;
@@ -29,18 +31,38 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
   const [newName, setNewName] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (project) {
+    const loadDrawings = async () => {
+      if (!project) {
+        setDrawings([]);
+        return;
+      }
+
+      // 1. 화면이 빨리 뜨도록 로컬 스토리지에서 먼저 불러오기
       const savedDrawings = localStorage.getItem(`cp_drawings_${project.id}`);
       if (savedDrawings) {
         setDrawings(JSON.parse(savedDrawings));
-      } else {
-        setDrawings([]);
       }
-    }
+
+      // 2. Supabase에서 최신 도면 데이터 가져오기
+      if (isSupabaseConfigured) {
+        try {
+          const dbDrawings = await supabaseService.getDrawings(project.id);
+          if (dbDrawings && dbDrawings.length > 0) {
+            setDrawings(dbDrawings);
+            localStorage.setItem(`cp_drawings_${project.id}`, JSON.stringify(dbDrawings));
+          }
+        } catch (error) {
+          console.error('Failed to load drawings from Supabase:', error);
+        }
+      }
+    };
+
+    loadDrawings();
   }, [project]);
 
   const saveDrawings = (newDrawings: Drawing[]) => {
@@ -65,26 +87,61 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!project || !newImageUrl) return;
+    if (!project || !newImageUrl || isSubmitting) return;
 
-    const newDrawing: Drawing = {
-      id: Date.now().toString(),
-      projectId: project.id,
-      type: newType,
-      floor: newFloor,
-      name: newName,
-      imageUrl: newImageUrl,
-      createdAt: new Date().toISOString(),
-    };
+    setIsSubmitting(true);
 
-    saveDrawings([...drawings, newDrawing]);
-    setIsAdding(false);
-    setNewName('');
-    setNewImageUrl('');
-    setNewFloor('1층');
-    setNewType('평면도');
+    try {
+      let finalImageUrl = newImageUrl; // 기본값은 압축된 Base64
+
+      // Supabase가 연결되어 있다면 Storage에 실제 파일로 업로드
+      if (isSupabaseConfigured) {
+        // Base64 문자열을 파일(Blob)로 변환
+        const res = await fetch(newImageUrl);
+        const blob = await res.blob();
+        
+        // 겹치지 않는 고유한 파일명 생성
+        const uniqueFileName = `drawing_${project.id}_${Date.now()}.jpg`;
+        
+        // Storage에 업로드 후 Public URL 받아오기 ('photos' 버킷 재사용)
+        finalImageUrl = await supabaseService.uploadImage(blob, uniqueFileName, 'photos');
+      }
+
+      const newDrawing: Drawing = {
+        id: Date.now().toString(),
+        projectId: project.id,
+        type: newType,
+        floor: newFloor,
+        name: newName,
+        imageUrl: finalImageUrl, // DB에는 깔끔한 URL만 들어갑니다!
+        createdAt: new Date().toISOString(),
+      };
+
+      // 1. 화면 및 로컬 스토리지에 즉시 반영
+      const updatedDrawings = [...drawings, newDrawing];
+      setDrawings(updatedDrawings);
+      localStorage.setItem(`cp_drawings_${project.id}`, JSON.stringify(updatedDrawings));
+
+      // 2. Supabase DB에 저장
+      if (isSupabaseConfigured) {
+        await supabaseService.saveDrawing(newDrawing);
+      }
+
+      // 3. 입력창 초기화
+      setIsAdding(false);
+      setNewName('');
+      setNewImageUrl('');
+      setNewFloor('1층');
+      setNewType('평면도');
+      
+    } catch (error) {
+      console.error('Drawing upload failed:', error);
+      alert('도면 등록 중 오류가 발생했습니다. 네트워크나 설정을 확인해주세요.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredDrawings = drawings.filter(d => d.type === selectedType);
@@ -178,19 +235,16 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                <div 
-                  className="min-w-full min-h-full flex items-center justify-center transition-all duration-200 origin-center"
-                  style={{ 
-                    width: `${zoom * 100}%`,
-                    height: `${zoom * 100}%`
-                  }}
-                >
-                  <img 
-                    src={currentDrawing.imageUrl} 
-                    alt={currentDrawing.name} 
-                    className="max-w-full max-h-full object-contain pointer-events-none select-none"
-                  />
-                </div>
+                {/* 1. 바깥쪽 div는 스타일을 제거하고 그대로 둡니다 */}
+<div className="min-w-full min-h-full flex items-center justify-center">
+  {/* 2. img 태그에 직접 transform: scale()을 먹여줍니다 */}
+  <img 
+    src={currentDrawing.imageUrl} 
+    alt={currentDrawing.name} 
+    className="max-w-full max-h-full object-contain pointer-events-none select-none transition-transform duration-200 ease-out origin-center"
+    style={{ transform: `scale(${zoom})` }}
+  />
+</div>
               </div>
             ) : (
               <div className="flex flex-col items-center text-gray-400">
@@ -330,12 +384,16 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
                 </div>
 
                 <button 
-                  type="submit"
-                  disabled={!newImageUrl || isCompressing}
-                  className="w-full bg-blue-600 text-white font-bold py-3 md:py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  도면 등록
-                </button>
+  type="submit"
+  disabled={!newImageUrl || isCompressing || isSubmitting}
+  className="w-full bg-blue-600 text-white font-bold py-3 md:py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+>
+  {isSubmitting ? (
+    <><Loader2 className="animate-spin" size={20} /> 업로드 중...</>
+  ) : (
+    '도면 등록'
+  )}
+</button>
               </form>
             </motion.div>
           </div>

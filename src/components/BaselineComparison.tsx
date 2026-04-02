@@ -289,7 +289,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
                     {/* Category Summary Bars */}
                     {group.baseline && (
                       <div 
-                        className="absolute top-[4.875px] xl:top-[9.75px] h-[2.5px] xl:h-[5px] rounded-t-full z-0"
+                        className="absolute top-[4px] xl:top-[8px] h-[4px] xl:h-[10px] rounded-md z-0"
                         style={{ 
                           left: getTaskPosition(group.baseline.start, group.baseline.end).left, 
                           width: getTaskPosition(group.baseline.start, group.baseline.end).width,
@@ -300,7 +300,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
                     )}
                     {group.actual && (
                       <div 
-                        className="absolute top-[7.375px] xl:top-[14.75px] h-[3.75px] xl:h-[7.5px] rounded-b-full shadow-sm z-10 flex items-center overflow-hidden opacity-80"
+                        className="absolute top-[8px] xl:top-[16px] h-[4px] xl:h-[10px] rounded-md shadow-sm z-10 flex items-center overflow-hidden opacity-80"
                         style={{ 
                           left: getTaskPosition(group.actual.start, group.actual.end).left, 
                           width: getTaskPosition(group.actual.start, group.actual.end).width,
@@ -339,7 +339,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
                               {/* Baseline Bar */}
                               {sub.baseline && (
                                 <div 
-                                  className="absolute top-[5.75px] xl:top-[11.5px] h-[1.8px] xl:h-[3.6px] rounded-t-full z-0 transition-all"
+                                  className="absolute top-[4px] xl:top-[8px] h-[3px] xl:h-[8px] rounded-md z-0 transition-all"
                                   style={{ 
                                     left: bPos.left, 
                                     width: bPos.width,
@@ -353,7 +353,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
                               {/* Actual Bar */}
                               {sub.actual && (
                                 <div 
-                                  className="absolute top-[7.55px] xl:top-[15.1px] h-[2.7px] xl:h-[5.4px] rounded-b-full shadow-sm z-10 flex items-center px-1.5 xl:px-3 overflow-hidden transition-all"
+                                  className="absolute top-[7px] xl:top-[16px] h-[3px] xl:h-[8px] rounded-md shadow-sm z-10 flex items-center px-1.5 xl:px-3 overflow-hidden transition-all"
                                   style={{ 
                                     left: aPos.left, 
                                     width: aPos.width,

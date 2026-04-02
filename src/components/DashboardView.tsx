@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Project, DailyReport, Category, AppSettings, ScheduleItem } from '../types';
+import { Project, DailyReport, Category, AppSettings, ScheduleItem, User } from '../types';
 import { Building2, Edit2, Save, X, Upload, Loader2, CloudSun, ChevronLeft, ChevronRight, Thermometer, TrendingUp } from 'lucide-react';
 import { compressImage } from '../utils/image';
 import { fetchWeather } from '../services/weatherService';
@@ -12,6 +12,7 @@ interface DashboardViewProps {
   project: Project | null;
   onUpdateProject: (project: Project) => void;
   settings: AppSettings;
+  currentUser: User | null;
 }
 
 const mockCalendar = [
@@ -24,7 +25,7 @@ const mockCalendar = [
   { day: 'Sat', date: 27, events: ['검측요청서'] },
 ];
 
-export function DashboardView({ project, onUpdateProject, settings }: DashboardViewProps) {
+export function DashboardView({ project, onUpdateProject, settings, currentUser }: DashboardViewProps) {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isEditing, setIsEditing] = useState(false);
@@ -140,18 +141,23 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
   }, [project, selectedDate]);
 
   useEffect(() => {
-    if (project?.location) {
+    if (project?.latitude !== undefined && project?.longitude !== undefined) {
       const getWeatherData = async () => {
         setIsWeatherLoading(true);
-        const data = await fetchWeather(project.location!);
-        if (data) {
-          setWeatherData(data);
+        try {
+          const data = await fetchWeather(project.latitude!, project.longitude!);
+          if (data) {
+            setWeatherData(data);
+          }
+        } catch (error) {
+          console.error('날씨 조회 실패:', error);
+        } finally {
+          setIsWeatherLoading(false);
         }
-        setIsWeatherLoading(false);
       };
       getWeatherData();
     }
-  }, [project?.location]);
+  }, [project?.latitude, project?.longitude]);
 
   if (!project) return null;
 
@@ -304,6 +310,33 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
           <div className="col-span-1 md:col-span-12 lg:col-span-9 bg-white rounded-xl shadow-sm border border-gray-200 p-4 lg:p-6 flex flex-col">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-lg font-bold text-gray-900">프로젝트 개요</h2>
+              {(currentUser?.userRole === '골드' || currentUser?.role === 'admin') && !isEditing && (
+                <button
+                  onClick={handleEditClick}
+                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                  title="개요 수정"
+                >
+                  <Edit2 size={18} />
+                </button>
+              )}
+              {isEditing && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCancelEdit}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all text-sm font-medium"
+                  >
+                    <X size={16} />
+                    취소
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all text-sm font-medium shadow-sm"
+                  >
+                    <Save size={16} />
+                    저장
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -434,7 +467,6 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
                   <TrendingUp className="text-emerald-600" size={16} />
                   전체 공정률
                 </h2>
-                <div className="text-[10px] font-bold text-gray-400">최근 공사일보 기준</div>
               </div>
               <div className="flex items-baseline justify-between mb-3">
                 <div className="flex items-baseline gap-1">
@@ -463,7 +495,6 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
               {/* Milestones */}
               {schedules.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
-                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">주요 마일스톤</h3>
                   <div className="space-y-2">
                     {schedules
                       .filter(s => s.isMilestone)
@@ -490,31 +521,31 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
               <div className="flex justify-between items-start mb-2">
                 <h2 className="text-sm font-bold text-gray-900">누적 투입 인력</h2>
               </div>
-              <div className="flex items-baseline gap-1 mb-3">
+              <div className="flex items-baseline gap-1 mb-1">
                 <span className="text-2xl font-bold text-blue-600">{cumulativePersonnel.total}</span>
                 <span className="text-sm font-medium text-blue-600">명</span>
               </div>
-              <div className="flex items-end justify-between flex-1 min-h-[80px] mt-2 gap-2">
+              <div className="flex items-end justify-between flex-1 min-h-[80px] mt-0 gap-2">
                 <div className="flex flex-col items-center flex-1 h-full">
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full bg-blue-500 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.direct / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
-                  <div className="text-[10px] font-bold text-gray-600 mt-1">{cumulativePersonnel.direct}</div>
-                  <div className="text-[9px] text-gray-400 mt-0.5">직영</div>
+                  <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.direct}</div>
+                  <div className="text-[9px] text-gray-400 mt-0">직영</div>
                 </div>
                 <div className="flex flex-col items-center flex-1 h-full">
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full bg-yellow-400 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.outsourced / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
-                  <div className="text-[10px] font-bold text-gray-600 mt-1">{cumulativePersonnel.outsourced}</div>
-                  <div className="text-[9px] text-gray-400 mt-0.5">외주</div>
+                  <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.outsourced}</div>
+                  <div className="text-[9px] text-gray-400 mt-0">외주</div>
                 </div>
                 <div className="flex flex-col items-center flex-1 h-full">
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full bg-green-400 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.other / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
-                  <div className="text-[10px] font-bold text-gray-600 mt-1">{cumulativePersonnel.other}</div>
-                  <div className="text-[9px] text-gray-400 mt-0.5">기타</div>
+                  <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.other}</div>
+                  <div className="text-[9px] text-gray-400 mt-0">기타</div>
                 </div>
               </div>
             </div>
@@ -647,18 +678,19 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
             <h2 className="text-lg font-bold text-gray-900 mb-4">오늘 할 일</h2>
             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
               {(todayReport?.todayTasks || []).map((task, idx) => (
-                <div key={task.id || idx} className="flex flex-wrap lg:flex-nowrap items-center text-sm py-2 border-b border-gray-100 last:border-0 gap-2">
-                  <span 
-                    className="font-bold w-12 shrink-0" 
-                    style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}
-                  >
-                    {task.category}
-                  </span>
-                  <span className="text-gray-900 flex-1 min-w-[80px]">{task.subCategory}</span>
-                  <span className="text-gray-500 flex-1 min-w-[80px]">{task.taskName}</span>
-                  <span className="text-gray-500 flex-1 min-w-[100px]">{[task.dongBlock, task.floor, task.zone].filter(Boolean).join(' ')}</span>
-                  <span className="text-gray-400 w-16 text-right shrink-0">{task.amount}</span>
-                </div>
+                <div key={task.id || idx} className="flex flex-wrap lg:flex-nowrap items-center text-sm py-2 border-b border-gray-100 last:border-0 gap-4">
+  <span className="font-bold w-12 shrink-0" style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}>
+    {task.category}
+  </span>
+  
+  {/* max-w-[픽셀]과 truncate(말줄임표) 추가 */}
+  <span className="text-gray-900 flex-1 min-w-[80px] max-w-[140px] truncate">{task.subCategory}</span>
+  <span className="text-gray-500 flex-1 min-w-[80px] max-w-[180px] truncate">{task.taskName}</span>
+  <span className="text-gray-500 flex-1 min-w-[100px] max-w-[200px] truncate">{[task.dongBlock, task.floor, task.zone].filter(Boolean).join(' ')}</span>
+  
+  {/* 우측에 남는 공간이 생길 때 작업량을 끝으로 밀고 싶다면 ml-auto 추가 (선택사항) */}
+  <span className="text-gray-400 w-16 text-right shrink-0 ml-auto">{task.amount}</span>
+</div>
               ))}
               {(!todayReport?.todayTasks || todayReport.todayTasks.length === 0) && (
                 <div className="text-center py-4 text-gray-400 text-sm bg-gray-50/50 rounded">등록된 작업 사항이 없습니다.</div>
@@ -673,7 +705,7 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
               <span className="text-xs font-medium text-gray-500">합계</span>
               <span className="text-lg font-black text-blue-600">
                 {(todayReport?.personnel?.direct || 0) + (todayReport?.personnel?.outsourced || 0) + (todayReport?.personnel?.other || 0)}
-                <span className="text-xs font-normal text-gray-400 ml-1">명</span>
+                <span className="text-xs font-bold text-gray-400 ml-1">명</span>
               </span>
             </div>
             <div className="space-y-3">
@@ -695,7 +727,7 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
           {/* 장비 투입 */}
           <div className="col-span-1 md:col-span-1 lg:col-span-2 bg-gray-50 rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">장비 투입</h2>
-            <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+            <div className="space-y-1 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
               {(todayReport?.equipment || []).map((eq, idx) => (
                 <div key={eq.id || idx} className="bg-white p-2 rounded-lg border border-gray-100">
                   <div className="flex justify-between items-start mb-0.5">
@@ -770,18 +802,19 @@ export function DashboardView({ project, onUpdateProject, settings }: DashboardV
             <h2 className="text-lg font-bold text-gray-900 mb-4">내일 할 일</h2>
             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
               {(todayReport?.tomorrowTasks || []).map((task, idx) => (
-                <div key={task.id || idx} className="flex flex-wrap lg:flex-nowrap items-center text-sm py-2 border-b border-gray-100 last:border-0 gap-2">
-                  <span 
-                    className="font-bold w-12 shrink-0" 
-                    style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}
-                  >
-                    {task.category}
-                  </span>
-                  <span className="text-gray-900 flex-1 min-w-[80px]">{task.subCategory}</span>
-                  <span className="text-gray-500 flex-1 min-w-[80px]">{task.taskName}</span>
-                  <span className="text-gray-500 flex-1 min-w-[100px]">{[task.dongBlock, task.floor, task.zone].filter(Boolean).join(' ')}</span>
-                  <span className="text-gray-400 w-16 text-right shrink-0">{task.amount}</span>
-                </div>
+                <div key={task.id || idx} className="flex flex-wrap lg:flex-nowrap items-center text-sm py-2 border-b border-gray-100 last:border-0 gap-4">
+  <span className="font-bold w-12 shrink-0" style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}>
+    {task.category}
+  </span>
+  
+  {/* max-w-[픽셀]과 truncate(말줄임표) 추가 */}
+  <span className="text-gray-900 flex-1 min-w-[80px] max-w-[140px] truncate">{task.subCategory}</span>
+  <span className="text-gray-500 flex-1 min-w-[80px] max-w-[180px] truncate">{task.taskName}</span>
+  <span className="text-gray-500 flex-1 min-w-[100px] max-w-[200px] truncate">{[task.dongBlock, task.floor, task.zone].filter(Boolean).join(' ')}</span>
+  
+  {/* 우측에 남는 공간이 생길 때 작업량을 끝으로 밀고 싶다면 ml-auto 추가 (선택사항) */}
+  <span className="text-gray-400 w-16 text-right shrink-0 ml-auto">{task.amount}</span>
+</div>
               ))}
               {(!todayReport?.tomorrowTasks || todayReport.tomorrowTasks.length === 0) && (
                 <div className="text-center py-4 text-gray-400 text-sm bg-gray-50/50 rounded">등록된 작업 계획이 없습니다.</div>

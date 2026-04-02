@@ -35,6 +35,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const canAddProject = currentUser?.userRole === '골드' || currentUser?.userRole === '실버' || currentUser?.role === 'admin';
+  const canEditProject = currentUser?.userRole === '골드' || currentUser?.role === 'admin';
   const canDeleteProject = currentUser?.userRole === '골드' || currentUser?.role === 'admin';
 
   const filteredProjects = projects.filter(p =>
@@ -227,7 +228,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                   <div className="absolute top-1 xl:top-4 right-1 xl:right-4 bg-white/90 backdrop-blur-sm px-1.5 py-0.5 xl:px-2 xl:py-1 rounded-md xl:rounded-lg text-[8px] xl:text-[10px] font-bold text-blue-600 uppercase tracking-widest shadow-sm">
                     Active
                   </div>
-                  {canAddProject && (
+                  {canEditProject && (
                     <button
                       onClick={(e) => handleEditClick(e, project)}
                       className="absolute top-1 xl:top-4 left-1 xl:left-4 bg-white/90 backdrop-blur-sm p-1.5 xl:p-2 rounded-md xl:rounded-lg text-gray-600 hover:text-blue-600 hover:bg-white transition-colors shadow-sm z-10"

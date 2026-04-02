@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, User as UserIcon, Lock, Save, Shield, Mail, Phone, Building2, Briefcase } from 'lucide-react';
+import { X, User as UserIcon, Lock, Save, Shield, Mail, Phone, Building2, Briefcase, Edit2 } from 'lucide-react';
 import { User } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabaseService } from '../services/supabaseService';
@@ -24,6 +24,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editContact, setEditContact] = useState(user.contact);
+  const [editAffiliation, setEditAffiliation] = useState(user.affiliation);
+  const [editDiscipline, setEditDiscipline] = useState(user.discipline);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
 
   if (!isOpen) return null;
 
@@ -73,6 +80,42 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileError('');
+    setProfileSuccess('');
+
+    try {
+      const updatedUser = { 
+        ...user, 
+        contact: editContact,
+        affiliation: editAffiliation,
+        discipline: editDiscipline
+      };
+      
+      if (isSupabaseConfigured) {
+        await supabaseService.saveUser(updatedUser);
+      } else {
+        const savedUsersStr = localStorage.getItem('cp_users');
+        if (savedUsersStr) {
+          const users: User[] = JSON.parse(savedUsersStr);
+          const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
+          localStorage.setItem('cp_users', JSON.stringify(updatedUsers));
+        }
+      }
+
+      onUpdateUser(updatedUser);
+      setProfileSuccess('프로필 정보가 성공적으로 변경되었습니다.');
+      setTimeout(() => {
+        setIsEditingProfile(false);
+        setProfileSuccess('');
+      }, 2000);
+    } catch (err: any) {
+      setProfileError('프로필 변경 중 오류가 발생했습니다.');
+      console.error(err);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4 backdrop-blur-sm">
       <motion.div 
@@ -90,25 +133,112 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
           {/* User Info Section */}
           <div className="space-y-4">
             <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
               <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner">
                 {user.name.charAt(0)}
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="font-bold text-slate-800">{user.name}</h3>
                 <p className="text-xs text-blue-600 font-medium">{user.userRole} 등급</p>
               </div>
+              {!isEditingProfile && (
+                <button 
+                  onClick={() => setIsEditingProfile(true)}
+                  className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                  title="프로필 수정"
+                >
+                  <Edit2 size={18} />
+                </button>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 gap-3">
-              <InfoItem icon={<Mail size={16} />} label="이메일" value={user.email} />
-              <InfoItem icon={<Phone size={16} />} label="연락처" value={user.contact} />
-              <InfoItem icon={<Building2 size={16} />} label="소속" value={user.affiliation} />
-              <InfoItem icon={<Briefcase size={16} />} label="공종" value={user.discipline} />
-            </div>
+            {!isEditingProfile ? (
+              <div className="grid grid-cols-1 gap-3">
+                <InfoItem icon={<Mail size={16} />} label="이메일" value={user.email} />
+                <InfoItem icon={<Phone size={16} />} label="연락처" value={user.contact} />
+                <InfoItem icon={<Building2 size={16} />} label="소속" value={user.affiliation} />
+                <InfoItem icon={<Briefcase size={16} />} label="공종" value={user.discipline} />
+              </div>
+            ) : (
+              <form onSubmit={handleProfileUpdate} className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                    <Edit2 size={16} className="text-blue-600" />
+                    프로필 수정
+                  </h3>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsEditingProfile(false);
+                      setEditContact(user.contact);
+                      setEditAffiliation(user.affiliation);
+                      setEditDiscipline(user.discipline);
+                      setProfileError('');
+                      setProfileSuccess('');
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    취소
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">연락처</label>
+                    <div className="relative">
+                      <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input 
+                        type="text"
+                        value={editContact}
+                        onChange={(e) => setEditContact(e.target.value)}
+                        className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">소속</label>
+                    <div className="relative">
+                      <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input 
+                        type="text"
+                        value={editAffiliation}
+                        onChange={(e) => setEditAffiliation(e.target.value)}
+                        className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">공종</label>
+                    <div className="relative">
+                      <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input 
+                        type="text"
+                        value={editDiscipline}
+                        onChange={(e) => setEditDiscipline(e.target.value)}
+                        className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {profileError && <p className="text-red-500 text-xs font-bold">{profileError}</p>}
+                {profileSuccess && <p className="text-green-500 text-xs font-bold">{profileSuccess}</p>}
+
+                <button 
+                  type="submit"
+                  className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                >
+                  <Save size={18} />
+                  프로필 저장
+                </button>
+              </form>
+            )}
           </div>
 
           {/* Password Change Section */}
@@ -122,7 +252,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 비밀번호 변경하기
               </button>
             ) : (
-              <form onSubmit={handlePasswordChange} className="space-y-4">
+              <form onSubmit={handlePasswordChange} className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                     <Shield size={16} className="text-blue-600" />
@@ -143,7 +273,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     placeholder="현재 비밀번호"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     required
                   />
                   <input 
@@ -151,7 +281,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     placeholder="새 비밀번호"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     required
                   />
                   <input 
@@ -159,7 +289,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     placeholder="새 비밀번호 확인"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     required
                   />
                 </div>

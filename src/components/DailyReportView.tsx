@@ -228,12 +228,12 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
 
   useEffect(() => {
   if (project && !report.author) {
-    if (project.latitude && project.longitude) {
+    if (project.latitude !== undefined && project.longitude !== undefined) {
       const autoFetchWeather = async () => {
         try {
           const data = await fetchWeather(
-            project.latitude,
-            project.longitude,
+            project.latitude!,
+            project.longitude!,
             report.date
           );
 
@@ -248,6 +248,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
           }
         } catch (error) {
           console.error('날씨 자동 조회 실패:', error);
+          showStatus('날씨 조회에 실패했습니다.');
         }
       };
 
@@ -356,16 +357,36 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
 
     setIsCompressing(true);
     try {
-      // For now, we'll handle one photo at a time if we want to show a modal for each
-      // Or we can just add them and then let the user edit them
-      // The request says "when adding a photo, a separate popup window should appear"
-      // So let's handle the first file and open the modal
       const file = files[0];
-      const compressedBase64 = await compressImage(file, 1000); // Max 1MB
       
+      // 1. 기존처럼 이미지 압축 (Base64 문자열 반환)
+      const compressedBase64 = await compressImage(file, 500); // 500KB 정도로 설정 권장
+      
+      let finalImageUrl = compressedBase64; // 기본값은 Base64 (Supabase 미설정 대비)
+
+      // 2. Supabase가 연결되어 있다면 Storage에 업로드
+      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+      if (isSupabaseConfigured) {
+        showStatus('이미지를 서버에 업로드 중입니다...');
+        
+        // Base64 문자열을 실제 파일(Blob) 형태로 변환
+        const res = await fetch(compressedBase64);
+        const blob = await res.blob();
+        
+        // 파일명 생성 (겹치지 않게 타임스탬프 활용)
+        const fileExtension = file.name.split('.').pop() || 'jpg';
+        const uniqueFileName = `daily_report_${project?.id}_${Date.now()}.${fileExtension}`;
+        
+        // Supabase Storage에 업로드하고 URL 받아오기
+        finalImageUrl = await supabaseService.uploadImage(blob, uniqueFileName);
+      }
+      
+      // 3. 사진 데이터 생성 (이제 DB에는 엄청나게 긴 문자가 아닌 짧은 URL만 들어갑니다)
       const newPhoto: DailyPhoto = {
         id: Date.now().toString(),
-        url: compressedBase64,
+        url: finalImageUrl, // 짧은 Public URL 저장!
         title: '',
         category: '',
         subCategory: '',
@@ -374,9 +395,13 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
       
       setEditingPhoto(newPhoto);
       setIsPhotoModalOpen(true);
+      
+      if (isSupabaseConfigured) {
+        showStatus('이미지 업로드 완료!');
+      }
     } catch (error) {
-      console.error('Image compression failed:', error);
-      alert('이미지 업로드에 실패했습니다.');
+      console.error('Image upload failed:', error);
+      alert('이미지 업로드에 실패했습니다. 네트워크 상태나 Supabase Storage 설정을 확인해주세요.');
     } finally {
       setIsCompressing(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

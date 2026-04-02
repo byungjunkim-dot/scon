@@ -147,7 +147,7 @@ const SortableRow: React.FC<SortableRowProps> = ({
         <motion.div 
           initial={{ opacity: 0, scaleX: 0 }}
           animate={{ opacity: 1, scaleX: 1 }}
-          className="absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm border border-black/5 origin-left z-10 hover:brightness-105 active:scale-[0.98] transition-all"
+          className="absolute top-1/2 -translate-y-1/2 h-2 xl:h-4 rounded-full shadow-sm border border-black/5 origin-left z-10 hover:brightness-105 active:scale-[0.98] transition-all"
           style={{ 
             left, 
             width,

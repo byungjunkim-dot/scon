@@ -283,7 +283,7 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
                               initial={{ opacity: 0, scaleX: 0 }}
                               animate={{ opacity: 1, scaleX: 1 }}
                               onClick={() => onSelect(item)}
-                              className={`absolute top-1/2 -translate-y-1/2 h-3 xl:h-5 rounded-full shadow-sm transition-all flex items-center overflow-hidden cursor-pointer hover:brightness-105 active:scale-[0.98] origin-left z-10
+                              className={`absolute top-1/2 -translate-y-1/2 h-2 xl:h-4 rounded-full shadow-sm transition-all flex items-center overflow-hidden cursor-pointer hover:brightness-105 active:scale-[0.98] origin-left z-10
                                 ${isDelayed ? 'bg-rose-500' : isCompleted ? 'bg-gray-300' : ''}
                               `}
                               style={{ 
