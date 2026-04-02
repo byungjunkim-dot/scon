@@ -4,7 +4,7 @@
  * @param maxSizeKB The maximum size in KB
  * @returns A promise that resolves to the compressed base64 string
  */
-export const compressImage = (file: File, maxSizeKB: number = 200): Promise<string> => {
+export const compressImage = (file: File, maxSizeKB: number = 300): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
