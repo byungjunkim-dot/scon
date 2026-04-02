@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, User as UserIcon, Lock, Save, Shield, Mail, Phone, Building2, Briefcase, Edit2 } from 'lucide-react';
 import { User } from '../types';
+import { CATEGORIES } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabaseService } from '../services/supabaseService';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -218,11 +219,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input 
                         type="text"
+                        list="profile-discipline-list"
                         value={editDiscipline}
                         onChange={(e) => setEditDiscipline(e.target.value)}
                         className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         required
+                        placeholder="공종 (선택 또는 직접 입력)"
                       />
+                      <datalist id="profile-discipline-list">
+                        {CATEGORIES.map(cat => (
+                          <option key={cat} value={cat} />
+                        ))}
+                      </datalist>
                     </div>
                   </div>
                 </div>

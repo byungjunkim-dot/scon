@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Building2, Mail, Lock, User as UserIcon, Phone, Briefcase, Code, Key, ArrowRight, LogIn } from 'lucide-react';
 import { User } from '../types';
+import { CATEGORIES } from '../constants';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { supabaseService } from '../services/supabaseService';
 
@@ -312,12 +313,18 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
                     <input 
                       type="text" 
                       name="discipline"
-                      placeholder="공종" 
+                      list="discipline-list"
+                      placeholder="공종 (선택 또는 직접 입력)" 
                       required={!isLogin}
                       value={formData.discipline}
                       onChange={handleChange}
                       className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
                     />
+                    <datalist id="discipline-list">
+                      {CATEGORIES.map(cat => (
+                        <option key={cat} value={cat} />
+                      ))}
+                    </datalist>
                   </div>
                   <div className="relative">
                     <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
