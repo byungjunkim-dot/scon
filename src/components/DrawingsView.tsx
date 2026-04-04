@@ -29,42 +29,48 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 로컬 스토리지 키 관리
   const storageKey = project ? `cp_drawings_${project.id}` : '';
 
-  // 도면 데이터 로드
+  // 💡 도면 데이터 로드 (로컬 + Supabase)
   useEffect(() => {
-    if (!project) return;
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      setDrawings(JSON.parse(saved));
-    }
+    const loadDrawings = async () => {
+      if (!project) return;
+      
+      const saved = localStorage.getItem(storageKey);
+      if (saved) setDrawings(JSON.parse(saved));
+
+      if (isSupabaseConfigured) {
+        try {
+          const data = await supabaseService.getDrawings(project.id);
+          if (data) {
+            setDrawings(data);
+            localStorage.setItem(storageKey, JSON.stringify(data));
+          }
+        } catch (error) {
+          console.error('Error loading drawings from Supabase:', error);
+        }
+      }
+    };
+
+    loadDrawings();
   }, [project, storageKey]);
 
-  // 도면 필터링 로직
   const filteredDrawings = drawings.filter(d => d.type === selectedType);
   const floorsForType = Array.from(new Set(filteredDrawings.map(d => d.floor)));
   const currentDrawing = filteredDrawings.find(d => d.floor === selectedFloor);
 
-  // 선택된 층이 필터링된 도면 목록에 없으면 첫 번째 도면의 층으로 자동 변경
   useEffect(() => {
     if (floorsForType.length > 0 && !floorsForType.includes(selectedFloor)) {
       setSelectedFloor(floorsForType[0]);
     }
   }, [floorsForType, selectedFloor]);
 
-
-  // ==========================================
-  // 필수 핸들러 함수 구현 
-  // ==========================================
-
-  // 파일 업로드 및 압축 처리
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setIsCompressing(true);
       try {
-        const compressedBase64 = await compressImage(file, 200); // utils/image.ts의 압축 함수 사용
+        const compressedBase64 = await compressImage(file, 200);
         setNewImageUrl(compressedBase64);
       } catch (error) {
         console.error('Image compression failed:', error);
@@ -75,7 +81,7 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
     }
   };
 
-  // 도면 등록 및 수정 
+  // 💡 도면 등록 및 수정 (Supabase 연동 추가)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!project || !newName.trim() || !newImageUrl) return;
@@ -94,17 +100,21 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
       };
 
       let updatedDrawings;
-      
       if (editingDrawingId) {
         updatedDrawings = drawings.map(d => d.id === editingDrawingId ? drawingData : d);
       } else {
         updatedDrawings = [...drawings, drawingData];
       }
 
+      // 1. 로컬 저장
       setDrawings(updatedDrawings);
       localStorage.setItem(storageKey, JSON.stringify(updatedDrawings));
+
+      // 2. Supabase 저장
+      if (isSupabaseConfigured) {
+        await supabaseService.saveDrawing(drawingData);
+      }
       
-      // 상태 초기화 및 모달 닫기
       setIsAdding(false);
       setEditingDrawingId(null);
       setNewName('');
@@ -119,7 +129,6 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
     }
   };
 
-  // 도면 수정 모달 열기
   const handleEdit = (drawing: Drawing) => {
     setEditingDrawingId(drawing.id);
     setNewType(drawing.type);
@@ -129,19 +138,25 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
     setIsAdding(true);
   };
 
-  // 도면 삭제
-  const handleDelete = (id: string) => {
+  // 💡 도면 삭제 (Supabase 연동 추가)
+  const handleDelete = async (id: string) => {
     if (window.confirm('정말 이 도면을 삭제하시겠습니까?')) {
       const updatedDrawings = drawings.filter(d => d.id !== id);
       setDrawings(updatedDrawings);
       localStorage.setItem(storageKey, JSON.stringify(updatedDrawings));
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabaseService.deleteDrawing(id);
+        } catch (error) {
+          console.error('Error deleting drawing from Supabase:', error);
+        }
+      }
     }
   };
 
-  // 확대/축소 핸들러
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.5, 3));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.5, 0.5));
-
 
   return (
     <div className="h-full bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 lg:p-8 flex flex-col overflow-hidden relative">
@@ -218,44 +233,17 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
               </div>
             )}
             <div className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex flex-col gap-2 z-10">
-              <button 
-                onClick={handleZoomIn}
-                className="w-8 h-8 md:w-10 md:h-10 bg-white text-gray-700 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-50 border border-gray-200 transition-all active:scale-95"
-              >
-                +
-              </button>
-              <button 
-                onClick={handleZoomOut}
-                className="w-8 h-8 md:w-10 md:h-10 bg-white text-gray-700 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-50 border border-gray-200 transition-all active:scale-95"
-              >
-                -
-              </button>
-              <button 
-                onClick={() => setZoom(1)}
-                className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg hover:bg-blue-700 transition-all active:scale-95"
-              >
-                1:1
-              </button>
+              <button onClick={handleZoomIn} className="w-8 h-8 md:w-10 md:h-10 bg-white text-gray-700 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-50 border border-gray-200 transition-all active:scale-95">+</button>
+              <button onClick={handleZoomOut} className="w-8 h-8 md:w-10 md:h-10 bg-white text-gray-700 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-50 border border-gray-200 transition-all active:scale-95">-</button>
+              <button onClick={() => setZoom(1)} className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg hover:bg-blue-700 transition-all active:scale-95">1:1</button>
             </div>
             {currentDrawing && (
               <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 z-10 flex items-center gap-3">
                 <span className="font-bold text-gray-800">{currentDrawing.name}</span>
                 {(currentUser?.userRole === '골드' || currentUser?.userRole === '실버' || currentUser?.role === 'admin') && (
                   <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
-                    <button 
-                      onClick={() => handleEdit(currentDrawing)}
-                      className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                      title="도면 수정"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(currentDrawing.id)}
-                      className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                      title="도면 삭제"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <button onClick={() => handleEdit(currentDrawing)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors" title="도면 수정"><Edit2 size={16} /></button>
+                    <button onClick={() => handleDelete(currentDrawing.id)} className="p-1 text-gray-400 hover:text-red-600 transition-colors" title="도면 삭제"><Trash2 size={16} /></button>
                   </div>
                 )}
               </div>
@@ -274,117 +262,50 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
               className="bg-white w-full max-w-[500px] p-6 md:p-8 rounded-2xl md:rounded-3xl shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-center">
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900">
-                  {editingDrawingId ? '도면 수정' : '신규 도면 등록'}
-                </h3>
-                <button 
-                  onClick={() => {
-                    setIsAdding(false);
-                    setEditingDrawingId(null);
-                    setNewName('');
-                    setNewImageUrl('');
-                  }} 
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X size={24} />
-                </button>
+                <h3 className="text-xl md:text-2xl font-bold text-gray-900">{editingDrawingId ? '도면 수정' : '신규 도면 등록'}</h3>
+                <button onClick={() => { setIsAdding(false); setEditingDrawingId(null); setNewName(''); setNewImageUrl(''); }} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-gray-500 uppercase">도면 종류</label>
-                    <select 
-                      value={newType}
-                      onChange={(e) => setNewType(e.target.value as Drawing['type'])}
-                      className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all bg-white"
-                    >
-                      {DRAWING_TYPES.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
+                    <select value={newType} onChange={(e) => setNewType(e.target.value as Drawing['type'])} className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all bg-white">
+                      {DRAWING_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase">층/구역 (예: 1층, 지하1층)</label>
-                    <input 
-                      type="text" 
-                      value={newFloor}
-                      onChange={(e) => setNewFloor(e.target.value)}
-                      required
-                      placeholder="예: 1층"
-                      className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                    />
+                    <label className="text-xs font-bold text-gray-500 uppercase">층/구역</label>
+                    <input type="text" value={newFloor} onChange={(e) => setNewFloor(e.target.value)} required placeholder="예: 1층" className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-500 uppercase">도면명</label>
-                  <input 
-                    type="text" 
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    required
-                    placeholder="예: 1층 건축 평면도"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  />
+                  <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} required placeholder="예: 1층 건축 평면도" className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-500 uppercase">도면 이미지</label>
                   <div className="relative">
                     {isCompressing ? (
                       <div className="h-40 border-2 border-dashed border-blue-200 rounded-xl flex flex-col items-center justify-center gap-2 bg-blue-50/30">
-                        <Loader2 className="text-blue-600 animate-spin" size={32} />
-                        <p className="text-xs font-bold text-blue-600">이미지 최적화 중...</p>
+                        <Loader2 className="text-blue-600 animate-spin" size={32} /><p className="text-xs font-bold text-blue-600">이미지 최적화 중...</p>
                       </div>
                     ) : newImageUrl ? (
                       <div className="relative h-40 rounded-xl overflow-hidden border border-gray-200">
                         <img src={newImageUrl} alt="Preview" className="w-full h-full object-cover" />
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setNewImageUrl('');
-                            if (fileInputRef.current) fileInputRef.current.value = '';
-                          }}
-                          className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-full hover:bg-black/70 transition-colors"
-                        >
-                          <X size={16} />
-                        </button>
+                        <button type="button" onClick={() => { setNewImageUrl(''); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-full hover:bg-black/70 transition-colors"><X size={16} /></button>
                       </div>
                     ) : (
-                      <div 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="h-40 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all group"
-                      >
-                        <div className="bg-gray-50 p-3 rounded-full group-hover:bg-blue-100 transition-colors">
-                          <Upload className="text-gray-400 group-hover:text-blue-600" size={24} />
-                        </div>
-                        <div className="text-center">
-                          <p className="text-xs font-bold text-gray-600">이미지 업로드</p>
-                          <p className="text-[10px] text-gray-400">클릭하여 도면 이미지를 선택하세요</p>
-                        </div>
+                      <div onClick={() => fileInputRef.current?.click()} className="h-40 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all group">
+                        <div className="bg-gray-50 p-3 rounded-full group-hover:bg-blue-100 transition-colors"><Upload className="text-gray-400 group-hover:text-blue-600" size={24} /></div>
+                        <div className="text-center"><p className="text-xs font-bold text-gray-600">이미지 업로드</p><p className="text-[10px] text-gray-400">클릭하여 도면 이미지를 선택하세요</p></div>
                       </div>
                     )}
-                    <input 
-                      type="file" 
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      accept="image/*"
-                      className="hidden"
-                    />
+                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
                   </div>
                 </div>
-
-                <button 
-                  type="submit"
-                  disabled={!newImageUrl || isCompressing || isSubmitting}
-                  className="w-full bg-blue-600 text-white font-bold py-3 md:py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-                >
-                  {isSubmitting ? (
-                    <><Loader2 className="animate-spin" size={20} /> 처리 중...</>
-                  ) : (
-                    editingDrawingId ? '도면 수정 완료' : '도면 등록'
-                  )}
+                <button type="submit" disabled={!newImageUrl || isCompressing || isSubmitting} className="w-full bg-blue-600 text-white font-bold py-3 md:py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
+                  {isSubmitting ? <><Loader2 className="animate-spin" size={20} /> 처리 중...</> : (editingDrawingId ? '도면 수정 완료' : '도면 등록')}
                 </button>
               </form>
             </motion.div>
