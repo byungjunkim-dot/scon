@@ -19,161 +19,107 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
   const [selectedFloor, setSelectedFloor] = useState<string>('1층');
   const [zoom, setZoom] = useState(1);
   
-  // Drag to pan state
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [scrollStart, setScrollStart] = useState({ left: 0, top: 0 });
-  
   const [isAdding, setIsAdding] = useState(false);
   const [editingDrawingId, setEditingDrawingId] = useState<string | null>(null);
   const [newType, setNewType] = useState<Drawing['type']>('평면도');
-  const [newFloor, setNewFloor] = useState('1층');
+  const [newFloor, setNewFloor] = useState('');
   const [newName, setNewName] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 로컬 스토리지 키 관리
+  const storageKey = project ? `cp_drawings_${project.id}` : '';
+
+  // 도면 데이터 로드
   useEffect(() => {
-    const loadDrawings = async () => {
-      if (!project) {
-        setDrawings([]);
-        return;
-      }
-
-      // 1. 화면이 빨리 뜨도록 로컬 스토리지에서 먼저 불러오기
-      const savedDrawings = localStorage.getItem(`cp_drawings_${project.id}`);
-      if (savedDrawings) {
-        setDrawings(JSON.parse(savedDrawings));
-      }
-
-      // 2. Supabase에서 최신 도면 데이터 가져오기
-      if (isSupabaseConfigured) {
-        try {
-          const dbDrawings = await supabaseService.getDrawings(project.id);
-          if (dbDrawings && dbDrawings.length > 0) {
-            setDrawings(dbDrawings);
-            localStorage.setItem(`cp_drawings_${project.id}`, JSON.stringify(dbDrawings));
-          }
-        } catch (error) {
-          console.error('Failed to load drawings from Supabase:', error);
-        }
-      }
-    };
-
-    loadDrawings();
-  }, [project]);
-
-  const saveDrawings = (newDrawings: Drawing[]) => {
-    setDrawings(newDrawings);
-    if (project) {
-      localStorage.setItem(`cp_drawings_${project.id}`, JSON.stringify(newDrawings));
+    if (!project) return;
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      setDrawings(JSON.parse(saved));
     }
-  };
+  }, [project, storageKey]);
 
+  // 도면 필터링 로직
+  const filteredDrawings = drawings.filter(d => d.type === selectedType);
+  const floorsForType = Array.from(new Set(filteredDrawings.map(d => d.floor)));
+  const currentDrawing = filteredDrawings.find(d => d.floor === selectedFloor);
+
+  // 선택된 층이 필터링된 도면 목록에 없으면 첫 번째 도면의 층으로 자동 변경
+  useEffect(() => {
+    if (floorsForType.length > 0 && !floorsForType.includes(selectedFloor)) {
+      setSelectedFloor(floorsForType[0]);
+    }
+  }, [floorsForType, selectedFloor]);
+
+
+  // ==========================================
+  // 필수 핸들러 함수 구현 
+  // ==========================================
+
+  // 파일 업로드 및 압축 처리
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setIsCompressing(true);
       try {
-        const compressedBase64 = await compressImage(file, 500); // Allow slightly larger for drawings
+        const compressedBase64 = await compressImage(file, 200); // utils/image.ts의 압축 함수 사용
         setNewImageUrl(compressedBase64);
       } catch (error) {
         console.error('Image compression failed:', error);
+        alert('이미지 처리 중 오류가 발생했습니다.');
       } finally {
         setIsCompressing(false);
       }
     }
   };
 
+  // 도면 등록 및 수정 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!project || !newImageUrl || isSubmitting) return;
+    if (!project || !newName.trim() || !newImageUrl) return;
 
     setIsSubmitting(true);
-
+    
     try {
-      let finalImageUrl = newImageUrl; // 기본값은 압축된 Base64
-
-      // Supabase가 연결되어 있다면 Storage에 실제 파일로 업로드
-      // 단, 이미 URL 형태(http...)라면 새로 업로드하지 않음 (수정 시 이미지가 안 바뀌었을 경우)
-      if (isSupabaseConfigured && newImageUrl.startsWith('data:')) {
-        // Base64 문자열을 파일(Blob)로 변환
-        const res = await fetch(newImageUrl);
-        const blob = await res.blob();
-        
-        // 겹치지 않는 고유한 파일명 생성
-        const uniqueFileName = `drawing_${project.id}_${Date.now()}.jpg`;
-        
-        // Storage에 업로드 후 Public URL 받아오기 ('photos' 버킷 재사용)
-        finalImageUrl = await supabaseService.uploadImage(blob, uniqueFileName, 'photos');
-      }
-
       const drawingData: Drawing = {
-        id: editingDrawingId || Date.now().toString(),
+        id: editingDrawingId || `d-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         projectId: project.id,
+        name: newName,
         type: newType,
         floor: newFloor,
-        name: newName,
-        imageUrl: finalImageUrl,
-        createdAt: editingDrawingId 
-          ? drawings.find(d => d.id === editingDrawingId)?.createdAt || new Date().toISOString()
-          : new Date().toISOString(),
+        imageUrl: newImageUrl,
+        createdAt: new Date().toISOString()
       };
 
-      // 1. 화면 및 로컬 스토리지에 즉시 반영
-      let updatedDrawings: Drawing[];
+      let updatedDrawings;
+      
       if (editingDrawingId) {
         updatedDrawings = drawings.map(d => d.id === editingDrawingId ? drawingData : d);
       } else {
         updatedDrawings = [...drawings, drawingData];
       }
-      
+
       setDrawings(updatedDrawings);
-      localStorage.setItem(`cp_drawings_${project.id}`, JSON.stringify(updatedDrawings));
-
-      // 2. Supabase DB에 저장
-      if (isSupabaseConfigured) {
-        await supabaseService.saveDrawing(drawingData);
-      }
-
-      // 3. 입력창 초기화
+      localStorage.setItem(storageKey, JSON.stringify(updatedDrawings));
+      
+      // 상태 초기화 및 모달 닫기
       setIsAdding(false);
       setEditingDrawingId(null);
       setNewName('');
       setNewImageUrl('');
-      setNewFloor('1층');
-      setNewType('평면도');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       
     } catch (error) {
-      console.error('Drawing upload failed:', error);
-      alert('도면 등록 중 오류가 발생했습니다. 네트워크나 설정을 확인해주세요.');
+      console.error('Error saving drawing:', error);
+      alert('도면 저장 중 오류가 발생했습니다.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!project || !window.confirm('정말로 이 도면을 삭제하시겠습니까?')) return;
-
-    try {
-      // 1. 화면 및 로컬 스토리지 반영
-      const updatedDrawings = drawings.filter(d => d.id !== id);
-      setDrawings(updatedDrawings);
-      localStorage.setItem(`cp_drawings_${project.id}`, JSON.stringify(updatedDrawings));
-
-      // 2. Supabase DB 반영
-      if (isSupabaseConfigured) {
-        await supabaseService.deleteDrawing(id);
-      }
-    } catch (error) {
-      console.error('Failed to delete drawing:', error);
-      alert('도면 삭제 중 오류가 발생했습니다.');
-    }
-  };
-
+  // 도면 수정 모달 열기
   const handleEdit = (drawing: Drawing) => {
     setEditingDrawingId(drawing.id);
     setNewType(drawing.type);
@@ -183,45 +129,19 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
     setIsAdding(true);
   };
 
-  const filteredDrawings = drawings.filter(d => d.type === selectedType);
-  const floorsForType = Array.from(new Set(filteredDrawings.map(d => d.floor))).sort();
-  
-  // Auto-select first floor if current selected floor doesn't exist in this type
-  useEffect(() => {
-    if (floorsForType.length > 0 && !floorsForType.includes(selectedFloor)) {
-      setSelectedFloor(floorsForType[0]);
+  // 도면 삭제
+  const handleDelete = (id: string) => {
+    if (window.confirm('정말 이 도면을 삭제하시겠습니까?')) {
+      const updatedDrawings = drawings.filter(d => d.id !== id);
+      setDrawings(updatedDrawings);
+      localStorage.setItem(storageKey, JSON.stringify(updatedDrawings));
     }
-    setZoom(1);
-  }, [selectedType, floorsForType, selectedFloor]);
-
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.2, 5));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.2, 0.2));
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!containerRef.current) return;
-    setIsDragging(true);
-    setDragStart({ x: e.pageX, y: e.pageY });
-    setScrollStart({
-      left: containerRef.current.scrollLeft,
-      top: containerRef.current.scrollTop
-    });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !containerRef.current) return;
-    e.preventDefault(); // 기본 드래그(선택) 방지
-    const dx = e.pageX - dragStart.x;
-    const dy = e.pageY - dragStart.y;
-    // 부드러운 스크롤을 위해 스크롤 위치 직접 조정
-    containerRef.current.scrollLeft = scrollStart.left - dx;
-    containerRef.current.scrollTop = scrollStart.top - dy;
-  };
+  // 확대/축소 핸들러
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.5, 3));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.5, 0.5));
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const currentDrawing = filteredDrawings.find(d => d.floor === selectedFloor);
 
   return (
     <div className="h-full bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 lg:p-8 flex flex-col overflow-hidden relative">
@@ -239,7 +159,14 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
         </div>
         {(currentUser?.userRole === '골드' || currentUser?.userRole === '실버' || currentUser?.role === 'admin') && (
           <button 
-            onClick={() => setIsAdding(true)}
+            onClick={() => {
+              setEditingDrawingId(null);
+              setNewType('평면도');
+              setNewFloor('');
+              setNewName('');
+              setNewImageUrl('');
+              setIsAdding(true);
+            }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-colors w-full md:w-auto shadow-md shadow-blue-500/10"
           >
             도면추가
@@ -265,36 +192,25 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
         </div>
         
         <div className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-center justify-center relative overflow-hidden p-2 md:p-3 lg:p-4">
-          <div className="w-full h-full border-2 border-gray-300 bg-white flex items-center justify-center relative overflow-hidden">
+          <div className="w-full h-full border-2 border-gray-300 bg-white flex items-center justify-center relative overflow-hidden cursor-grab active:cursor-grabbing">
             {currentDrawing ? (
-              {/* 1. 바깥쪽 컨테이너: 스크롤 담당 */}
-              <div 
-                ref={containerRef}
-                className={`w-full h-full overflow-auto no-scrollbar relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
+              <motion.div
+                drag
+                dragConstraints={{ top: -1000, left: -1000, right: 1000, bottom: 1000 }} 
+                dragElastic={0.2}
+                animate={{ scale: zoom }}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }} 
+                className="flex items-center justify-center" 
+                style={{ originX: 0.5, originY: 0.5 }} 
               >
-                {/* 2. 안쪽 래퍼: 이미지가 정중앙에 위치하도록 돕는 역할 */}
-                <div className="min-w-full min-h-full flex items-center justify-center">
-                  {/* 3. 이미지 태그: style로 명확하게 width를 박아줍니다! */}
-                  <img 
-                    src={currentDrawing.imageUrl} 
-                    alt={currentDrawing.name} 
-                    // max-w-none을 주어 이미지가 컨테이너 밖으로 자유롭게 커질 수 있게 합니다.
-                    className="max-w-none object-contain pointer-events-none select-none transition-all duration-200 ease-out"
-                    style={{ 
-                      width: `${zoom * 100}%`,
-                      // 높이는 자동 조절되게 둡니다.
-                      height: 'auto',
-                      // 최소 높이를 주어 너무 작아지지 않게 방어합니다.
-                      minHeight: '100%' 
-                    }}
-                    draggable={false}
-                  />
-                </div>
-              </div>
+                <img 
+                  src={currentDrawing.imageUrl} 
+                  alt={currentDrawing.name} 
+                  className="max-w-none object-contain pointer-events-none select-none"
+                  style={{ width: '100%', height: 'auto', minHeight: '300px' }} 
+                  draggable={false}
+                />
+              </motion.div>
             ) : (
               <div className="flex flex-col items-center text-gray-400">
                 <ImageIcon size={48} className="mb-2 opacity-50" />
@@ -348,7 +264,6 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
         </div>
       </div>
 
-      {/* Add Drawing Modal */}
       <AnimatePresence>
         {isAdding && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -461,16 +376,16 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
                 </div>
 
                 <button 
-  type="submit"
-  disabled={!newImageUrl || isCompressing || isSubmitting}
-  className="w-full bg-blue-600 text-white font-bold py-3 md:py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
->
-  {isSubmitting ? (
-    <><Loader2 className="animate-spin" size={20} /> 처리 중...</>
-  ) : (
-    editingDrawingId ? '도면 수정 완료' : '도면 등록'
-  )}
-</button>
+                  type="submit"
+                  disabled={!newImageUrl || isCompressing || isSubmitting}
+                  className="w-full bg-blue-600 text-white font-bold py-3 md:py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <><Loader2 className="animate-spin" size={20} /> 처리 중...</>
+                  ) : (
+                    editingDrawingId ? '도면 수정 완료' : '도면 등록'
+                  )}
+                </button>
               </form>
             </motion.div>
           </div>
