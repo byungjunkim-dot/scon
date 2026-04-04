@@ -35,6 +35,7 @@ export const fetchWeather = async (
     `&longitude=${longitude}` +
     `&current=temperature_2m` +
     `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,weather_code` +
+    `&wind_speed_unit=ms` +
     `&timezone=Asia/Seoul` +
     `&forecast_days=16`;
 
