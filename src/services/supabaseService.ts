@@ -105,6 +105,15 @@ export const supabaseService = {
     return data as Project;
   },
 
+  async updateProjectSettings(projectId: string, settings: AppSettings) {
+    const { error } = await supabase
+      .from('projects')
+      .update({ settings: settings })
+      .eq('id', projectId);
+
+    if (error) throw error;
+  },
+
   async deleteProject(id: string) {
     const { error } = await supabase.from('projects').delete().eq('id', id);
     if (error) throw error;
