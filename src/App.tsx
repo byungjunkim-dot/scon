@@ -674,8 +674,9 @@ const handleUpdateSchedule = async (item: ScheduleItem) => {
           if (updatedProject) {
             // Supabase projects 테이블에 통째로 업데이트
             // await supabaseService.saveProject(updatedProject);
+            console.log('업데이트 타겟 프로젝트 ID:', currentProjectId);
             await supabaseService.updateProjectSettings(currentProjectId, newSettings);
-              console.log('프로젝트별 설정이 Supabase에 저장되었습니다.');
+            console.log('프로젝트별 설정이 Supabase에 저장되었습니다.');
           }
         } catch (error) {
           console.error('Error saving project settings to Supabase:', error);
