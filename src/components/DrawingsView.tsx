@@ -81,12 +81,18 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
     }
   };
 
-  // 💡 도면 등록 및 수정 (Supabase 연동 추가)
+// 💡 도면 등록 및 수정 (로그 추가됨)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!project || !newName.trim() || !newImageUrl) return;
+    console.log('1. 도면 제출 버튼 클릭됨');
+
+    if (!project || !newName.trim() || !newImageUrl) {
+      console.warn('2. 필수 데이터가 누락되어 저장이 중단되었습니다.', { project: !!project, newName, newImageUrl: !!newImageUrl });
+      return;
+    }
 
     setIsSubmitting(true);
+    console.log('3. 제출 프로세스 시작');
     
     try {
       const drawingData: Drawing = {
@@ -109,12 +115,18 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
       // 1. 로컬 저장
       setDrawings(updatedDrawings);
       localStorage.setItem(storageKey, JSON.stringify(updatedDrawings));
+      console.log('4. 로컬 스토리지 저장 완료');
 
       // 2. Supabase 저장
       if (isSupabaseConfigured) {
+        console.log('5. Supabase(drawings 테이블) 저장 시도 중...');
         await supabaseService.saveDrawing(drawingData);
+        console.log('✅ 6. Supabase 저장 완벽 성공!');
+      } else {
+        console.warn('⚠️ Supabase가 설정되지 않았습니다 (isSupabaseConfigured = false). 로컬에만 저장됩니다.');
       }
       
+      // 모달 초기화
       setIsAdding(false);
       setEditingDrawingId(null);
       setNewName('');
@@ -122,10 +134,11 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
       if (fileInputRef.current) fileInputRef.current.value = '';
       
     } catch (error) {
-      console.error('Error saving drawing:', error);
-      alert('도면 저장 중 오류가 발생했습니다.');
+      console.error('❌ Supabase 저장 중 치명적 오류 발생:', error);
+      alert('도면 저장 중 오류가 발생했습니다. 콘솔 창을 확인해주세요.');
     } finally {
       setIsSubmitting(false);
+      console.log('7. 제출 프로세스 종료');
     }
   };
 
