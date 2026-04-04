@@ -431,13 +431,30 @@ export default function App() {
       alert('프로젝트 수정 권한이 없습니다.');
       return;
     }
-    const updatedProjects = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
+
+    // 💡 핵심: 기존 데이터(특히 settings)가 증발하지 않도록 안전하게 합쳐줍니다(Merge).
+    const updatedProjects = projects.map(p => {
+      if (p.id === updatedProject.id) {
+        return {
+          ...p,
+          ...updatedProject,
+          // 넘어온 데이터에 settings가 빠져있어도, 기존(p.settings) 것을 그대로 유지!
+          settings: updatedProject.settings || p.settings
+        };
+      }
+      return p;
+    });
+
     setProjects(updatedProjects);
     localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
     if (isSupabaseConfigured) {
       try {
-        await supabaseService.saveProject(updatedProject);
+        // 안전하게 병합된 최종 데이터를 DB에 저장
+        const finalProject = updatedProjects.find(p => p.id === updatedProject.id);
+        if (finalProject) {
+          await supabaseService.saveProject(finalProject);
+        }
       } catch (error) {
         console.error('Error saving project to Supabase:', error);
       }
