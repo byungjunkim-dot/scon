@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Upload, Loader2, Image as ImageIcon } from 'lucide-react';
+import { X, Upload, Loader2, Image as ImageIcon, Edit2, Trash2 } from 'lucide-react';
 import { Project, Drawing, User } from '../types';
 import { compressImage } from '../utils/image';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -26,6 +26,7 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
   const [scrollStart, setScrollStart] = useState({ left: 0, top: 0 });
   
   const [isAdding, setIsAdding] = useState(false);
+  const [editingDrawingId, setEditingDrawingId] = useState<string | null>(null);
   const [newType, setNewType] = useState<Drawing['type']>('평면도');
   const [newFloor, setNewFloor] = useState('1층');
   const [newName, setNewName] = useState('');
@@ -97,7 +98,8 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
       let finalImageUrl = newImageUrl; // 기본값은 압축된 Base64
 
       // Supabase가 연결되어 있다면 Storage에 실제 파일로 업로드
-      if (isSupabaseConfigured) {
+      // 단, 이미 URL 형태(http...)라면 새로 업로드하지 않음 (수정 시 이미지가 안 바뀌었을 경우)
+      if (isSupabaseConfigured && newImageUrl.startsWith('data:')) {
         // Base64 문자열을 파일(Blob)로 변환
         const res = await fetch(newImageUrl);
         const blob = await res.blob();
@@ -109,28 +111,37 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
         finalImageUrl = await supabaseService.uploadImage(blob, uniqueFileName, 'photos');
       }
 
-      const newDrawing: Drawing = {
-        id: Date.now().toString(),
+      const drawingData: Drawing = {
+        id: editingDrawingId || Date.now().toString(),
         projectId: project.id,
         type: newType,
         floor: newFloor,
         name: newName,
-        imageUrl: finalImageUrl, // DB에는 깔끔한 URL만 들어갑니다!
-        createdAt: new Date().toISOString(),
+        imageUrl: finalImageUrl,
+        createdAt: editingDrawingId 
+          ? drawings.find(d => d.id === editingDrawingId)?.createdAt || new Date().toISOString()
+          : new Date().toISOString(),
       };
 
       // 1. 화면 및 로컬 스토리지에 즉시 반영
-      const updatedDrawings = [...drawings, newDrawing];
+      let updatedDrawings: Drawing[];
+      if (editingDrawingId) {
+        updatedDrawings = drawings.map(d => d.id === editingDrawingId ? drawingData : d);
+      } else {
+        updatedDrawings = [...drawings, drawingData];
+      }
+      
       setDrawings(updatedDrawings);
       localStorage.setItem(`cp_drawings_${project.id}`, JSON.stringify(updatedDrawings));
 
       // 2. Supabase DB에 저장
       if (isSupabaseConfigured) {
-        await supabaseService.saveDrawing(newDrawing);
+        await supabaseService.saveDrawing(drawingData);
       }
 
       // 3. 입력창 초기화
       setIsAdding(false);
+      setEditingDrawingId(null);
       setNewName('');
       setNewImageUrl('');
       setNewFloor('1층');
@@ -142,6 +153,34 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!project || !window.confirm('정말로 이 도면을 삭제하시겠습니까?')) return;
+
+    try {
+      // 1. 화면 및 로컬 스토리지 반영
+      const updatedDrawings = drawings.filter(d => d.id !== id);
+      setDrawings(updatedDrawings);
+      localStorage.setItem(`cp_drawings_${project.id}`, JSON.stringify(updatedDrawings));
+
+      // 2. Supabase DB 반영
+      if (isSupabaseConfigured) {
+        await supabaseService.deleteDrawing(id);
+      }
+    } catch (error) {
+      console.error('Failed to delete drawing:', error);
+      alert('도면 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleEdit = (drawing: Drawing) => {
+    setEditingDrawingId(drawing.id);
+    setNewType(drawing.type);
+    setNewFloor(drawing.floor);
+    setNewName(drawing.name);
+    setNewImageUrl(drawing.imageUrl);
+    setIsAdding(true);
   };
 
   const filteredDrawings = drawings.filter(d => d.type === selectedType);
@@ -235,16 +274,17 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                {/* 1. 바깥쪽 div는 스타일을 제거하고 그대로 둡니다 */}
-<div className="min-w-full min-h-full flex items-center justify-center">
-  {/* 2. img 태그에 직접 transform: scale()을 먹여줍니다 */}
-  <img 
-    src={currentDrawing.imageUrl} 
-    alt={currentDrawing.name} 
-    className="max-w-full max-h-full object-contain pointer-events-none select-none transition-transform duration-200 ease-out origin-center"
-    style={{ transform: `scale(${zoom})` }}
-  />
-</div>
+                {/* 💡 핵심: transform 대신 실제 width/height를 퍼센트로 늘려 스크롤 영역을 확보합니다 */}
+                <div 
+                  className="min-w-full min-h-full flex items-center justify-center transition-all duration-200 ease-out"
+                  style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
+                >
+                  <img 
+                    src={currentDrawing.imageUrl} 
+                    alt={currentDrawing.name} 
+                    className="w-full h-full object-contain pointer-events-none select-none"
+                  />
+                </div>
               </div>
             ) : (
               <div className="flex flex-col items-center text-gray-400">
@@ -273,8 +313,26 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
               </button>
             </div>
             {currentDrawing && (
-              <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 z-10">
+              <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 z-10 flex items-center gap-3">
                 <span className="font-bold text-gray-800">{currentDrawing.name}</span>
+                {(currentUser?.userRole === '골드' || currentUser?.userRole === '실버' || currentUser?.role === 'admin') && (
+                  <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
+                    <button 
+                      onClick={() => handleEdit(currentDrawing)}
+                      className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                      title="도면 수정"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(currentDrawing.id)}
+                      className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                      title="도면 삭제"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -292,8 +350,18 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
               className="bg-white w-full max-w-[500px] p-6 md:p-8 rounded-2xl md:rounded-3xl shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-center">
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900">신규 도면 등록</h3>
-                <button onClick={() => setIsAdding(false)} className="text-gray-400 hover:text-gray-600">
+                <h3 className="text-xl md:text-2xl font-bold text-gray-900">
+                  {editingDrawingId ? '도면 수정' : '신규 도면 등록'}
+                </h3>
+                <button 
+                  onClick={() => {
+                    setIsAdding(false);
+                    setEditingDrawingId(null);
+                    setNewName('');
+                    setNewImageUrl('');
+                  }} 
+                  className="text-gray-400 hover:text-gray-600"
+                >
                   <X size={24} />
                 </button>
               </div>
@@ -389,9 +457,9 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
   className="w-full bg-blue-600 text-white font-bold py-3 md:py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
 >
   {isSubmitting ? (
-    <><Loader2 className="animate-spin" size={20} /> 업로드 중...</>
+    <><Loader2 className="animate-spin" size={20} /> 처리 중...</>
   ) : (
-    '도면 등록'
+    editingDrawingId ? '도면 수정 완료' : '도면 등록'
   )}
 </button>
               </form>
