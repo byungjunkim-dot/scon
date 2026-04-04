@@ -209,9 +209,10 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging || !containerRef.current) return;
-    e.preventDefault();
+    e.preventDefault(); // 기본 드래그(선택) 방지
     const dx = e.pageX - dragStart.x;
     const dy = e.pageY - dragStart.y;
+    // 부드러운 스크롤을 위해 스크롤 위치 직접 조정
     containerRef.current.scrollLeft = scrollStart.left - dx;
     containerRef.current.scrollTop = scrollStart.top - dy;
   };
@@ -266,28 +267,31 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
         <div className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-center justify-center relative overflow-hidden p-2 md:p-3 lg:p-4">
           <div className="w-full h-full border-2 border-gray-300 bg-white flex items-center justify-center relative overflow-hidden">
             {currentDrawing ? (
+              {/* 1. 바깥쪽 컨테이너: 스크롤 담당 */}
               <div 
                 ref={containerRef}
-                className={`w-full h-full overflow-auto no-scrollbar ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                className={`w-full h-full overflow-auto no-scrollbar relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                {/* 💡 핵심: 이미지를 감싸는 안쪽 div가 zoom 비율에 맞춰 진짜로 커지게 만듭니다! */}
-                <div 
-                  className="min-w-full min-h-full flex items-center justify-center transition-all duration-200 ease-out origin-top-left"
-                  style={{ 
-                    // zoom이 1(100%)일 때는 딱 맞게, 2(200%)일 때는 두 배로 커집니다.
-                    width: `${zoom * 100}%`, 
-                    height: `${zoom * 100}%` 
-                  }}
-                >
+                {/* 2. 안쪽 래퍼: 이미지가 정중앙에 위치하도록 돕는 역할 */}
+                <div className="min-w-full min-h-full flex items-center justify-center">
+                  {/* 3. 이미지 태그: style로 명확하게 width를 박아줍니다! */}
                   <img 
                     src={currentDrawing.imageUrl} 
                     alt={currentDrawing.name} 
-                    // 💡 핵심: 이미지가 부모 div를 꽉 채우도록 설정
-                    className="w-full h-full object-contain pointer-events-none select-none"
+                    // max-w-none을 주어 이미지가 컨테이너 밖으로 자유롭게 커질 수 있게 합니다.
+                    className="max-w-none object-contain pointer-events-none select-none transition-all duration-200 ease-out"
+                    style={{ 
+                      width: `${zoom * 100}%`,
+                      // 높이는 자동 조절되게 둡니다.
+                      height: 'auto',
+                      // 최소 높이를 주어 너무 작아지지 않게 방어합니다.
+                      minHeight: '100%' 
+                    }}
+                    draggable={false}
                   />
                 </div>
               </div>
