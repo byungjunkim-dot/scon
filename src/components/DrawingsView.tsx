@@ -274,14 +274,19 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                {/* 💡 핵심: transform 대신 실제 width/height를 퍼센트로 늘려 스크롤 영역을 확보합니다 */}
+                {/* 💡 핵심: 이미지를 감싸는 안쪽 div가 zoom 비율에 맞춰 진짜로 커지게 만듭니다! */}
                 <div 
-                  className="min-w-full min-h-full flex items-center justify-center transition-all duration-200 ease-out"
-                  style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
+                  className="min-w-full min-h-full flex items-center justify-center transition-all duration-200 ease-out origin-top-left"
+                  style={{ 
+                    // zoom이 1(100%)일 때는 딱 맞게, 2(200%)일 때는 두 배로 커집니다.
+                    width: `${zoom * 100}%`, 
+                    height: `${zoom * 100}%` 
+                  }}
                 >
                   <img 
                     src={currentDrawing.imageUrl} 
                     alt={currentDrawing.name} 
+                    // 💡 핵심: 이미지가 부모 div를 꽉 채우도록 설정
                     className="w-full h-full object-contain pointer-events-none select-none"
                   />
                 </div>
