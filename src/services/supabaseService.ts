@@ -95,12 +95,7 @@ export const supabaseService = {
   },
 
   async saveProject(project: Project) {
-    const { data, error } = await supabase
-      .from('projects')
-      .upsert(project)
-      .select()
-      .single();
-
+    const { data, error } = await supabase.from('projects').upsert(project).select().single();
     if (error) throw error;
     return data as Project;
   },
@@ -108,16 +103,14 @@ export const supabaseService = {
   async updateProjectSettings(projectId: string, settings: AppSettings) {
     const { data, error } = await supabase
       .from('projects')
-      .update({ settings: settings }) // 설정 컬럼만 업데이트
+      .update({ settings: settings })
       .eq('id', projectId)
-      .select()   // 👈 핵심 1: 업데이트한 데이터를 나에게 다시 보여달라고 강제 요청
-      .single();  // 👈 핵심 2: 만약 업데이트된 데이터가 '0개'면 즉각 에러(PGRST116)를 던지도록 강제
-
+      .select()
+      .single();
     if (error) {
       console.error("Supabase Update Error Details:", error);
       throw error;
     }
-    
     return data;
   },
 
@@ -133,23 +126,14 @@ export const supabaseService = {
       .select('*')
       .eq('projectId', projectId)
       .order('sortOrder', { ascending: true });
-
     if (error) throw error;
-
     return (data ?? []).map((row) => fromScheduleRow(row as ScheduleRow)) as ScheduleItem[];
   },
 
   async saveSchedule(item: ScheduleItemWithExtra) {
     const row = toScheduleRow(item);
-
-    const { data, error } = await supabase
-      .from('schedules')
-      .upsert(row)
-      .select()
-      .single();
-
+    const { data, error } = await supabase.from('schedules').upsert(row).select().single();
     if (error) throw error;
-
     return fromScheduleRow(data as ScheduleRow) as ScheduleItem;
   },
 
@@ -166,10 +150,62 @@ export const supabaseService = {
   },
 
   async saveUser(user: User) {
-    const { data, error } = await supabase
-      .from('users')
-      .upsert(user)
-      .select()
-      .single();
-
+    const { data, error } = await supabase.from('users').upsert(user).select().single();
     if (error) throw error;
+    return data as User;
+  },
+
+  async getUserByEmail(email: string) {
+    const { data, error } = await supabase.from('users').select('*').eq('email', email).single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data as User | null;
+  },
+
+  async deleteUser(id: string) {
+    const { error } = await supabase.from('users').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // Settings
+  async getSettings() {
+    const { data, error } = await supabase.from('settings').select('*').single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data?.settings as AppSettings | null;
+  },
+
+  async saveSettings(settings: AppSettings) {
+    const { error } = await supabase.from('settings').upsert({ id: 'global', settings }).select();
+    if (error) throw error;
+  },
+
+  // Daily Reports
+  async getDailyReports(projectId: string) {
+    const { data, error } = await supabase.from('daily_reports').select('*').eq('projectId', projectId);
+    if (error) throw error;
+    return data as any[];
+  },
+
+  async saveDailyReport(report: any) {
+    const { data, error } = await supabase.from('daily_reports').upsert(report).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  // 👉 Drawings (여기부터 도면 처리 로직입니다)
+  async getDrawings(projectId: string) {
+    const { data, error } = await supabase.from('drawings').select('*').eq('projectId', projectId);
+    if (error) throw error;
+    return data as Drawing[];
+  },
+
+  async saveDrawing(drawing: Drawing) {
+    const { data, error } = await supabase.from('drawings').upsert(drawing).select().single();
+    if (error) throw error;
+    return data as Drawing;
+  },
+
+  async deleteDrawing(id: string) {
+    const { error } = await supabase.from('drawings').delete().eq('id', id);
+    if (error) throw error;
+  }
+};
