@@ -106,12 +106,19 @@ export const supabaseService = {
   },
 
   async updateProjectSettings(projectId: string, settings: AppSettings) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('projects')
-      .update({ settings: settings })
-      .eq('id', projectId);
+      .update({ settings: settings }) // 설정 컬럼만 업데이트
+      .eq('id', projectId)
+      .select()   // 👈 핵심 1: 업데이트한 데이터를 나에게 다시 보여달라고 강제 요청
+      .single();  // 👈 핵심 2: 만약 업데이트된 데이터가 '0개'면 즉각 에러(PGRST116)를 던지도록 강제
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase Update Error Details:", error);
+      throw error;
+    }
+    
+    return data;
   },
 
   async deleteProject(id: string) {
