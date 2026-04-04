@@ -202,8 +202,11 @@ export default function App() {
 
           const settingsData = await supabaseService.getSettings();
           if (settingsData) {
-            setSettings(settingsData);
             localStorage.setItem('cp_settings', JSON.stringify(settingsData));
+            // 👇 수정 포인트 1: 특정 프로젝트 안에 들어가 있지 않을 때만 전역 설정을 화면에 반영!
+            if (!currentProjectId) {
+              setSettings(settingsData);
+            }
           }
         } catch (error) {
           console.error('Error loading data from Supabase:', error);
@@ -230,7 +233,11 @@ export default function App() {
           });
           parsedSettings.contractors = newContractors;
         }
-        setSettings(parsedSettings);
+        
+        // 👇 수정 포인트 2: 로컬 스토리지의 전역 설정도 프로젝트 밖에서만 화면에 반영!
+        if (!currentProjectId) {
+          setSettings(parsedSettings);
+        }
       }
     };
 
