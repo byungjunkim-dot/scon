@@ -425,6 +425,35 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
     setIsPhotoModalOpen(true);
   };
 
+// 사진 삭제 처리 함수
+  const handleDeletePhoto = async (photoToDelete: DailyPhoto) => {
+    // 1. 화면(상태)에서 먼저 제거
+    setReport(prev => ({
+      ...prev,
+      photos: prev.photos.filter(p => p.id !== photoToDelete.id)
+    }));
+
+    // 2. 서버에 올라간 사진이라면 Storage에서도 삭제
+    if (!photoToDelete.url.startsWith('data:image/')) {
+      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+      if (isSupabaseConfigured) {
+        try {
+          const urlParts = photoToDelete.url.split('/');
+          const fileName = urlParts[urlParts.length - 1];
+
+          if (fileName) {
+            await supabaseService.deleteImage(fileName);
+            showStatus('서버에서 이미지가 완전히 삭제되었습니다.');
+          }
+        } catch (error) {
+          console.error('Storage 이미지 삭제 실패:', error);
+        }
+      }
+    }
+  };
+
   const handleSavePersonnel = (personnelDetails: any[]) => {
     const direct = personnelDetails.reduce((sum, p) => sum + (Number(p.direct) || 0), 0);
     const outsourced = personnelDetails.reduce((sum, p) => sum + (Number(p.outsourced) || 0), 0);
@@ -1019,7 +1048,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setReport({...report, photos: report.photos.filter(p => p.id !== photo.id)});
+                                handleDeletePhoto(photo);
                               }}
                               className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10"
                             >
