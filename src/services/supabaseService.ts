@@ -231,15 +231,20 @@ export const supabaseService = {
     return urlData.publicUrl;
   },
 
-  // 👉 Storage (사진 이미지 파일 삭제용)
+ // 👉 Storage (사진 이미지 파일 삭제용)
   async deleteImage(fileName: string) {
     const bucketName = 'photos';
     
     // Supabase Storage에서 파일 삭제
-    const { error } = await supabase.storage
+    const { data, error } = await supabase.storage
       .from(bucketName)
       .remove([fileName]);
 
     if (error) throw error;
+
+    // 🚨 핵심: 에러는 안 났지만 권한 부족으로 삭제된 파일이 0개일 때를 잡아냅니다.
+    if (!data || data.length === 0) {
+      throw new Error('권한(RLS)이 없거나 파일을 찾을 수 없습니다.');
+    }
   }
 };
