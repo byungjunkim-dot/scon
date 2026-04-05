@@ -229,5 +229,17 @@ export const supabaseService = {
       .getPublicUrl(fileName);
 
     return urlData.publicUrl;
+  },
+
+  // 👉 Storage (사진 이미지 파일 삭제용)
+  async deleteImage(fileName: string) {
+    const bucketName = 'photos';
+    
+    // Supabase Storage에서 파일 삭제
+    const { error } = await supabase.storage
+      .from(bucketName)
+      .remove([fileName]);
+
+    if (error) throw error;
   }
 };
