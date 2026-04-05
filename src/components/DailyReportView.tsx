@@ -440,17 +440,18 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
 
       if (isSupabaseConfigured) {
         try {
-          const urlParts = photoToDelete.url.split('/');
-          const fileName = urlParts[urlParts.length - 1];
+          // URL에서 순수 파일명만 정확하게 추출 (?t= 시간값 등 쿼리스트링 제거)
+          const cleanUrl = photoToDelete.url.split('?')[0];
+          const urlParts = cleanUrl.split('/');
+          const fileName = decodeURIComponent(urlParts[urlParts.length - 1]); // 한글/특수기호 깨짐 방지
 
           if (fileName) {
             await supabaseService.deleteImage(fileName);
             showStatus('서버에서 이미지가 완전히 삭제되었습니다.');
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Storage 이미지 삭제 실패:', error);
-          // 🚨 수정된 부분: 왜 삭제가 안 되었는지 화면에 경고창을 띄워줍니다!
-          alert(`서버 이미지 삭제 실패!\n사유: ${error.message || '권한(RLS)이 없습니다.'}\nSupabase 대시보드에서 DELETE 정책을 확인해주세요.`);
+          alert(`[서버 파일 삭제 실패]\n사유: ${error.message}\n\n※ 해결방법:\nSupabase [SQL Editor] 메뉴로 가셔서 아래 코드를 복사 후 Run 하세요.\n\nCREATE POLICY "Allow Delete Photos" ON storage.objects FOR DELETE USING (bucket_id = 'photos');`);
         }
       }
     }
