@@ -449,6 +449,8 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
           }
         } catch (error) {
           console.error('Storage 이미지 삭제 실패:', error);
+          // 🚨 수정된 부분: 왜 삭제가 안 되었는지 화면에 경고창을 띄워줍니다!
+          alert(`서버 이미지 삭제 실패!\n사유: ${error.message || '권한(RLS)이 없습니다.'}\nSupabase 대시보드에서 DELETE 정책을 확인해주세요.`);
         }
       }
     }
