@@ -358,65 +358,63 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
     setIsCompressing(true);
     try {
       const file = files[0];
-      
-      // 1. 기존처럼 이미지 압축 (Base64 문자열 반환)
-      const compressedBase64 = await compressImage(file, 500); // 500KB 정도로 설정 권장
-      
-      let finalImageUrl = compressedBase64; // 기본값은 Base64 (Supabase 미설정 대비)
+      const compressedBase64 = await compressImage(file, 500); 
 
-      // 2. Supabase가 연결되어 있다면 Storage에 업로드
-      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
-
-      if (isSupabaseConfigured) {
-        showStatus('이미지를 서버에 업로드 중입니다...');
-        
-        // Base64 문자열을 실제 파일(Blob) 형태로 변환
-        const res = await fetch(compressedBase64);
-        const blob = await res.blob();
-        
-        // 파일명 생성 (겹치지 않게 타임스탬프 활용)
-        const fileExtension = file.name.split('.').pop() || 'jpg';
-        const uniqueFileName = `daily_report_${project?.id}_${Date.now()}.${fileExtension}`;
-        
-        // Supabase Storage에 업로드하고 URL 받아오기
-        finalImageUrl = await supabaseService.uploadImage(blob, uniqueFileName);
-      }
-      
-      // 3. 사진 데이터 생성 (이제 DB에는 엄청나게 긴 문자가 아닌 짧은 URL만 들어갑니다)
       const newPhoto: DailyPhoto = {
         id: Date.now().toString(),
-        url: finalImageUrl, // 짧은 Public URL 저장!
+        url: compressedBase64,
         title: '',
         category: '',
         subCategory: '',
         description: ''
       };
-      
+
       setEditingPhoto(newPhoto);
       setIsPhotoModalOpen(true);
-      
-      if (isSupabaseConfigured) {
-        showStatus('이미지 업로드 완료!');
-      }
+
     } catch (error) {
-      console.error('Image upload failed:', error);
-      alert('이미지 업로드에 실패했습니다. 네트워크 상태나 Supabase Storage 설정을 확인해주세요.');
+      console.error('Image processing failed:', error);
+      alert('이미지 처리에 실패했습니다.');
     } finally {
       setIsCompressing(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleSavePhoto = (photo: DailyPhoto) => {
+  const handleSavePhoto = async (photo: DailyPhoto) => {
+    let finalPhoto = { ...photo };
+
+    if (finalPhoto.url.startsWith('data:image/')) {
+      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+      if (isSupabaseConfigured) {
+        showStatus('이미지를 서버에 업로드 중입니다...');
+        try {
+          const res = await fetch(finalPhoto.url);
+          const blob = await res.blob();
+          const uniqueFileName = `daily_report_${project?.id}_${Date.now()}.jpg`;
+          
+          const publicUrl = await supabaseService.uploadImage(blob, uniqueFileName);
+          
+          finalPhoto.url = publicUrl; 
+          showStatus('이미지 업로드 완료!');
+        } catch (error) {
+          console.error('Image upload failed:', error);
+          alert('이미지 업로드에 실패했습니다. 사진이 등록되지 않습니다.');
+          return;
+        }
+      }
+    }
+
     setReport(prev => {
-      const existingIndex = prev.photos.findIndex(p => p.id === photo.id);
+      const existingIndex = prev.photos.findIndex(p => p.id === finalPhoto.id);
       let newPhotos;
       if (existingIndex >= 0) {
         newPhotos = [...prev.photos];
-        newPhotos[existingIndex] = photo;
+        newPhotos[existingIndex] = finalPhoto;
       } else {
-        newPhotos = [...prev.photos, photo];
+        newPhotos = [...prev.photos, finalPhoto];
       }
       return { ...prev, photos: newPhotos };
     });
