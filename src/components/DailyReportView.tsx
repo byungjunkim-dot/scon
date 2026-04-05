@@ -426,34 +426,49 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
   };
 
 // 사진 삭제 처리 함수
+  // 사진 삭제 처리 함수
   const handleDeletePhoto = async (photoToDelete: DailyPhoto) => {
+    console.log('🗑️ [삭제 시작] 선택된 사진:', photoToDelete);
+
     // 1. 화면(상태)에서 먼저 제거
     setReport(prev => ({
       ...prev,
       photos: prev.photos.filter(p => p.id !== photoToDelete.id)
     }));
 
-    // 2. 서버에 올라간 사진이라면 Storage에서도 삭제
-    if (!photoToDelete.url.startsWith('data:image/')) {
+    // 2. 서버에 올라간 사진인지 확인
+    const isTempFile = photoToDelete.url.startsWith('data:image/') || photoToDelete.url.startsWith('blob:');
+    console.log('🔍 임시 파일 여부 (data:image 인가?):', isTempFile);
+
+    if (!isTempFile) {
       const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
         (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+        
+      console.log('🔌 Supabase 연결 설정 여부:', !!isSupabaseConfigured);
 
       if (isSupabaseConfigured) {
         try {
-          // URL에서 순수 파일명만 정확하게 추출 (?t= 시간값 등 쿼리스트링 제거)
           const cleanUrl = photoToDelete.url.split('?')[0];
           const urlParts = cleanUrl.split('/');
-          const fileName = decodeURIComponent(urlParts[urlParts.length - 1]); // 한글/특수기호 깨짐 방지
+          const fileName = decodeURIComponent(urlParts[urlParts.length - 1]);
+          
+          console.log('🎯 서버에 지워달라고 요청할 파일명:', fileName);
 
           if (fileName) {
+            console.log('🚀 서버로 삭제 요청 전송 중...');
             await supabaseService.deleteImage(fileName);
+            console.log('✅ 서버 파일 삭제 완료!');
             showStatus('서버에서 이미지가 완전히 삭제되었습니다.');
           }
         } catch (error: any) {
-          console.error('Storage 이미지 삭제 실패:', error);
-          alert(`[서버 파일 삭제 실패]\n사유: ${error.message}\n\n※ 해결방법:\nSupabase [SQL Editor] 메뉴로 가셔서 아래 코드를 복사 후 Run 하세요.\n\nCREATE POLICY "Allow Delete Photos" ON storage.objects FOR DELETE USING (bucket_id = 'photos');`);
+          console.error('❌ Storage 이미지 삭제 실패:', error);
+          alert(`[서버 파일 삭제 실패]\n사유: ${error.message}`);
         }
+      } else {
+        console.log('⚠️ Supabase 환경변수가 없어서 서버 삭제를 건너뜁니다.');
       }
+    } else {
+      console.log('⚠️ 아직 서버에 안 올라간 임시 이미지라서 화면에서만 지웁니다.');
     }
   };
 
