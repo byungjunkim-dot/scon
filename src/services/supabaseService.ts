@@ -207,5 +207,27 @@ export const supabaseService = {
   async deleteDrawing(id: string) {
     const { error } = await supabase.from('drawings').delete().eq('id', id);
     if (error) throw error;
+  },
+
+// 👉 Storage (여기부터 이미지 업로드 로직입니다)
+  async uploadImage(file: Blob, fileName: string) {
+    // 버킷 이름을 기존에 설정하신 'photos'로 맞춥니다.
+    const bucketName = 'photos'; 
+
+    const { data, error } = await supabase.storage
+      .from(bucketName)
+      .upload(fileName, file, {
+        contentType: file.type || 'image/jpeg',
+        upsert: false // 덮어쓰기 방지
+      });
+
+    if (error) throw error;
+
+    // 업로드 성공 후 Public URL 가져오기
+    const { data: urlData } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(fileName);
+
+    return urlData.publicUrl;
   }
 };
