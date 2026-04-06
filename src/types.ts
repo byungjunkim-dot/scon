@@ -86,9 +86,9 @@ export interface DailyTask {
   subCategory: string;
   taskName: string;
   location: string;
-  dongBlock?: string;
-  floor?: string;
-  zone?: string;
+  dongBlock?: string[];
+  floor?: string[];
+  zone?: string[];
   amount: string;
   status?: string; // 진행, 연기
   reason?: string;
