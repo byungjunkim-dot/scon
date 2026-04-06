@@ -288,14 +288,14 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase">층/구역</label>
-                    <input type="text" value={newFloor} onChange={(e) => setNewFloor(e.target.value)} required placeholder="예: 1층" className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
+                    <label className="text-xs font-bold text-gray-500 uppercase">도면명</label>
+                    <input type="text" value={newFloor} onChange={(e) => setNewFloor(e.target.value)} required placeholder="예: 1층 전체 or A구역" className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase">도면명</label>
-                  <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} required placeholder="예: 1층 건축 평면도" className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
-                </div>
+                 <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase">설명</label>
+                  <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} required placeholder="예: 부분확대 or 계획도 or 조닝계획" className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
+                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-500 uppercase">도면 이미지</label>
                   <div className="relative">

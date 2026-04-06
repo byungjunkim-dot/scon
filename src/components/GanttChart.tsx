@@ -168,7 +168,7 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
     let targetIndex = -1;
 
     if (zoom === 'day') {
-      const yesterday = addDays(today, -1);
+      const yesterday = addDays(today, -3);
       targetIndex = headerInterval.findIndex(h => isSameDay(h.date, yesterday));
     } else if (zoom === 'week') {
       targetIndex = headerInterval.findIndex(h => isSameWeek(h.date, today, { weekStartsOn: 0 }));

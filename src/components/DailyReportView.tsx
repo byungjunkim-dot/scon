@@ -55,6 +55,11 @@ const initialReport = (projectId: string): DailyReport => ({
 });
 
 export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, settings, currentUser, onDirtyChange }) => {
+  const formatMultiValue = (value?: string | string[]) => {
+    if (Array.isArray(value)) return value.join(', ');
+    return value || '';
+  };
+
   const [report, setReport] = useState<DailyReport>(initialReport(project?.id || ''));
   const [lastSavedReport, setLastSavedReport] = useState<string>('');
   const [isDirty, setIsDirty] = useState(false);
@@ -184,9 +189,11 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
       const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
         (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
 
+      let reports: DailyReport[] = [];
+
       if (isSupabaseConfigured) {
         try {
-          const reports = await supabaseService.getDailyReports(project.id);
+          reports = await supabaseService.getDailyReports(project.id);
           const existingReport = reports.find(r => r.date === report.date);
           if (existingReport) {
             setReport(existingReport);
@@ -198,23 +205,42 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
         }
       }
 
-      // Fallback to localStorage
-      const savedReports = localStorage.getItem(`cp_daily_reports_${project.id}`);
-      if (savedReports) {
-        const reports: DailyReport[] = JSON.parse(savedReports);
-        const existingReport = reports.find(r => r.date === report.date);
-        if (existingReport) {
-          setReport(existingReport);
-          setLastSavedReport(JSON.stringify(existingReport));
-          return;
+      // Fallback to localStorage if not found in Supabase or Supabase not configured
+      if (!isSupabaseConfigured) {
+        const savedReports = localStorage.getItem(`cp_daily_reports_${project.id}`);
+        if (savedReports) {
+          reports = JSON.parse(savedReports);
+          const existingReport = reports.find(r => r.date === report.date);
+          if (existingReport) {
+            setReport(existingReport);
+            setLastSavedReport(JSON.stringify(existingReport));
+            return;
+          }
         }
       }
 
       // If no report exists for this date, reset to initial state but keep the selected date
-      const newReport = {
+      let newReport = {
         ...initialReport(project.id),
         date: report.date
       };
+
+      // NEW LOGIC: Populate todayTasks from previous report's tomorrowTasks if current date
+      const today = new Date().toISOString().split('T')[0];
+      if (report.date === today) {
+        const previousReports = reports.filter(r => r.date < today);
+        if (previousReports.length > 0) {
+          previousReports.sort((a, b) => b.date.localeCompare(a.date));
+          const latestPreviousReport = previousReports[0];
+          if (latestPreviousReport.tomorrowTasks && latestPreviousReport.tomorrowTasks.length > 0) {
+            newReport.todayTasks = latestPreviousReport.tomorrowTasks.map(task => ({
+                ...task,
+                id: Date.now().toString() + Math.random()
+            }));
+          }
+        }
+      }
+
       setReport(newReport);
       setLastSavedReport(JSON.stringify(newReport));
     };
@@ -826,8 +852,14 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                       <td className="border border-gray-900 px-2 py-2 text-center">{task.subCategory}</td>
                       <td className="border border-gray-900 px-2 py-2">{task.taskName}</td>
                       <td className="border border-gray-900 px-2 py-2 text-center">
-                        {[task.dongBlock, task.floor, task.zone].filter(Boolean).join(' ')}
-                      </td>
+  {[
+    formatMultiValue(task.dongBlock as string | string[]),
+    formatMultiValue(task.floor as string | string[]),
+    formatMultiValue(task.zone as string | string[])
+  ]
+    .filter(Boolean)
+    .join(' / ')}
+</td>
                       <td className="border border-gray-900 px-2 py-2 text-center">{task.amount}</td>
                       <td className="border border-gray-900 px-2 py-2 text-center">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${task.status === '진행' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
@@ -1128,8 +1160,14 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
                       <td className="border border-gray-900 px-2 py-2 text-center">{task.subCategory}</td>
                       <td className="border border-gray-900 px-2 py-2">{task.taskName}</td>
                       <td className="border border-gray-900 px-2 py-2 text-center">
-                        {[task.dongBlock, task.floor, task.zone].filter(Boolean).join(' ')}
-                      </td>
+  {[
+    formatMultiValue(task.dongBlock as string | string[]),
+    formatMultiValue(task.floor as string | string[]),
+    formatMultiValue(task.zone as string | string[])
+  ]
+    .filter(Boolean)
+    .join(' / ')}
+</td>
                       <td className="border border-gray-900 px-2 py-2 text-center">{task.amount}</td>
                       <td className="border border-gray-900 px-2 py-2 text-center">
                         <div className={`flex justify-center gap-2 transition-opacity ${isReadOnly ? 'hidden' : 'opacity-0 group-hover:opacity-100'}`}>

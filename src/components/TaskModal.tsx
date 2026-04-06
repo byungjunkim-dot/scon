@@ -19,44 +19,66 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, t
     subCategory: '',
     taskName: '',
     location: '',
-    dongBlock: '',
-    floor: '',
-    zone: '',
+    dongBlock: [],
+    floor: [],
+    zone: [],
     amount: '',
     status: '진행',
     reason: ''
   });
 
-  useEffect(() => {
-    if (task) {
-      setFormData(task);
-    } else {
-      setFormData({
-        id: Date.now().toString(),
-        category: '',
-        subCategory: '',
-        taskName: '',
-        location: '',
-        dongBlock: '',
-        floor: '',
-        zone: '',
-        amount: '',
-        status: '진행',
-        reason: ''
-      });
-    }
-  }, [task, isOpen]);
+  const toArray = (value?: string | string[]) => {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  return [value];
+};
+
+useEffect(() => {
+  if (task) {
+    setFormData({
+      ...task,
+      dongBlock: toArray(task.dongBlock as string | string[]),
+      floor: toArray(task.floor as string | string[]),
+      zone: toArray(task.zone as string | string[])
+    });
+  } else {
+    setFormData({
+      id: Date.now().toString(),
+      category: '',
+      subCategory: '',
+      taskName: '',
+      location: '',
+      dongBlock: [],
+      floor: [],
+      zone: [],
+      amount: '',
+      status: '진행',
+      reason: ''
+    });
+  }
+}, [task, isOpen]);
 
   if (!isOpen) return null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    if (name === 'category') {
-      setFormData({ ...formData, category: value, subCategory: '' });
-    } else {
-      setFormData({ ...formData, [name]: value });
-    }
-  };
+  const { name, value } = e.target;
+
+  if (name === 'category') {
+    setFormData(prev => ({ ...prev, category: value, subCategory: '' }));
+  } else {
+    setFormData(prev => ({ ...prev, [name]: value }));
+  }
+};
+
+const handleMultiSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const { name, selectedOptions } = e.target;
+  const values = Array.from(selectedOptions).map(option => (option as HTMLOptionElement).value);
+
+  setFormData(prev => ({
+    ...prev,
+    [name]: values
+  }));
+};
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,28 +125,51 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, t
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-600">동/블록</label>
-              <select name="dongBlock" value={formData.dongBlock || ''} onChange={handleChange} className="w-full border rounded p-2 text-sm">
-                <option value="">선택</option>
-                {settings.dongBlocks.map(item => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-600">층</label>
-              <select name="floor" value={formData.floor || ''} onChange={handleChange} className="w-full border rounded p-2 text-sm">
-                <option value="">선택</option>
-                {settings.floors.map(item => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-600">구역</label>
-              <select name="zone" value={formData.zone || ''} onChange={handleChange} className="w-full border rounded p-2 text-sm">
-                <option value="">선택</option>
-                {settings.zones.map(item => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </div>
-          </div>
+  <div className="space-y-1">
+    <label className="text-xs font-bold text-gray-600">동/블록</label>
+    <select
+      name="dongBlock"
+      multiple
+      value={formData.dongBlock || []}
+      onChange={handleMultiSelectChange}
+      className="w-full border rounded p-2 text-sm h-28"
+    >
+      {settings.dongBlocks.map(item => (
+        <option key={item} value={item}>{item}</option>
+      ))}
+    </select>
+  </div>
+
+  <div className="space-y-1">
+    <label className="text-xs font-bold text-gray-600">층</label>
+    <select
+      name="floor"
+      multiple
+      value={formData.floor || []}
+      onChange={handleMultiSelectChange}
+      className="w-full border rounded p-2 text-sm h-28"
+    >
+      {settings.floors.map(item => (
+        <option key={item} value={item}>{item}</option>
+      ))}
+    </select>
+  </div>
+
+  <div className="space-y-1">
+    <label className="text-xs font-bold text-gray-600">구역</label>
+    <select
+      name="zone"
+      multiple
+      value={formData.zone || []}
+      onChange={handleMultiSelectChange}
+      className="w-full border rounded p-2 text-sm h-28"
+    >
+      {settings.zones.map(item => (
+        <option key={item} value={item}>{item}</option>
+      ))}
+    </select>
+  </div>
+</div>
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-600">작업량</label>

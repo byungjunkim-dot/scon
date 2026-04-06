@@ -26,6 +26,11 @@ const mockCalendar = [
 ];
 
 export function DashboardView({ project, onUpdateProject, settings, currentUser }: DashboardViewProps) {
+  const formatMultiValue = (value?: string | string[]) => {
+    if (Array.isArray(value)) return value.join(', ');
+    return value || '';
+  };
+
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isEditing, setIsEditing] = useState(false);
@@ -686,7 +691,15 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   {/* max-w-[픽셀]과 truncate(말줄임표) 추가 */}
   <span className="text-gray-900 flex-1 min-w-[80px] max-w-[140px] truncate">{task.subCategory}</span>
   <span className="text-gray-500 flex-1 min-w-[80px] max-w-[180px] truncate">{task.taskName}</span>
-  <span className="text-gray-500 flex-1 min-w-[100px] max-w-[200px] truncate">{[task.dongBlock, task.floor, task.zone].filter(Boolean).join(' ')}</span>
+  <span className="text-gray-500 flex-1 min-w-[100px] max-w-[200px] truncate">
+  {[
+    formatMultiValue(task.dongBlock as string | string[]),
+    formatMultiValue(task.floor as string | string[]),
+    formatMultiValue(task.zone as string | string[])
+  ]
+    .filter(Boolean)
+    .join(' / ')}
+</span>
   
   {/* 우측에 남는 공간이 생길 때 작업량을 끝으로 밀고 싶다면 ml-auto 추가 (선택사항) */}
   <span className="text-gray-400 w-16 text-right shrink-0 ml-auto">{task.amount}</span>
@@ -810,7 +823,15 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   {/* max-w-[픽셀]과 truncate(말줄임표) 추가 */}
   <span className="text-gray-900 flex-1 min-w-[80px] max-w-[140px] truncate">{task.subCategory}</span>
   <span className="text-gray-500 flex-1 min-w-[80px] max-w-[180px] truncate">{task.taskName}</span>
-  <span className="text-gray-500 flex-1 min-w-[100px] max-w-[200px] truncate">{[task.dongBlock, task.floor, task.zone].filter(Boolean).join(' ')}</span>
+  <span className="text-gray-500 flex-1 min-w-[100px] max-w-[200px] truncate">
+  {[
+    formatMultiValue(task.dongBlock as string | string[]),
+    formatMultiValue(task.floor as string | string[]),
+    formatMultiValue(task.zone as string | string[])
+  ]
+    .filter(Boolean)
+    .join(' / ')}
+</span>
   
   {/* 우측에 남는 공간이 생길 때 작업량을 끝으로 밀고 싶다면 ml-auto 추가 (선택사항) */}
   <span className="text-gray-400 w-16 text-right shrink-0 ml-auto">{task.amount}</span>

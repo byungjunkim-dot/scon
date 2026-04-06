@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   format, 
   addDays, 
@@ -11,7 +11,10 @@ import {
   eachWeekOfInterval,
   eachMonthOfInterval,
   endOfWeek,
-  endOfMonth
+  endOfMonth,
+  isSameDay,
+  isSameWeek,
+  isSameMonth
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { ScheduleItem, Category, AppSettings } from '../types';
@@ -163,6 +166,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
   const [collapsedCategories, setCollapsedCategories] = useState<Set<Category>>(new Set());
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -307,6 +311,36 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
     }
   }, [startDate, endDate, zoom, columnWidth]);
 
+  useEffect(() => {
+  if (!scrollContainerRef.current || headerInterval.length === 0) return;
+
+  const targetDate = addDays(startOfDay(new Date()), -3);
+  let targetIndex = -1;
+
+  if (zoom === 'day') {
+    targetIndex = headerInterval.findIndex(h => isSameDay(h.date, targetDate));
+  } else if (zoom === 'week') {
+    targetIndex = headerInterval.findIndex(h =>
+      isSameWeek(h.date, targetDate, { weekStartsOn: 0 })
+    );
+  } else {
+    targetIndex = headerInterval.findIndex(h => isSameMonth(h.date, targetDate));
+  }
+
+  if (targetIndex !== -1) {
+    const scrollPosition = targetIndex * columnWidth;
+
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({
+          left: scrollPosition,
+          behavior: 'smooth'
+        });
+      }
+    }, 100);
+  }
+}, [zoom, headerInterval, columnWidth]);
+
   const groupedItems = useMemo(() => {
     const groups: Record<Category, ScheduleItem[]> = {} as any;
     // Initialize groups in the order of settings.categories
@@ -396,7 +430,10 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
     <div className="flex flex-col h-full bg-white border-y sm:border border-gray-200 rounded-none sm:rounded-xl overflow-hidden shadow-sm">
 
       {/* Gantt Chart Area */}
-      <div className="flex-1 overflow-auto no-scrollbar relative max-xl:[--left-col-width:75px] xl:[--left-col-width:250px]">
+      <div
+  ref={scrollContainerRef}
+  className="flex-1 overflow-auto no-scrollbar relative max-xl:[--left-col-width:75px] xl:[--left-col-width:250px]"
+>
         <div className="min-w-full inline-block align-top">
           {/* Header */}
           <div className="flex sticky top-0 z-30 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
