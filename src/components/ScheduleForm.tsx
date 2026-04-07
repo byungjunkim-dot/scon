@@ -249,6 +249,20 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
           {selectedItem ? <Save size={14} /> : <Plus size={14} />}
           {selectedItem ? '수정 완료' : '공정 등록'}
         </button>
+        {selectedItem && (
+          <button 
+            type="button" 
+            onClick={() => {
+              if (window.confirm('이 공정을 삭제하시겠습니까?')) {
+                onDelete(selectedItem.id);
+              }
+            }}
+            className="flex-1 flex justify-center items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-md hover:bg-red-100 active:scale-[0.98] transition-all text-xs font-bold"
+          >
+            <Trash2 size={14} />
+            삭제
+          </button>
+        )}
         <button 
           type="button" 
           onClick={onReset}

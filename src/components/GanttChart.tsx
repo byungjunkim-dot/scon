@@ -19,17 +19,178 @@ import {
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { ScheduleItem, Category, AppSettings } from '../types';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
 import { motion } from 'motion/react';
+import {
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface GanttChartProps {
   items: ScheduleItem[];
   zoom: 'day' | 'week' | 'month';
   onSelect: (item: ScheduleItem) => void;
   settings: AppSettings;
+  onReorder?: (items: ScheduleItem[]) => void;
 }
 
-const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings }) => {
+interface SortableRowProps {
+  item: ScheduleItem;
+  startDate: Date;
+  columnWidth: number;
+  headerInterval: any[];
+  onSelect: (item: ScheduleItem) => void;
+  zoom: 'day' | 'week' | 'month';
+  settings: AppSettings;
+}
+
+const SortableRow: React.FC<SortableRowProps> = ({ 
+  item, startDate, columnWidth, headerInterval, onSelect, zoom, settings 
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 1,
+    opacity: isDragging ? 0.5 : 1
+  };
+
+  const start = new Date(item.startDate);
+  const end = new Date(item.endDate);
+  
+  let left = 0;
+  let width = 0;
+
+  if (zoom === 'day') {
+    left = differenceInDays(start, startDate) * columnWidth;
+    width = (differenceInDays(end, start) + 1) * columnWidth;
+  } else if (zoom === 'week') {
+    left = (differenceInDays(start, startDate) / 7) * columnWidth;
+    width = ((differenceInDays(end, start) + 1) / 7) * columnWidth;
+  } else {
+    left = (differenceInDays(start, startDate) / 30) * columnWidth;
+    width = ((differenceInDays(end, start) + 1) / 30) * columnWidth;
+  }
+
+  const isDelayed = item.status === '지연';
+  const isCompleted = item.status === '완료';
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      className="flex h-6 xl:h-12 border-b border-gray-50 last:border-0 group hover:bg-gray-50/50 transition-colors bg-white"
+    >
+      {/* Task Label (Sticky) */}
+      <div 
+        onClick={() => onSelect(item)}
+        className="sticky left-0 z-30 w-[18vw] xl:w-[250px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center group-hover:bg-gray-50/50 transition-colors cursor-pointer"
+      >
+        <div 
+          {...attributes} 
+          {...listeners} 
+          onClick={(e) => e.stopPropagation()}
+          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0 mr-1 xl:mr-2"
+        >
+          <GripVertical size={14} />
+        </div>
+        <div className="flex flex-col justify-center overflow-hidden flex-1">
+          <div className="text-[10px] xl:text-xs text-gray-800 truncate">
+            <span className="font-bold">{item.subCategory}</span>
+            <span className="mx-1 text-gray-400">/</span>
+            <span className="font-normal text-gray-600">{item.taskName}</span>
+          </div>
+          <div className="text-[8px] xl:text-[9px] text-gray-400 font-medium truncate">
+            {[
+              Array.isArray(item.dongBlock) ? item.dongBlock.join(', ') : item.dongBlock,
+              Array.isArray(item.floor) ? item.floor.join(', ') : item.floor,
+              Array.isArray(item.zone) ? item.zone.join(', ') : item.zone
+            ].filter(Boolean).join(' / ')}
+          </div>
+        </div>
+      </div>
+
+      {/* Chart Area */}
+      <div 
+        onClick={() => onSelect(item)}
+        className="relative flex-1 cursor-pointer"
+      >
+        {/* Grid Background */}
+        <div className="absolute inset-0 flex pointer-events-none">
+          {headerInterval.map((h, i) => (
+            <div 
+              key={i} 
+              className={`flex-shrink-0 border-r border-gray-50/50 h-full ${h.isWeekend ? 'bg-gray-50/30' : ''}`}
+              style={{ width: h.width }}
+            />
+          ))}
+        </div>
+
+        {/* Task Bar */}
+        <motion.div 
+          initial={{ opacity: 0, scaleX: 0 }}
+          animate={{ opacity: 1, scaleX: 1 }}
+          className={`absolute top-1/2 -translate-y-1/2 h-2 xl:h-4 rounded-full shadow-sm transition-all flex items-center overflow-hidden hover:brightness-105 active:scale-[0.98] origin-left z-10
+            ${isDelayed ? 'bg-rose-500' : isCompleted ? 'bg-gray-300' : ''}
+          `}
+          style={{ 
+            left, 
+            width,
+            backgroundColor: !isDelayed && !isCompleted ? (settings.categoryColors[item.category] || '#3b82f6') : undefined
+          }}
+        >
+          {/* Progress Overlay */}
+          {!isCompleted && !isDelayed && (
+            <div 
+              className="absolute inset-0 bg-black/10 transition-all"
+              style={{ width: `${item.progress}%` }}
+            />
+          )}
+          
+          {/* Task Label inside bar if wide enough */}
+          {width > 60 && (
+            <span className="relative z-10 px-1.5 xl:px-3 text-[8px] xl:text-[9px] font-bold text-white truncate drop-shadow-sm">
+              {item.progress}%
+            </span>
+          )}
+        </motion.div>
+
+        {/* Floating Label for small bars */}
+        {width <= 60 && (
+          <div 
+            className="absolute top-1/2 -translate-y-1/2 ml-2 text-[9px] font-bold text-gray-400 whitespace-nowrap z-10"
+            style={{ left: left + width }}
+          >
+            {item.progress}%
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings, onReorder }) => {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<Category>>(new Set());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -194,6 +355,26 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
     }
   }, [zoom, headerInterval, columnWidth]);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id && onReorder) {
+      const oldIndex = items.findIndex(i => i.id === active.id);
+      const newIndex = items.findIndex(i => i.id === over.id);
+      onReorder(arrayMove(items, oldIndex, newIndex));
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white border-y xl:border border-gray-200 xl:rounded-xl overflow-hidden shadow-sm">
       {/* Scrollable Container for both Header and Body */}
@@ -228,103 +409,53 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
           <div className="relative">
             {renderTodayLine()}
             
-            {(Object.entries(groupedItems) as [Category, ScheduleItem[]][]).map(([category, catItems]) => (
-              <div key={category} className="border-b border-gray-100">
-                {/* Category Header */}
-                <div className="flex items-center border-b border-gray-100 group">
-                  <div 
-                    className="sticky left-0 z-30 flex items-center bg-gray-50/90 backdrop-blur-sm px-2 xl:px-4 py-1 xl:py-2.5 cursor-pointer hover:bg-gray-100 transition-colors w-[18vw] xl:w-[250px] flex-shrink-0 border-r border-gray-100"
-                    onClick={() => toggleCategory(category)}
-                  >
-                    <div className="w-5 h-5 flex items-center justify-center text-gray-400">
-                      {collapsedCategories.has(category) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              {(Object.entries(groupedItems) as [Category, ScheduleItem[]][]).map(([category, catItems]) => (
+                <div key={category} className="border-b border-gray-100">
+                  {/* Category Header */}
+                  <div className="flex items-center border-b border-gray-100 group">
+                    <div 
+                      className="sticky left-0 z-30 flex items-center bg-gray-50/90 backdrop-blur-sm px-2 xl:px-4 py-1 xl:py-2.5 cursor-pointer hover:bg-gray-100 transition-colors w-[18vw] xl:w-[250px] flex-shrink-0 border-r border-gray-100"
+                      onClick={() => toggleCategory(category)}
+                    >
+                      <div className="w-5 h-5 flex items-center justify-center text-gray-400">
+                        {collapsedCategories.has(category) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                      </div>
+                      <span className="ml-1 font-bold text-xs text-gray-700">{category}</span>
+                      <span className="ml-2 px-1.5 py-0.5 bg-gray-200/50 text-gray-500 rounded text-[9px] font-bold hidden xl:inline-block">{catItems.length}</span>
                     </div>
-                    <span className="ml-1 font-bold text-xs text-gray-700">{category}</span>
-                    <span className="ml-2 px-1.5 py-0.5 bg-gray-200/50 text-gray-500 rounded text-[9px] font-bold hidden xl:inline-block">{catItems.length}</span>
+                    <div className="flex-1 bg-gray-50/50 h-full"></div>
                   </div>
-                  <div className="flex-1 bg-gray-50/50 h-full"></div>
+
+                  {/* Tasks List */}
+                  {!collapsedCategories.has(category) && (
+                    <div className="flex flex-col">
+                      <SortableContext 
+                        items={catItems.map(i => i.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {catItems.map((item) => (
+                          <SortableRow 
+                            key={item.id}
+                            item={item}
+                            startDate={startDate}
+                            columnWidth={columnWidth}
+                            headerInterval={headerInterval}
+                            onSelect={onSelect}
+                            zoom={zoom}
+                            settings={settings}
+                          />
+                        ))}
+                      </SortableContext>
+                    </div>
+                  )}
                 </div>
-
-                {/* Tasks List */}
-                {!collapsedCategories.has(category) && (
-                  <div className="flex flex-col">
-                    {catItems.map((item) => {
-                      const { left, width } = getTaskPosition(item);
-                      const isDelayed = item.status === '지연';
-                      const isCompleted = item.status === '완료';
-
-                      return (
-                        <div key={item.id} className="flex h-6 xl:h-12 border-b border-gray-50 last:border-0 group hover:bg-gray-50/50 transition-colors">
-                          {/* Task Label (Sticky) */}
-                          <div className="sticky left-0 z-30 w-[18vw] xl:w-[250px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex flex-col justify-center group-hover:bg-gray-50/50 transition-colors overflow-hidden">
-                            <div className="text-[10px] xl:text-xs text-gray-800 truncate">
-                              <span className="font-bold">{item.subCategory}</span>
-                              <span className="mx-1 text-gray-400">/</span>
-                              <span className="font-normal text-gray-600">{item.taskName}</span>
-                            </div>
-                            <div className="text-[8px] xl:text-[9px] text-gray-400 font-medium truncate">{item.dongBlock} {item.floor} {item.zone}</div>
-                          </div>
-
-                          {/* Chart Area */}
-                          <div className="relative flex-1">
-                            {/* Grid Background */}
-                            <div className="absolute inset-0 flex pointer-events-none">
-                              {headerInterval.map((item, i) => (
-                                <div 
-                                  key={i} 
-                                  className={`flex-shrink-0 border-r border-gray-50/50 h-full ${item.isWeekend ? 'bg-gray-50/30' : ''}`}
-                                  style={{ width: item.width }}
-                                />
-                              ))}
-                            </div>
-
-                            {/* Task Bar */}
-                            <motion.div 
-                              initial={{ opacity: 0, scaleX: 0 }}
-                              animate={{ opacity: 1, scaleX: 1 }}
-                              onClick={() => onSelect(item)}
-                              className={`absolute top-1/2 -translate-y-1/2 h-2 xl:h-4 rounded-full shadow-sm transition-all flex items-center overflow-hidden cursor-pointer hover:brightness-105 active:scale-[0.98] origin-left z-10
-                                ${isDelayed ? 'bg-rose-500' : isCompleted ? 'bg-gray-300' : ''}
-                              `}
-                              style={{ 
-                                left, 
-                                width,
-                                backgroundColor: !isDelayed && !isCompleted ? (settings.categoryColors[item.category] || '#3b82f6') : undefined
-                              }}
-                            >
-                              {/* Progress Overlay */}
-                              {!isCompleted && !isDelayed && (
-                                <div 
-                                  className="absolute inset-0 bg-black/10 transition-all"
-                                  style={{ width: `${item.progress}%` }}
-                                />
-                              )}
-                              
-                              {/* Task Label inside bar if wide enough */}
-                              {width > 60 && (
-                                <span className="relative z-10 px-1.5 xl:px-3 text-[8px] xl:text-[9px] font-bold text-white truncate drop-shadow-sm">
-                                  {item.progress}%
-                                </span>
-                              )}
-                            </motion.div>
-
-                            {/* Floating Label for small bars */}
-                            {width <= 60 && (
-                              <div 
-                                className="absolute top-1/2 -translate-y-1/2 ml-2 text-[9px] font-bold text-gray-400 whitespace-nowrap z-10"
-                                style={{ left: left + width }}
-                              >
-                                {item.progress}%
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ))}
+              ))}
+            </DndContext>
           </div>
         </div>
       </div>
