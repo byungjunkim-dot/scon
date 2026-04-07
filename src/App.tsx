@@ -813,6 +813,29 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
     }
   };
 
+  const handleReorderSchedules = async (newItems: ScheduleItem[]) => {
+    if (!currentProjectId) return;
+
+    const reorderedItems = newItems.map((item, index) => ({
+      ...item,
+      sortOrder: index
+    }));
+
+    try {
+      if (isSupabaseConfigured) {
+        for (const item of reorderedItems) {
+          await supabaseService.saveSchedule(item);
+        }
+      }
+
+      setSchedules(reorderedItems);
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(reorderedItems));
+    } catch (error) {
+      console.error('Error reordering schedules:', error);
+      alert('공정 순서 저장에 실패했습니다.');
+    }
+  };
+
   const projectToDelete = projects.find(p => p.id === projectToDeleteId);
   const projectName = projectToDelete ? projectToDelete.name : '이 프로젝트';
 
@@ -1349,6 +1372,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                         zoom={zoom}
                         onSelect={handleSelectItem}
                         settings={settings}
+                        onReorder={handleReorderSchedules}
                       />
                     </motion.div>
                   )}
