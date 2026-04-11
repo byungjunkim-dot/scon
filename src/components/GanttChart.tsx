@@ -100,12 +100,12 @@ const SortableRow: React.FC<SortableRowProps> = ({
     <div 
       ref={setNodeRef} 
       style={style}
-      className="flex h-6 xl:h-12 border-b border-gray-50 last:border-0 group hover:bg-gray-50/50 transition-colors bg-white"
+      className="flex h-10 xl:h-10 border-b border-gray-50 last:border-0 group hover:bg-gray-50/50 transition-colors bg-white"
     >
       {/* Task Label (Sticky) */}
       <div 
         onClick={() => onSelect(item)}
-        className="sticky left-0 z-30 w-[18vw] xl:w-[250px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center group-hover:bg-gray-50/50 transition-colors cursor-pointer"
+        className="sticky left-0 z-30 w-[250px] xl:w-[300px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center group-hover:bg-gray-50/50 transition-colors cursor-pointer"
       >
         <div 
           {...attributes} 
@@ -380,13 +380,13 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
       {/* Scrollable Container for both Header and Body */}
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-auto no-scrollbar relative max-xl:[--left-col-width:18vw] xl:[--left-col-width:250px]"
+        className="flex-1 overflow-auto no-scrollbar relative max-xl:[--left-col-width:250px] xl:[--left-col-width:300px]"
       >
         <div className="min-w-full inline-block align-top">
           {/* Header */}
           <div className="flex sticky top-0 z-30 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
             {/* Sticky Corner */}
-            <div className="sticky left-0 z-40 w-[18vw] xl:w-[250px] flex-shrink-0 bg-gray-50 border-r border-gray-200 flex items-center px-2 xl:px-4 py-2.5">
+            <div className="sticky left-0 z-40 w-[250px] xl:w-[300px] flex-shrink-0 bg-gray-50 border-r border-gray-200 flex items-center px-2 xl:px-4 py-2.5">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest truncate">공정명 / 위치</span>
             </div>
             
@@ -419,7 +419,7 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
                   {/* Category Header */}
                   <div className="flex items-center border-b border-gray-100 group">
                     <div 
-                      className="sticky left-0 z-30 flex items-center bg-gray-50/90 backdrop-blur-sm px-2 xl:px-4 py-1 xl:py-2.5 cursor-pointer hover:bg-gray-100 transition-colors w-[18vw] xl:w-[250px] flex-shrink-0 border-r border-gray-100"
+                      className="sticky left-0 z-30 flex items-center bg-gray-50/90 backdrop-blur-sm px-2 xl:px-4 py-1 xl:py-2.5 cursor-pointer hover:bg-gray-100 transition-colors w-[250px] xl:w-[300px] flex-shrink-0 border-r border-gray-100"
                       onClick={() => toggleCategory(category)}
                     >
                       <div className="w-5 h-5 flex items-center justify-center text-gray-400">

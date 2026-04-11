@@ -304,17 +304,35 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
   const manpowerMaxScale = getManpowerMaxScale(cumulativePersonnel.total);
 
+  const next7DaysStart = format(selectedDate, 'yyyy-MM-dd');
+  const next7DaysEnd = format(addDays(selectedDate, 7), 'yyyy-MM-dd');
+  const next7DaysTasks = schedules.filter(task => {
+    if (task.isBaseline) return false;
+    if (!task.startDate || !task.endDate) return false;
+    return task.startDate <= next7DaysEnd && task.endDate >= next7DaysStart;
+  }).sort((a, b) => {
+    const indexA = settings.categories.indexOf(a.category);
+    const indexB = settings.categories.indexOf(b.category);
+    const validIndexA = indexA !== -1 ? indexA : 999;
+    const validIndexB = indexB !== -1 ? indexB : 999;
+    
+    if (validIndexA !== validIndexB) {
+      return validIndexA - validIndexB;
+    }
+    return a.startDate.localeCompare(b.startDate);
+  });
+
   return (
-    <div className="h-full bg-gray-50 p-4 lg:p-8 overflow-y-auto">
-      <div className="max-w-7xl mx-auto space-y-3">
+    <div className="h-full bg-gray-50 p-2 md:p-4 lg:p-8 overflow-y-auto scrollbar-hide xl:scrollbar-default overflow-x-hidden">
+      <div className="w-full max-w-7xl mx-auto space-y-2 md:space-y-3">
         
         {/* Top Section */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3">
           
           {/* 프로젝트 개요 및 대표이미지 통합 영역 */}
           <div className="col-span-1 md:col-span-12 lg:col-span-9 bg-white rounded-xl shadow-sm border border-gray-200 p-4 lg:p-6 flex flex-col">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-bold text-gray-900">프로젝트 개요</h2>
+              <h2 className="text-sm font-bold text-gray-900">프로젝트 개요</h2>
               {(currentUser?.userRole === '골드' || currentUser?.role === 'admin') && !isEditing && (
                 <button
                   onClick={handleEditClick}
@@ -463,10 +481,10 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
 
           {/* Right Part: 3 Cards */}
-          <div className="col-span-1 md:col-span-12 lg:col-span-3 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-1 gap-2 lg:gap-3">
+          <div className="col-span-1 md:col-span-12 lg:col-span-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-1 gap-2 lg:gap-3">
             
             {/* 전체 공정률 */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col relative">
+            <div className="col-span-2 md:col-span-1 bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col relative">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
                   <TrendingUp className="text-emerald-600" size={16} />
@@ -608,7 +626,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
               >
                 Today
               </button>
-              <h2 className="text-lg md:text-xl font-bold text-gray-900 min-w-[120px] md:min-w-[150px]">
+              <h2 className="text-sm md:text-xl font-bold text-gray-900 min-w-[120px] md:min-w-[150px]">
                 {format(calendarDate, 'yyyy년 MM월', { locale: ko })}
               </h2>
             </div>
@@ -630,11 +648,22 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
           
           <div 
-            className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-7'} border-l border-gray-200`}
+            className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-7'} border-l border-gray-200 relative`}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
           >
+            {/* Mobile Navigation Indicators */}
+            {isMobile && (
+              <>
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 z-10 pointer-events-none flex items-center">
+                  <ChevronLeft size={14} className="text-gray-400 -ml-1.5" />
+                </div>
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10 pointer-events-none flex items-center">
+                  <ChevronRight size={14} className="text-gray-400 -mr-1.5" />
+                </div>
+              </>
+            )}
             {calendarDays.map((day, idx) => (
               <div 
                 key={idx} 
@@ -672,38 +701,45 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
         {/* Bottom Section */}
         <div className="flex items-center gap-2 mb-2">
           <div className="w-1 h-4 bg-blue-600 rounded-full"></div>
-          <h3 className="text-sm font-bold text-gray-900">
+          <h3 className="text-lg font-bold text-gray-900">
             {format(selectedDate, 'yyyy년 MM월 dd일', { locale: ko })} ({format(selectedDate, 'EEE', { locale: ko })}) 현황
           </h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-12 lg:grid-cols-12 gap-2 md:gap-3">
           
           {/* 오늘 할 일 */}
-          <div className="col-span-1 md:col-span-2 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">오늘 할 일</h2>
+          <div className="col-span-2 md:col-span-12 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-sm font-bold text-gray-900 mb-4">오늘 할 일</h2>
             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
               {(todayReport?.todayTasks || []).map((task, idx) => (
-                <div key={task.id || idx} className="flex flex-wrap lg:flex-nowrap items-center text-sm py-2 border-b border-gray-100 last:border-0 gap-4">
-  <span className="font-bold w-12 shrink-0" style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}>
-    {task.category}
-  </span>
-  
-  {/* max-w-[픽셀]과 truncate(말줄임표) 추가 */}
-  <span className="text-gray-900 flex-1 min-w-[80px] max-w-[140px] truncate">{task.subCategory}</span>
-  <span className="text-gray-500 flex-1 min-w-[80px] max-w-[180px] truncate">{task.taskName}</span>
-  <span className="text-gray-500 flex-1 min-w-[100px] max-w-[200px] truncate">
-  {[
-    formatMultiValue(task.dongBlock as string | string[]),
-    formatMultiValue(task.floor as string | string[]),
-    formatMultiValue(task.zone as string | string[])
-  ]
-    .filter(Boolean)
-    .join(' / ')}
-</span>
-  
-  {/* 우측에 남는 공간이 생길 때 작업량을 끝으로 밀고 싶다면 ml-auto 추가 (선택사항) */}
-  <span className="text-gray-400 w-16 text-right shrink-0 ml-auto">{task.amount}</span>
-</div>
+                <div key={task.id || idx} className="flex items-center py-2 border-b border-gray-100 last:border-0 gap-3 md:gap-4">
+                  <div className="flex flex-col md:flex-row md:items-center gap-0.5 md:gap-4 shrink-0 w-20 md:w-auto">
+                    <span className="font-bold text-[11px] md:text-sm md:w-12 shrink-0 truncate" style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}>
+                      {task.category}
+                    </span>
+                    <span className="text-gray-900 text-[11px] md:text-sm truncate w-full md:flex-1 md:min-w-[80px] md:max-w-[140px]">
+                      {task.subCategory}
+                    </span>
+                  </div>
+                  
+                  <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-4">
+                    <span className="text-gray-500 text-sm truncate md:max-w-[180px] flex-1">
+                      {task.taskName}
+                    </span>
+                    <span className="text-gray-400 text-[10px] md:text-xs truncate md:max-w-[200px]">
+                      {[
+                        formatMultiValue(task.dongBlock as string | string[]),
+                        formatMultiValue(task.floor as string | string[]),
+                        formatMultiValue(task.zone as string | string[])
+                      ]
+                        .filter(Boolean)
+                        .join(' / ')}
+                    </span>
+                    <span className="text-gray-400 text-xs md:text-sm shrink-0 md:w-16 md:text-right md:ml-auto">
+                      {task.amount}
+                    </span>
+                  </div>
+                </div>
               ))}
               {(!todayReport?.todayTasks || todayReport.todayTasks.length === 0) && (
                 <div className="text-center py-4 text-gray-400 text-sm bg-gray-50/50 rounded">등록된 작업 사항이 없습니다.</div>
@@ -712,8 +748,8 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
 
           {/* 투입 인력 */}
-          <div className="col-span-1 md:col-span-1 lg:col-span-2 bg-gray-50 rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">투입 인력</h2>
+          <div className="col-span-1 md:col-span-6 lg:col-span-2 bg-gray-50 rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-sm font-bold text-gray-900 mb-4">투입 인력</h2>
             <div className="mb-4 p-3 bg-white rounded-lg border border-gray-100 flex justify-between items-center">
               <span className="text-xs font-medium text-gray-500">합계</span>
               <span className="text-lg font-black text-blue-600">
@@ -738,16 +774,18 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
 
           {/* 장비 투입 */}
-          <div className="col-span-1 md:col-span-1 lg:col-span-2 bg-gray-50 rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">장비 투입</h2>
+          <div className="col-span-1 md:col-span-6 lg:col-span-2 bg-gray-50 rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-sm font-bold text-gray-900 mb-4">장비 투입</h2>
             <div className="space-y-1 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
               {(todayReport?.equipment || []).map((eq, idx) => (
-                <div key={eq.id || idx} className="bg-white p-2 rounded-lg border border-gray-100">
-                  <div className="flex justify-between items-start mb-0.5">
-                    <span className="text-sm font-bold text-gray-900">{eq.type}</span>
-                    <span className="text-sm font-bold text-blue-600">{eq.quantity}<span className="text-xs font-normal text-gray-400 ml-0.5">대</span></span>
+                <div key={eq.id || idx} className="flex justify-between items-center py-1 border-b border-gray-100 last:border-0">
+                  <div className="flex flex-col">
+                    <span className="text-sm text-gray-600">{eq.type}</span>
+                    <span className="text-[10px] text-gray-400">{eq.capacity}</span>
                   </div>
-                  <div className="text-xs text-gray-500">{eq.capacity}</div>
+                  <span className="text-blue-600 font-bold text-sm">
+                    {eq.quantity} <span className="text-gray-500 font-normal text-xs">대</span>
+                  </span>
                 </div>
               ))}
               {(!todayReport?.equipment || todayReport.equipment.length === 0) && (
@@ -757,8 +795,8 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
 
           {/* 특기사항 */}
-          <div className="col-span-1 md:col-span-2 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">특기사항</h2>
+          <div className="col-span-2 md:col-span-12 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-sm font-bold text-gray-900 mb-4">특기사항</h2>
             <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
               {(todayReport?.issues || []).map((issue, idx) => (
                 <div key={issue.id || idx} className="flex gap-1.5 items-start p-1.5 bg-gray-50 rounded-lg border border-gray-100">
@@ -781,64 +819,103 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
 
           {/* 현장사진 */}
-          <div className="col-span-1 md:col-span-2 lg:col-span-4 lg:row-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">현장사진</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-4">
-              {(todayReport?.photos || []).map((photo, idx) => (
-                <div 
-                  key={photo.id || idx} 
-                  className="relative flex flex-col gap-2 group cursor-pointer"
-                  onClick={() => setSelectedPhoto({ url: photo.url, title: photo.title || `현장사진 ${idx + 1}` })}
-                >
-                  <div className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 shadow-sm group-hover:shadow-md transition-shadow">
-                    <img 
-                      src={photo.url} 
-                      alt={photo.title || `현장사진 ${idx + 1}`} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                    />
+          <div className="col-span-2 md:col-span-12 lg:col-span-4 lg:row-span-3 bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 flex flex-col max-h-[240px] md:max-h-[280px] lg:max-h-[600px]">
+            <h2 className="text-sm font-bold text-gray-900 mb-2 md:mb-4 shrink-0">현장사진</h2>
+            <div className="overflow-y-auto pr-2 custom-scrollbar flex-1">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-2 gap-4">
+                {(todayReport?.photos || []).map((photo, idx) => (
+                  <div 
+                    key={photo.id || idx} 
+                    className="relative flex flex-col gap-2 group cursor-pointer"
+                    onClick={() => setSelectedPhoto({ url: photo.url, title: photo.title || `현장사진 ${idx + 1}` })}
+                  >
+                    <div className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 shadow-sm group-hover:shadow-md transition-shadow">
+                      <img 
+                        src={photo.url} 
+                        alt={photo.title || `현장사진 ${idx + 1}`} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                      />
+                    </div>
+                    <div className="text-xs font-medium text-gray-700 truncate text-center px-1">
+                      {photo.title || `현장사진 ${idx + 1}`}
+                    </div>
                   </div>
-                  <div className="text-xs font-medium text-gray-700 truncate text-center px-1">
-                    {photo.title || `현장사진 ${idx + 1}`}
+                ))}
+                {(!todayReport?.photos || todayReport.photos.length === 0) && (
+                  <div className="col-span-full text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded border border-dashed border-gray-200">
+                    등록된 현장사진이 없습니다.
                   </div>
-                </div>
-              ))}
-              {(!todayReport?.photos || todayReport.photos.length === 0) && (
-                <div className="col-span-full text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded border border-dashed border-gray-200">
-                  등록된 현장사진이 없습니다.
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
           {/* 내일 할 일 */}
-          <div className="col-span-1 md:col-span-2 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">내일 할 일</h2>
+          <div className="col-span-2 md:col-span-12 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-sm font-bold text-gray-900 mb-4">내일 할 일</h2>
             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
               {(todayReport?.tomorrowTasks || []).map((task, idx) => (
-                <div key={task.id || idx} className="flex flex-wrap lg:flex-nowrap items-center text-sm py-2 border-b border-gray-100 last:border-0 gap-4">
-  <span className="font-bold w-12 shrink-0" style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}>
-    {task.category}
-  </span>
-  
-  {/* max-w-[픽셀]과 truncate(말줄임표) 추가 */}
-  <span className="text-gray-900 flex-1 min-w-[80px] max-w-[140px] truncate">{task.subCategory}</span>
-  <span className="text-gray-500 flex-1 min-w-[80px] max-w-[180px] truncate">{task.taskName}</span>
-  <span className="text-gray-500 flex-1 min-w-[100px] max-w-[200px] truncate">
-  {[
-    formatMultiValue(task.dongBlock as string | string[]),
-    formatMultiValue(task.floor as string | string[]),
-    formatMultiValue(task.zone as string | string[])
-  ]
-    .filter(Boolean)
-    .join(' / ')}
-</span>
-  
-  {/* 우측에 남는 공간이 생길 때 작업량을 끝으로 밀고 싶다면 ml-auto 추가 (선택사항) */}
-  <span className="text-gray-400 w-16 text-right shrink-0 ml-auto">{task.amount}</span>
-</div>
+                <div key={task.id || idx} className="flex items-center py-2 border-b border-gray-100 last:border-0 gap-3 md:gap-4">
+                  <div className="flex flex-col md:flex-row md:items-center gap-0.5 md:gap-4 shrink-0 w-20 md:w-auto">
+                    <span className="font-bold text-[11px] md:text-sm md:w-12 shrink-0 truncate" style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}>
+                      {task.category}
+                    </span>
+                    <span className="text-gray-900 text-[11px] md:text-sm truncate w-full md:flex-1 md:min-w-[80px] md:max-w-[140px]">
+                      {task.subCategory}
+                    </span>
+                  </div>
+                  
+                  <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-4">
+                    <span className="text-gray-500 text-sm truncate md:max-w-[180px] flex-1">
+                      {task.taskName}
+                    </span>
+                    <span className="text-gray-400 text-[10px] md:text-xs truncate md:max-w-[200px]">
+                      {[
+                        formatMultiValue(task.dongBlock as string | string[]),
+                        formatMultiValue(task.floor as string | string[]),
+                        formatMultiValue(task.zone as string | string[])
+                      ]
+                        .filter(Boolean)
+                        .join(' / ')}
+                    </span>
+                    <span className="text-gray-400 text-xs md:text-sm shrink-0 md:w-16 md:text-right md:ml-auto">
+                      {task.amount}
+                    </span>
+                  </div>
+                </div>
               ))}
               {(!todayReport?.tomorrowTasks || todayReport.tomorrowTasks.length === 0) && (
                 <div className="text-center py-4 text-gray-400 text-sm bg-gray-50/50 rounded">등록된 작업 계획이 없습니다.</div>
+              )}
+            </div>
+          </div>
+
+          {/* 향후 7일간 작업 */}
+          <div className="col-span-2 md:col-span-12 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-sm font-bold text-gray-900 mb-4">향후 7일간 작업</h2>
+            <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+              {next7DaysTasks.map((task, idx) => (
+                <div key={task.id || idx} className="flex items-center py-2 border-b border-gray-100 last:border-0 gap-3 md:gap-4">
+                  <div className="flex flex-col md:flex-row md:items-center gap-0.5 md:gap-4 shrink-0 w-20 md:w-auto">
+                    <span className="font-bold text-[11px] md:text-sm md:w-12 shrink-0 truncate" style={{ color: settings.categoryTextColors[task.category] || '#2563eb' }}>
+                      {task.category}
+                    </span>
+                    <span className="text-gray-900 text-[11px] md:text-sm truncate w-full md:flex-1 md:min-w-[80px] md:max-w-[140px]">
+                      {task.subCategory}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-4">
+                    <span className="text-gray-500 text-sm truncate md:max-w-[180px] flex-1">
+                      {task.taskName}
+                    </span>
+                    <span className="text-gray-400 text-[10px] md:text-xs shrink-0 md:ml-auto md:text-right">
+                      {task.startDate?.substring(5).replace('-', '.')} ~ {task.endDate?.substring(5).replace('-', '.')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {next7DaysTasks.length === 0 && (
+                <div className="text-center py-4 text-gray-400 text-sm bg-gray-50/50 rounded">예정된 작업이 없습니다.</div>
               )}
             </div>
           </div>

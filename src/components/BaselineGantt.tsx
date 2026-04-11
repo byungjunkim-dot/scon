@@ -100,11 +100,11 @@ const SortableRow: React.FC<SortableRowProps> = ({
     <div 
       ref={setNodeRef} 
       style={style}
-      className="flex h-10 border-b border-gray-50 last:border-0 group hover:bg-gray-50/50 transition-colors bg-white"
+      className="flex h-10 xl:h-10 border-b border-gray-50 last:border-0 group hover:bg-gray-50/50 transition-colors bg-white"
     >
       <div 
         onClick={() => onSelect(item)}
-        className="sticky left-0 z-30 w-[75px] xl:w-[250px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center gap-2 group-hover:bg-gray-50/50 transition-colors pl-2 xl:pl-4 cursor-pointer"
+        className="sticky left-0 z-30 w-[250px] xl:w-[300px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center gap-2 group-hover:bg-gray-50/50 transition-colors pl-2 xl:pl-4 cursor-pointer"
       >
         <button 
           onClick={(e) => {
@@ -378,7 +378,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
     return (
       <div 
         className="absolute top-0 bottom-0 w-px bg-blue-500 z-20 pointer-events-none"
-        style={{ left: `calc(var(--left-col-width, 250px) + ${todayLeft}px)` }}
+        style={{ left: `calc(var(--left-col-width, 300px) + ${todayLeft}px)` }}
       >
         <div className="absolute top-0 -translate-x-1/2 bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm">오늘</div>
       </div>
@@ -432,12 +432,12 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
       {/* Gantt Chart Area */}
       <div
   ref={scrollContainerRef}
-  className="flex-1 overflow-auto no-scrollbar relative max-xl:[--left-col-width:75px] xl:[--left-col-width:250px]"
+  className="flex-1 overflow-auto no-scrollbar relative max-xl:[--left-col-width:300px] xl:[--left-col-width:300px]"
 >
         <div className="min-w-full inline-block align-top">
-          {/* Header */}
+          {/* Header */}   
           <div className="flex sticky top-0 z-30 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
-            <div className="sticky left-0 z-40 w-[75px] xl:w-[250px] flex-shrink-0 bg-gray-50 border-r border-gray-200 flex items-center px-2 xl:px-4 py-2.5">
+            <div className="sticky left-0 z-40 w-[250px] xl:w-[300px] flex-shrink-0 bg-gray-50 border-r border-gray-200 flex items-center px-2 xl:px-4 py-2.5">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">공종 / 세부공종</span>
             </div>
             
@@ -471,7 +471,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
                   <div key={category} className="border-b border-gray-100">
                     <div className="flex items-center border-b border-gray-100 group">
                       <div 
-                        className="sticky left-0 z-30 flex items-center bg-slate-50/90 backdrop-blur-sm px-2 xl:px-4 py-2 cursor-pointer hover:bg-slate-100 transition-colors w-[75px] xl:w-[250px] flex-shrink-0 border-r border-gray-100"
+                        className="sticky left-0 z-30 flex items-center bg-slate-50/90 backdrop-blur-sm px-2 xl:px-4 py-2 cursor-pointer hover:bg-slate-100 transition-colors w-[250px] xl:w-[300px] flex-shrink-0 border-r border-gray-100"
                         onClick={() => toggleCategory(category)}
                       >
                         <div className="w-5 h-5 flex items-center justify-center text-slate-400">

@@ -246,12 +246,12 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
     <div className="bg-white border-y xl:border border-gray-200 xl:rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-auto no-scrollbar max-xl:[--left-col-width:18vw] xl:[--left-col-width:300px]"
+        className="flex-1 overflow-auto no-scrollbar max-xl:[--left-col-width:250px] xl:[--left-col-width:300px]"
       >
         <div className="relative" style={{ minWidth: `calc(var(--left-col-width, 300px) + ${headerInterval.length * columnWidth}px)` }}>
           {/* Header */}
           <div className="flex sticky top-0 z-40 bg-gray-50/80 backdrop-blur-sm border-b border-gray-200">
-            <div className="sticky left-0 z-50 w-[18vw] xl:w-[300px] flex-shrink-0 bg-gray-50/90 backdrop-blur-sm border-r border-gray-100 p-2 xl:p-4 font-bold text-gray-400 text-[10px] uppercase tracking-widest truncate">공정 정보 (대분류/세부공종)</div>
+            <div className="sticky left-0 z-50 w-[250px] xl:w-[300px] flex-shrink-0 bg-gray-50/90 backdrop-blur-sm border-r border-gray-100 p-2 xl:p-4 font-bold text-gray-400 text-[10px] uppercase tracking-widest truncate">공정 정보 (대분류/세부공종)</div>
             <div className="flex">
               {headerInterval.map((item, i) => (
                 <div 
@@ -277,7 +277,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
                 {/* Category Header */}
                 <div className="flex border-b border-gray-100 group/cat">
                   <div 
-                    className="sticky left-0 z-30 w-[18vw] xl:w-[300px] flex-shrink-0 border-r border-gray-100 py-0.5 px-1.5 xl:p-1.5 flex items-center gap-2 bg-slate-50/90 backdrop-blur-sm cursor-pointer hover:bg-slate-100 transition-colors overflow-hidden"
+                    className="sticky left-0 z-30 w-[250px] xl:w-[300px] flex-shrink-0 border-r border-gray-100 py-0.5 px-1.5 xl:p-1.5 flex items-center gap-2 bg-slate-50/90 backdrop-blur-sm cursor-pointer hover:bg-slate-100 transition-colors overflow-hidden"
                     onClick={() => toggleCategory(group.category)}
                   >
                     {expandedCategories[group.category] !== false ? <ChevronDown size={14} className="text-slate-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-slate-400 flex-shrink-0" />}
@@ -320,7 +320,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ items, baseline
 
                       return (
                         <div key={idx} className="flex hover:bg-gray-50/50 group transition-colors border-b border-gray-50 last:border-b-0">
-                          <div className="w-[18vw] xl:w-[300px] flex-shrink-0 border-r border-gray-100 py-1 px-2 xl:p-2 sticky left-0 z-30 bg-white group-hover:bg-gray-50/50 transition-colors pl-4 xl:pl-8 overflow-hidden flex items-center">
+                          <div className="w-[250px] xl:w-[300px] flex-shrink-0 border-r border-gray-100 py-1 px-2 xl:p-2 sticky left-0 z-30 bg-white group-hover:bg-gray-50/50 transition-colors pl-4 xl:pl-8 overflow-hidden flex items-center">
                             <div className="text-[10px] xl:text-xs font-medium text-gray-700 truncate">{sub.name}</div>
                           </div>
                           
