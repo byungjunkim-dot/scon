@@ -304,8 +304,8 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
   const manpowerMaxScale = getManpowerMaxScale(cumulativePersonnel.total);
 
-  const next7DaysStart = format(selectedDate, 'yyyy-MM-dd');
-  const next7DaysEnd = format(addDays(selectedDate, 7), 'yyyy-MM-dd');
+  const next7DaysStart = format(new Date(), 'yyyy-MM-dd');
+  const next7DaysEnd = format(addDays(new Date(), 7), 'yyyy-MM-dd');
   const next7DaysTasks = schedules.filter(task => {
     if (task.isBaseline) return false;
     if (!task.startDate || !task.endDate) return false;
