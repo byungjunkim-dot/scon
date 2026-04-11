@@ -819,7 +819,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
 
           {/* 현장사진 */}
-          <div className="col-span-2 md:col-span-12 lg:col-span-4 lg:row-span-3 bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 flex flex-col max-h-[240px] md:max-h-[280px] lg:max-h-[600px]">
+          <div className="col-span-2 md:col-span-12 lg:col-span-4 lg:row-span-3 bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col max-h-[260px] md:max-h-[300px] lg:max-h-[600px]">
             <h2 className="text-sm font-bold text-gray-900 mb-2 md:mb-4 shrink-0">현장사진</h2>
             <div className="overflow-y-auto pr-2 custom-scrollbar flex-1">
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-2 gap-4">
