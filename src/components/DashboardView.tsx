@@ -723,22 +723,27 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   </div>
                   
                   <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-4">
-                    <span className="text-gray-500 text-sm truncate md:max-w-[180px] flex-1">
-                      {task.taskName}
-                    </span>
-                    <span className="text-gray-400 text-[10px] md:text-xs truncate md:max-w-[200px]">
-                      {[
-                        formatMultiValue(task.dongBlock as string | string[]),
-                        formatMultiValue(task.floor as string | string[]),
-                        formatMultiValue(task.zone as string | string[])
-                      ]
-                        .filter(Boolean)
-                        .join(' / ')}
-                    </span>
-                    <span className="text-gray-400 text-xs md:text-sm shrink-0 md:w-16 md:text-right md:ml-auto">
-                      {task.amount}
-                    </span>
-                  </div>
+    <span className="text-gray-500 text-sm truncate md:max-w-[180px] flex-1">
+      {task.taskName}
+    </span>
+    
+    {/* 위치와 갯수를 한 줄로 묶어주는 컨테이너 추가 */}
+    <div className="flex flex-row items-center justify-between w-full md:w-auto md:flex-1 gap-2 md:gap-4">
+      <span className="text-gray-400 text-[10px] md:text-xs truncate md:max-w-[200px]">
+        {[
+          formatMultiValue(task.dongBlock as string | string[]),
+          formatMultiValue(task.floor as string | string[]),
+          formatMultiValue(task.zone as string | string[])
+        ]
+          .filter(Boolean)
+          .join(' / ')}
+      </span>
+      <span className="text-gray-400 text-xs md:text-sm shrink-0 md:w-16 text-right md:ml-auto">
+        {task.amount}
+      </span>
+    </div>
+    
+  </div>
                 </div>
               ))}
               {(!todayReport?.todayTasks || todayReport.todayTasks.length === 0) && (
