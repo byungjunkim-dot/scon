@@ -26,6 +26,7 @@ export interface ScheduleItem {
   detailLocation: string;
   startDate: string; // ISO format YYYY-MM-DD
   endDate: string;   // ISO format YYYY-MM-DD
+  periods?: { startDate: string; endDate: string }[]; // 추가된 필드
   duration: number;
   progress: number; // 0-100
   status: Status;
@@ -105,7 +106,15 @@ export interface DailyEquipment {
 
 export interface DailyIssue {
   id: string;
-  type: '안전' | '품질' | '민원';
+  type:
+    | '안전'
+    | '품질'
+    | '공정'
+    | '설계'
+    | '자재'
+    | '장비'
+    | '민원'
+    | '기타';
   description: string;
 }
 
@@ -224,4 +233,59 @@ export interface MaterialApproval {
   photos: DailyPhoto[];
   author: string;
   approver: string;
+}
+
+export type QuickMemoCategory =
+  | '안전'
+  | '품질'
+  | '공정'
+  | '설계'
+  | '자재'
+  | '장비'
+  | '민원'
+  | '기타';
+
+export type QuickMemoSeverity =
+  | '낮음'
+  | '중간'
+  | '높음'
+  | '긴급';
+
+export interface QuickMemoPhoto {
+  id: string;
+  url: string;
+  title?: string;
+  description?: string;
+  category?: string;
+  subCategory?: string;
+}
+
+export interface QuickMemo {
+  id: string;
+  projectId: string;
+  date: string;
+
+  rawText: string;
+  audioUrl?: string;
+  photos: QuickMemoPhoto[];
+
+  aiTitle: string;
+  aiSummary: string;
+  category: QuickMemoCategory;
+  severity: QuickMemoSeverity;
+
+  location?: string;
+  dongBlock?: string;
+  floor?: string;
+  zone?: string;
+
+  recommendedAction?: string;
+  designFeedback?: string;
+  dailyIssueText?: string;
+
+  status: 'open' | 'reviewed' | 'resolved' | 'dismissed';
+
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
 }

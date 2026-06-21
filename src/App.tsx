@@ -23,10 +23,25 @@ import {
   ArrowLeftRight,
   Database,
   FileText,
+  FileSpreadsheet,
   User as UserIcon,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles,
+  ShieldAlert,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ExcelJS from 'exceljs';
+import { 
+  format, 
+  parseISO, 
+  differenceInDays, 
+  addDays, 
+  startOfDay, 
+  isWithinInterval,
+  min as minDate,
+  max as maxDate
+} from 'date-fns';
 
 const LogoIcon = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
   <svg
@@ -56,6 +71,9 @@ import { DashboardView } from './components/DashboardView';
 import { DrawingsView } from './components/DrawingsView';
 import { AuthView } from './components/AuthView';
 import { UserManagement } from './components/UserManagement';
+import { AiDiagnosisView } from './components/AiDiagnosisView';
+import { PhotoGalleryView } from './components/PhotoGalleryView';
+import { QuickMemoView } from './components/QuickMemoView';
 
 import { Project, ScheduleItem, Category, Status, AppSettings, User } from './types';
 import {
@@ -76,9 +94,10 @@ import { isSupabaseConfigured } from './lib/supabase';
 import { supabaseService } from './services/supabaseService';
 
 type ViewMode = 'auth' | 'projects' | 'project-detail' | 'user-management';
-type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings';
+type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'ai-diagnosis';
 type TabMode = 'gantt' | 'table' | 'comparison' | 'baseline';
 type DocumentTab = 'daily-report' | 'inspection' | 'material' | 'concrete';
+type AiDiagnosisTab = 'ai-risk' | 'ai-report';
 
 const INITIAL_SETTINGS: AppSettings = {
   categories: CATEGORIES,
@@ -101,8 +120,12 @@ export default function App() {
 
   // 2. 현재 사용자
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('cp_current_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('cp_current_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch(e) {
+      return null;
+    }
   });
 
   // 3. 메뉴 및 탭 상태 (유지)
@@ -115,11 +138,18 @@ export default function App() {
   const [documentTab, setDocumentTab] = useState<DocumentTab>(() => {
     return (localStorage.getItem('cp_document_tab') as DocumentTab) || 'daily-report';
   });
+  const [aiDiagnosisTab, setAiDiagnosisTab] = useState<AiDiagnosisTab>(() => {
+    return (localStorage.getItem('cp_ai_diagnosis_tab') as AiDiagnosisTab) || 'ai-risk';
+  });
 
   // 4. 프로젝트 목록 (★AI가 지워서 에러가 났던 부분 복구!)
   const [projects, setProjects] = useState<Project[]>(() => {
-    const saved = localStorage.getItem('cp_projects');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('cp_projects');
+      return saved ? JSON.parse(saved) : [];
+    } catch(e) {
+      return [];
+    }
   });
 
   // 5. 현재 선택된 프로젝트 ID (유지)
@@ -135,6 +165,7 @@ export default function App() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDailyReportDirty, setIsDailyReportDirty] = useState(false);
+  const [autoOpenQuickMemo, setAutoOpenQuickMemo] = useState(false);
 
   const [unsavedChangesModal, setUnsavedChangesModal] = useState<{
     isOpen: boolean;
@@ -181,6 +212,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('cp_document_tab', documentTab);
   }, [documentTab]);
+  useEffect(() => {
+    localStorage.setItem('cp_ai_diagnosis_tab', aiDiagnosisTab);
+  }, [aiDiagnosisTab]);
   // --- 화면 상태 자동 저장 로직 끝 ---
 
   const createBaselineId = (sourceId: string) => `b-${sourceId}`;
@@ -345,7 +379,8 @@ export default function App() {
   const sortScheduleItem = (a: ScheduleItem, b: ScheduleItem) => {
     const indexA = settings.categories.indexOf(a.category);
     const indexB = settings.categories.indexOf(b.category);
-    return indexA - indexB;
+    if (indexA !== indexB) return indexA - indexB;
+    return a.subCategory.localeCompare(b.subCategory);
   };
 
   const filteredSchedules = useMemo(() => {
@@ -670,6 +705,267 @@ const handleUpdateSchedule = async (item: ScheduleItem) => {
     }
   };
 
+  const handleExportToExcel = async () => {
+    if (!schedules.length) {
+      alert('내보낼 공정 데이터가 없습니다.');
+      return;
+    }
+
+    const exportSchedules = [...schedules].sort(sortScheduleItem);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('실행공정표');
+
+    // 1. 전체 날짜 범위 계산 (Baseline 포함)
+    const allDates = [
+      ...exportSchedules.map(s => parseISO(s.startDate)),
+      ...exportSchedules.map(s => parseISO(s.endDate)),
+      ...baselineSchedules.map(s => parseISO(s.startDate)),
+      ...baselineSchedules.map(s => parseISO(s.endDate))
+    ];
+    
+    if (allDates.length === 0) return;
+
+    const projectStart = startOfDay(minDate(allDates));
+    const projectEnd = startOfDay(maxDate(allDates));
+    const totalDays = differenceInDays(projectEnd, projectStart) + 1;
+
+    // 2. 컬럼 너비 설정 (A~G열 고정 너비, 이후 날짜 열)
+    const columnsConfig = [
+      { width: 12 }, // 공종
+      { width: 15 }, // 세부공종
+      { width: 40 }, // 작업명
+      { width: 16 }, // 시작일
+      { width: 16 }, // 종료일
+      { width: 8 },  // 진척률
+      { width: 8 },  // 상태
+      ...Array(totalDays).fill({ width: 4 }) // 날짜별 칸
+    ];
+    worksheet.columns = columnsConfig;
+
+    const lastColIndex = 7 + totalDays;
+
+    // 3. 타이틀 및 기준일자 (1~2행)
+    worksheet.mergeCells(1, 1, 1, lastColIndex);
+    const titleCell = worksheet.getCell(1, 1);
+    titleCell.value = `실행 공정표 - ${currentProject?.name || '프로젝트 명 미지정'}`;
+    titleCell.font = { size: 18, bold: true };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(1).height = 35;
+
+    worksheet.mergeCells(2, 1, 2, lastColIndex);
+    const dateCell = worksheet.getCell(2, 1);
+    dateCell.value = `${format(new Date(), 'yyyy년 MM월 dd일')} 기준`;
+    dateCell.font = { size: 11, color: { argb: 'FF666666' } };
+    dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(2).height = 25;
+
+    // 빈 행 추가 (3행)
+    worksheet.getRow(3).height = 10;
+
+    // 4. 헤더 행 (4~6행 3단 구조: 년/월/일)
+    const headerStartRow = 4;
+    const headerEndRow = 6;
+    const metaHeaders = ['공종', '세부공종', '작업명', '시작일', '종료일', '진척률', '상태'];
+    
+    metaHeaders.forEach((h, i) => {
+      worksheet.mergeCells(headerStartRow, i + 1, headerEndRow, i + 1);
+      const cell = worksheet.getCell(headerStartRow, i + 1);
+      cell.value = h;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF333333' } };
+      cell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    let yStart = 0;
+    let mStart = 0;
+    
+    for (let i = 0; i <= totalDays; i++) {
+        if (i === totalDays) {
+           if (yStart < i) worksheet.mergeCells(4, 8 + yStart, 4, 8 + i - 1);
+           if (mStart < i) worksheet.mergeCells(5, 8 + mStart, 5, 8 + i - 1);
+           break;
+        }
+
+        const currentDate = addDays(projectStart, i);
+        const prevDate = i > 0 ? addDays(projectStart, i - 1) : null;
+
+        if (prevDate && format(currentDate, 'yyyy') !== format(prevDate, 'yyyy')) {
+            worksheet.mergeCells(4, 8 + yStart, 4, 8 + i - 1);
+            yStart = i;
+        }
+        if (prevDate && format(currentDate, 'MM') !== format(prevDate, 'MM')) {
+            worksheet.mergeCells(5, 8 + mStart, 5, 8 + i - 1);
+            mStart = i;
+        }
+        
+        const colIndex = 8 + i;
+        worksheet.getCell(4, colIndex).value = `${format(currentDate, 'yyyy')}년`;
+        worksheet.getCell(5, colIndex).value = `${format(currentDate, 'MM')}월`;
+        worksheet.getCell(6, colIndex).value = format(currentDate, 'dd');
+        
+        for (let r = 4; r <= 6; r++) {
+            const cell = worksheet.getCell(r, colIndex);
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF555555' } };
+            cell.font = { color: { argb: 'FFFFFFFF' }, size: 8 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        }
+    }
+
+    // 5. 데이터 행 추가 (7행부터 시작, 각 태스크당 3행씩: 실제, 계획, 빈칸)
+    let curRow = 7;
+
+    const catMerges: { start: number, end: number }[] = [];
+    const subCatMerges: { start: number, end: number }[] = [];
+
+    let lastCat = exportSchedules[0]?.category;
+    let startCatRow = 7;
+    let lastSubCat = exportSchedules[0]?.subCategory;
+    let startSubCatRow = 7;
+
+    exportSchedules.forEach((item, index) => {
+      if (item.category !== lastCat) {
+        catMerges.push({ start: startCatRow, end: curRow - 2 });
+        subCatMerges.push({ start: startSubCatRow, end: curRow - 2 });
+        lastCat = item.category;
+        startCatRow = curRow;
+        lastSubCat = item.subCategory;
+        startSubCatRow = curRow;
+      } else if (item.subCategory !== lastSubCat) {
+        subCatMerges.push({ start: startSubCatRow, end: curRow - 2 });
+        lastSubCat = item.subCategory;
+        startSubCatRow = curRow;
+      }
+
+      const baseline = baselineSchedules.find(b => b.id === createBaselineId(item.id));
+      
+      // Actual 행 데이터
+      const actualRow = worksheet.getRow(curRow);
+      actualRow.getCell(1).value = item.category;
+      actualRow.getCell(2).value = item.subCategory;
+      actualRow.getCell(3).value = item.taskName;
+      actualRow.getCell(4).value = `${item.startDate} (실행)`;
+      actualRow.getCell(5).value = `${item.endDate} (실행)`;
+      actualRow.getCell(6).value = `${item.progress}%`;
+      actualRow.getCell(7).value = item.status;
+
+      // 바 차트 채우기 (Actual)
+      const start = startOfDay(parseISO(item.startDate));
+      const end = startOfDay(parseISO(item.endDate));
+      
+      const barColor = (settings.categoryColors[item.category] || '#3b82f6').replace('#', '').toUpperCase(); // Web category color
+      const argbBarColor = 'FF' + barColor; // Add alpha channel
+
+      for (let i = 0; i < totalDays; i++) {
+        const currentDate = startOfDay(addDays(projectStart, i));
+        if (isWithinInterval(currentDate, { start, end })) {
+          const barCell = actualRow.getCell(8 + i);
+          barCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argbBarColor } };
+        }
+      }
+
+      // 바 차트 채우기 (Baseline - 2번째 행)
+      const baselineRow = worksheet.getRow(curRow + 1);
+      if (baseline) {
+        baselineRow.getCell(4).value = `${baseline.startDate} (계획)`;
+        baselineRow.getCell(5).value = `${baseline.endDate} (계획)`;
+        baselineRow.getCell(4).font = { color: { argb: 'FF888888' } };
+        baselineRow.getCell(5).font = { color: { argb: 'FF888888' } };
+
+        const bStart = startOfDay(parseISO(baseline.startDate));
+        const bEnd = startOfDay(parseISO(baseline.endDate));
+        for (let i = 0; i < totalDays; i++) {
+          const currentDate = startOfDay(addDays(projectStart, i));
+          if (isWithinInterval(currentDate, { start: bStart, end: bEnd })) {
+            const barCell = baselineRow.getCell(8 + i);
+            barCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } }; // Light Gray
+          }
+        }
+      }
+
+      // 왼쪽 텍스트 영역 병합 (작업명, 진척률, 상태) - 날짜는 병합 안함, 공종/세부공종은 밖에서 병합
+      [3, 6, 7].forEach(colIndex => {
+        worksheet.mergeCells(curRow, colIndex, curRow + 1, colIndex);
+        const mergedCell = worksheet.getCell(curRow, colIndex);
+        mergedCell.alignment = { vertical: 'middle', horizontal: colIndex === 3 ? 'left' : 'center' };
+      });
+
+      // 3번째 줄을 빈칸 느낌으로 살리기
+      worksheet.getRow(curRow + 2).height = 10;
+      
+      if (index === exportSchedules.length - 1) {
+        catMerges.push({ start: startCatRow, end: curRow + 1 });
+        subCatMerges.push({ start: startSubCatRow, end: curRow + 1 });
+      }
+
+      curRow += 3; // 다음 항목을 위해 3행 건너뜀 (Actual, Baseline, Empty)
+    });
+
+    catMerges.forEach(m => {
+      worksheet.mergeCells(m.start, 1, m.end, 1);
+      const cell = worksheet.getCell(m.start, 1);
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    subCatMerges.forEach(m => {
+      worksheet.mergeCells(m.start, 2, m.end, 2);
+      const cell = worksheet.getCell(m.start, 2);
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    // 모든 셀 테두리 적용 (헤더부터 끝까지)
+    worksheet.eachRow((row, rowNumber) => {
+      // 4~6행은 헤더, 7행 이상은 (rowNumber-7)%3 !== 2 이면 데이터 행
+      const isHeader = rowNumber >= 4 && rowNumber <= 6;
+      const isDataRow = rowNumber >= 7 && (rowNumber - 7) % 3 !== 2;
+      
+      if (isHeader || isDataRow) {
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          if (colNumber <= lastColIndex) {
+            cell.border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' }
+            };
+          }
+        });
+      }
+    });
+
+    catMerges.forEach(m => {
+      for(let r = m.start; r <= m.end; r++) {
+         worksheet.getCell(r, 1).border = {
+            top: { style: r === m.start ? 'thin' : undefined },
+            left: { style: 'thin' },
+            bottom: { style: r === m.end ? 'thin' : undefined },
+            right: { style: 'thin' }
+         };
+      }
+    });
+
+    subCatMerges.forEach(m => {
+      for(let r = m.start; r <= m.end; r++) {
+         worksheet.getCell(r, 2).border = {
+            top: { style: r === m.start ? 'thin' : undefined },
+            left: { style: 'thin' },
+            bottom: { style: r === m.end ? 'thin' : undefined },
+            right: { style: 'thin' }
+         };
+      }
+    });
+
+    // 엑셀 파일 저장
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `실행공정표_${currentProject?.name || '프로젝트'}_${format(new Date(), 'yyyyMMdd')}.xlsx`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleExport = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(schedules));
     const downloadAnchorNode = document.createElement('a');
@@ -937,7 +1233,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'dashboard' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
               >
                 <LayoutDashboard size={18} className={mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} />
-                <span>대쉬 보드</span>
+                <span>대시 보드</span>
               </button>
               <button
                 onClick={() => checkUnsavedChanges(() => setMainMenu('schedule'))}
@@ -960,11 +1256,58 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                 <Building size={18} className={mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} />
                 <span>도면 보기</span>
               </button>
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('photo-gallery'))}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'photo-gallery' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <ImageIcon size={18} className={mainMenu === 'photo-gallery' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>사진 갤러리</span>
+              </button>
+
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('quick-memo'))}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'quick-memo' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <AlertTriangle size={18} className={mainMenu === 'quick-memo' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>퀵 메모</span>
+              </button>
+
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('ai-diagnosis'))}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'ai-diagnosis' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <Sparkles size={18} className={mainMenu === 'ai-diagnosis' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>AI 진단</span>
+              </button>
+
+              {mainMenu === 'ai-diagnosis' && (
+                <>
+                  <div className="pt-6 px-3 mb-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">SUB Menu</span>
+                  </div>
+                  <div className="space-y-1 px-1">
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setAiDiagnosisTab('ai-risk'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${aiDiagnosisTab === 'ai-risk' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <ShieldAlert size={18} className={aiDiagnosisTab === 'ai-risk' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>AI 리스크</span>
+                    </button>
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setAiDiagnosisTab('ai-report'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${aiDiagnosisTab === 'ai-report' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <FileText size={18} className={aiDiagnosisTab === 'ai-report' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>AI 리포트</span>
+                    </button>
+                  </div>
+                </>
+              )}
 
               {mainMenu === 'schedule' && (
                 <>
                   <div className="pt-6 px-3 mb-2">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Action Menu</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">SUB Menu</span>
                   </div>
                   <div className="space-y-1 px-1">
                     <button
@@ -1002,7 +1345,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               {mainMenu === 'documents' && (
                 <>
                   <div className="pt-6 px-3 mb-2">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Action Menu</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">SUB Menu</span>
                   </div>
                   <div className="space-y-1 px-1">
                     <button
@@ -1039,6 +1382,13 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
             </nav>
 
             <div className="p-4 border-t border-gray-100 space-y-1">
+              <button
+                onClick={() => checkUnsavedChanges(() => setViewMode('projects'))}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
+              >
+                <ChevronLeft size={18} className="text-gray-400" />
+                <span>프로젝트 목록</span>
+              </button>
               {currentUser?.userRole !== '브론즈' && (
                 <>
                   <button
@@ -1046,7 +1396,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
                   >
                     <Settings size={18} className="text-gray-400" />
-                    <span>설정 모드</span>
+                    <span>환경 설정</span>
                   </button>
                   {currentUser?.role === 'admin' && (
                     <button
@@ -1057,44 +1407,37 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       <span>샘플 데이터 로드</span>
                     </button>
                   )}
+                  {currentUser?.role === 'admin' && (
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setViewMode('user-management'))}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
+                    >
+                      <UserIcon size={18} className="text-gray-400" />
+                      <span>회원 관리</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => checkUnsavedChanges(() => setIsProfileModalOpen(true))}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
+                  >
+                    <UserIcon size={18} className="text-gray-400" />
+                    <span>내 프로필</span>
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-600 hover:bg-red-50 transition-all text-sm font-medium"
+                  >
+                    <LogOut size={18} className="text-red-400" />
+                    <span>로그 아웃</span>
+                  </button>
                 </>
               )}
-              <button
-                onClick={() => checkUnsavedChanges(() => setViewMode('projects'))}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
-              >
-                <ChevronLeft size={18} className="text-gray-400" />
-                <span>프로젝트 목록</span>
-              </button>
-              {currentUser?.role === 'admin' && (
-                <button
-                  onClick={() => checkUnsavedChanges(() => setViewMode('user-management'))}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
-                >
-                  <UserIcon size={18} className="text-gray-400" />
-                  <span>회원 관리</span>
-                </button>
-              )}
-              <button
-                onClick={() => checkUnsavedChanges(() => setIsProfileModalOpen(true))}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
-              >
-                <UserIcon size={18} className="text-gray-400" />
-                <span>내 프로필</span>
-              </button>
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all text-sm font-medium"
-              >
-                <LogOut size={18} />
-                <span>로그 아웃</span>
-              </button>
             </div>
           </aside>
 
           <main className="flex-1 flex flex-col overflow-hidden relative">
-            <div className="xl:hidden bg-white border-b border-gray-200 flex flex-col z-30">
-              <div className="p-4 flex items-center justify-between border-b border-gray-100">
+            <div className="xl:hidden bg-gray-50 border-b border-gray-200 flex flex-col z-30">
+              <div className="p-4 pb-0 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="bg-blue-600 p-1 rounded-md shadow-sm">
                     <Building2 size={16} className="text-white" />
@@ -1108,36 +1451,77 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                   <ChevronLeft size={20} />
                 </button>
               </div>
-              <div className="flex overflow-x-auto no-scrollbar px-2 py-2 gap-2">
+              <div className="flex overflow-x-auto no-scrollbar px-2 py-0 gap-2">
                 <button
                   onClick={() => setMainMenu('dashboard')}
-                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'dashboard' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
+                  className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'dashboard' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
-                  <LayoutDashboard size={16} className={mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} />
-                  <span>대쉬 보드</span>
+                  <LayoutDashboard size={16} className={`${mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span>대시 보드</span>
                 </button>
                 <button
                   onClick={() => setMainMenu('schedule')}
-                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'schedule' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
+                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'schedule' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
-                  <BarChart3 size={16} className={mainMenu === 'schedule' ? 'text-blue-600' : 'text-gray-400'} />
+                  <BarChart3 size={16} className={`${mainMenu === 'schedule' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>공정 관리</span>
                 </button>
                 <button
                   onClick={() => setMainMenu('documents')}
-                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'documents' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
+                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'documents' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
-                  <FileText size={16} className={mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} />
+                  <FileText size={16} className={`${mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>문서 관리</span>
                 </button>
                 <button
                   onClick={() => setMainMenu('drawings')}
-                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full transition-all text-sm font-medium ${mainMenu === 'drawings' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 bg-gray-50 border border-gray-200'}`}
+                  className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'drawings' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
-                  <Building size={16} className={mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} />
+                  <Building size={16} className={`${mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>도면 보기</span>
                 </button>
+                <button
+                  onClick={() => setMainMenu('photo-gallery')}
+                  className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'photo-gallery' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                >
+                  <ImageIcon size={16} className={`${mainMenu === 'photo-gallery' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span>사진 갤러리</span>
+                </button>
+
+                <button
+                  onClick={() => setMainMenu('quick-memo')}
+                  className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'quick-memo' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                >
+                  <AlertTriangle size={16} className={`${mainMenu === 'quick-memo' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span>퀵 메모</span>
+                </button>
+                <button
+                  onClick={() => setMainMenu('ai-diagnosis')}
+                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'ai-diagnosis' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                >
+                  <Sparkles size={16} className={`${mainMenu === 'ai-diagnosis' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span>AI 진단</span>
+                </button>
               </div>
+
+              {mainMenu === 'ai-diagnosis' && (
+                <div className="hidden md:flex overflow-x-auto no-scrollbar px-2 pb-2 gap-2 border-t border-gray-100 pt-2">
+                  <button
+                    onClick={() => setAiDiagnosisTab('ai-risk')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${aiDiagnosisTab === 'ai-risk' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <ShieldAlert size={14} className={aiDiagnosisTab === 'ai-risk' ? 'text-blue-600' : 'text-gray-500'} />
+                    <span>AI 리스크</span>
+                  </button>
+                  <button
+                    onClick={() => setAiDiagnosisTab('ai-report')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${aiDiagnosisTab === 'ai-report' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <FileText size={14} className={aiDiagnosisTab === 'ai-report' ? 'text-blue-600' : 'text-gray-500'} />
+                    <span>AI 리포트</span>
+                  </button>
+                </div>
+              )}
               {mainMenu === 'schedule' && (
                 <div className="flex overflow-x-auto no-scrollbar px-2 pb-2 gap-2 border-t border-gray-100 pt-2">
                   <button
@@ -1216,18 +1600,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-9 pr-4 py-1.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm w-56"
                   />
-                </div>
-                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                  <button onClick={handleSaveBaseline} className="p-2 bg-white hover:bg-gray-50 border-r border-gray-200 transition-colors text-gray-600" title="현재 공정을 Baseline으로 저장">
-                    <Save size={16} />
-                  </button>
-                  <button onClick={handleExport} className="p-2 bg-white hover:bg-gray-50 text-gray-600 border-r border-gray-200 transition-colors" title="내보내기">
-                    <Download size={16} />
-                  </button>
-                  <button className="p-2 bg-white hover:bg-gray-50 text-gray-600 transition-colors" title="불러오기">
-                    <Upload size={16} />
-                  </button>
-                </div>
+                </div>                
               </div>
             </header>
 
@@ -1259,6 +1632,16 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                 </div>
 
                 <div className="ml-auto flex items-center gap-3">
+                  {(tabMode === 'gantt' || tabMode === 'table') && (
+                    <button
+                      onClick={handleExportToExcel}
+                      className="flex items-center gap-2 px-3 py-1.5 text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-lg hover:bg-emerald-100 transition-all shadow-sm text-xs font-bold"
+                      title="엑셀 내보내기"
+                    >
+                      <FileSpreadsheet size={16} />
+                      <span className="hidden sm:inline">Excel 내보내기</span>
+                    </button>
+                  )}
                   {(tabMode === 'gantt' || tabMode === 'table') && (
                     <button
                       onClick={handleOpenNewForm}
@@ -1294,7 +1677,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               </div>
             )}
 
-            <div className="flex-1 flex flex-col p-0 xl:p-8 overflow-hidden relative">
+            <div className="flex-1 flex flex-col p-0 overflow-hidden relative">
               <div className="flex-1 overflow-hidden">
                 <AnimatePresence mode="wait">
                   {mainMenu === 'dashboard' && (
@@ -1323,6 +1706,52 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       className="h-full"
                     >
                       <DrawingsView project={currentProject || null} currentUser={currentUser} />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'photo-gallery' && (
+                    <motion.div
+                      key="photo-gallery"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full overflow-y-auto bg-gray-50/50"
+                    >
+                      <PhotoGalleryView project={currentProject || null} />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'quick-memo' && (
+                    <motion.div
+                      key="quick-memo"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full overflow-y-auto bg-gray-50/50"
+                    >
+                      <QuickMemoView
+                        project={currentProject || null}
+                        currentUser={currentUser}
+                        settings={settings}
+                        autoOpenModal={autoOpenQuickMemo}
+                        onModalOpened={() => setAutoOpenQuickMemo(false)}
+                      />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'ai-diagnosis' && (
+                    <motion.div
+                      key={`ai-diagnosis-${aiDiagnosisTab}`}
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full overflow-y-auto"
+                    >
+                      <AiDiagnosisView
+                        project={currentProject || null}
+                        schedules={schedules}
+                        tab={aiDiagnosisTab}
+                      />
                     </motion.div>
                   )}
 
@@ -1371,6 +1800,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                         items={filteredSchedules}
                         zoom={zoom}
                         onSelect={handleSelectItem}
+                        onDelete={handleDeleteSchedule}
                         settings={settings}
                         onReorder={handleReorderSchedules}
                       />
@@ -1444,6 +1874,21 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                 <Plus size={24} />
               </button>
             )}
+
+            {mainMenu === 'dashboard' && (
+              <button
+              onClick={() => {
+                setAutoOpenQuickMemo(true);
+                checkUnsavedChanges(() => setMainMenu('quick-memo'));
+              }}
+              className="xl:hidden fixed bottom-6 right-6 h-14 px-4 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 transition-all z-50"
+              title="퀵 메모 작성"
+              >
+              <Plus size={22} />
+              <span className="text-sm font-bold">퀵 메모</span>
+              </button>
+            )}
+
           </main>
 
           <AnimatePresence>
