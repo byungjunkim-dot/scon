@@ -1,6 +1,85 @@
 import { supabase } from '../lib/supabase';
 import { Project, ScheduleItem, AppSettings, User, DailyReport, Drawing, Category, Status } from '../types';
 
+
+export const getCurrentUser = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+};
+
+export type AiReportType =
+  | 'monthly_summary'
+  | 'schedule_analysis'
+  | 'manpower_analysis'
+  | 'custom';
+
+export type AiReportRequest = {
+  question: string;
+  projectId?: string | null;
+  reportType?: AiReportType;
+};
+
+export type AiReportResponse = {
+  ok: boolean;
+  plan?: {
+    intent: 'weekly_daily_status' | 'monthly_project_summary';
+    scope: 'selected_project' | 'all_projects';
+    startDate: string;
+    endDate: string;
+    reason: string;
+    projectId?: string | null;
+  };
+  rows: any[];
+  answer: string;
+  result?: any;
+  error?: string;
+};
+
+export type AiRiskSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export type AiRiskCategory =
+  | 'schedule'
+  | 'baseline'
+  | 'daily_report'
+  | 'resource'
+  | 'document'
+  | 'quality'
+  | 'safety';
+
+export type AiRiskItem = {
+  id: string;
+  title: string;
+  category: AiRiskCategory;
+  severity: AiRiskSeverity;
+  description: string;
+  evidence: string[];
+  recommendation: string;
+};
+
+export type AiRiskScanRequest = {
+  projectId?: string | null;
+  projectName?: string;
+  overallRiskLevel: AiRiskSeverity;
+  risks: AiRiskItem[];
+  stats?: {
+    totalRiskCount: number;
+    highRiskCount: number;
+    scheduleCount: number;
+    dailyReportCount: number;
+  };
+};
+
+export type AiRiskScanResponse = {
+  ok: boolean;
+  result?: {
+    overallRiskLevel: AiRiskSeverity;
+    summary: string;
+    risks: AiRiskItem[];
+  };
+  error?: string;
+  receivedKeys?: string[];
+};
+
 type ScheduleRow = {
   id: string;
   projectId: string;
@@ -186,9 +265,89 @@ export const supabaseService = {
   },
 
   async saveDailyReport(report: any) {
-    const { data, error } = await supabase.from('daily_reports').upsert(report).select().single();
+  const user = await getCurrentUser();
+
+  const isUpdate = !!report.id;
+
+  const newReport = {
+    ...report,
+    ...(isUpdate
+      ? {
+          updated_by: user?.id,
+          updated_at: new Date()
+        }
+      : {
+          created_by: user?.id
+        })
+  };
+
+  const { data, error } = await supabase
+    .from('daily_reports')
+    .upsert(newReport)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+  },
+
+  async deleteDailyReport(id: string) {
+    const { error } = await supabase.from('daily_reports').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // Inspection Requests
+  async getInspectionRequests(projectId: string) {
+    const { data, error } = await supabase.from('inspection_requests').select('*').eq('projectId', projectId);
+    if (error) throw error;
+    return data as any[];
+  },
+
+  async saveInspectionRequest(request: any) {
+    const { data, error } = await supabase.from('inspection_requests').upsert(request).select().single();
     if (error) throw error;
     return data;
+  },
+
+  async deleteInspectionRequest(id: string) {
+    const { error } = await supabase.from('inspection_requests').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // Material Approvals
+  async getMaterialApprovals(projectId: string) {
+    const { data, error } = await supabase.from('material_approvals').select('*').eq('projectId', projectId);
+    if (error) throw error;
+    return data as any[];
+  },
+
+  async saveMaterialApproval(approval: any) {
+    const { data, error } = await supabase.from('material_approvals').upsert(approval).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteMaterialApproval(id: string) {
+    const { error } = await supabase.from('material_approvals').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // Concrete Plans
+  async getConcretePlans(projectId: string) {
+    const { data, error } = await supabase.from('concrete_plans').select('*').eq('projectId', projectId);
+    if (error) throw error;
+    return data as any[];
+  },
+
+  async saveConcretePlan(plan: any) {
+    const { data, error } = await supabase.from('concrete_plans').upsert(plan).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteConcretePlan(id: string) {
+    const { error } = await supabase.from('concrete_plans').delete().eq('id', id);
+    if (error) throw error;
   },
 
   // 👉 Drawings (여기부터 도면 처리 로직입니다)
@@ -210,26 +369,35 @@ export const supabaseService = {
   },
 
 // 👉 Storage (여기부터 이미지 업로드 로직입니다)
-  async uploadImage(file: Blob, fileName: string) {
-    // 버킷 이름을 기존에 설정하신 'photos'로 맞춥니다.
-    const bucketName = 'photos'; 
+  async uploadImage(file: File | Blob, fileName: string) {
+  const bucketName = 'photos';
 
-    const { data, error } = await supabase.storage
-      .from(bucketName)
-      .upload(fileName, file, {
-        contentType: file.type || 'image/jpeg',
-        upsert: false // 덮어쓰기 방지
-      });
+  const { error } = await supabase.storage
+    .from(bucketName)
+    .upload(fileName, file, {
+      contentType: file.type || 'image/jpeg',
+      cacheControl: '3600',
 
-    if (error) throw error;
+      // 현재 Storage 정책에 UPDATE가 없으므로 false가 안전합니다.
+      // 파일명은 매번 고유하게 만들기 때문에 충돌 가능성이 낮습니다.
+      upsert: true,
+    });
 
-    // 업로드 성공 후 Public URL 가져오기
-    const { data: urlData } = supabase.storage
-      .from(bucketName)
-      .getPublicUrl(fileName);
+  if (error) {
+    console.error('Supabase Storage uploadImage error:', error);
+    throw error;
+  }
 
-    return urlData.publicUrl;
-  },
+  const { data: urlData } = supabase.storage
+    .from(bucketName)
+    .getPublicUrl(fileName);
+
+  if (!urlData?.publicUrl) {
+    throw new Error('Storage Public URL 생성에 실패했습니다.');
+  }
+
+  return urlData.publicUrl;
+},
 
  // 👉 Storage (사진 이미지 파일 삭제용)
   async deleteImage(fileName: string) {
@@ -246,5 +414,94 @@ export const supabaseService = {
     if (!data || data.length === 0) {
       throw new Error('권한(RLS)이 없거나 파일을 찾을 수 없습니다.');
     }
-  }
+  },
+
+    // Supabase AiReport 함수
+  async getAiReport(payload: AiReportRequest) {
+    const { data, error } = await supabase.functions.invoke('ai-report', {
+      body: payload,
+    });
+
+    if (error) throw error;
+    return data as AiReportResponse;
+  },
+
+  // Supabase AI Risk Scan 함수
+  async getAiRiskScan(payload: AiRiskScanRequest) {
+    const { data, error } = await supabase.functions.invoke('ai-risk-scan', {
+      body: payload,
+    });
+
+    if (error) throw error;
+    return data as AiRiskScanResponse;
+  },
+
+    // Quick Memos
+  async getQuickMemos(projectId: string) {
+  const { data, error } = await supabase
+    .from('quick_memos')
+    .select('*')
+    .eq('projectId', projectId)
+    .order('date', { ascending: false })
+    .order('createdAt', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+},
+
+async getQuickMemosByDate(projectId: string, date: string) {
+  const { data, error } = await supabase
+    .from('quick_memos')
+    .select('*')
+    .eq('projectId', projectId)
+    .eq('date', date)
+    .order('createdAt', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+},
+
+async saveQuickMemo(memo: any) {
+  const user = await getCurrentUser();
+
+  const payload = {
+    ...memo,
+    createdBy: memo.createdBy || user?.id || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('quick_memos')
+    .upsert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+},
+
+  async deleteQuickMemo(id: string) {
+    const { error } = await supabase
+      .from('quick_memos')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+  
+  async analyzeQuickMemo(payload: {
+    projectId: string;
+    rawText?: string;
+    audioBase64?: string;
+    imageUrls?: string[];
+    date: string;
+  }) {
+    const { data, error } = await supabase.functions.invoke('ai-quick-memo', {
+      body: payload,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
 };
