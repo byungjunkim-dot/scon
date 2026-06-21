@@ -30,6 +30,7 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
     duration: 1,
     progress: 0,
     status: '예정',
+    periods: [],
     predecessor: '',
     contractor: '',
     memo: ''
@@ -198,6 +199,54 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
             {formData.duration}일
           </div>
         </div>
+      </div>
+      
+      {/* Periods Management */}
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">세부 기간</label>
+          <button 
+            type="button"
+            onClick={() => setFormData({...formData, periods: [...(formData.periods || []), { startDate: formData.startDate, endDate: formData.endDate }]})}
+            className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded"
+          >
+            + 기간 추가
+          </button>
+        </div>
+        {(formData.periods || []).map((period, index) => (
+          <div key={index} className="flex gap-2 items-center">
+            <input 
+              type="date"
+              value={period.startDate}
+              onChange={(e) => {
+                const newPeriods = [...(formData.periods || [])];
+                newPeriods[index].startDate = e.target.value;
+                setFormData({...formData, periods: newPeriods});
+              }}
+              className="flex-1 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs font-medium text-gray-700"
+            />
+            <input 
+              type="date"
+              value={period.endDate}
+              onChange={(e) => {
+                const newPeriods = [...(formData.periods || [])];
+                newPeriods[index].endDate = e.target.value;
+                setFormData({...formData, periods: newPeriods});
+              }}
+              className="flex-1 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 text-xs font-medium text-gray-700"
+            />
+            <button
+               type="button"
+               onClick={() => {
+                 const newPeriods = (formData.periods || []).filter((_, i) => i !== index);
+                 setFormData({...formData, periods: newPeriods});
+               }}
+               className="text-red-400 hover:text-red-600"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
       </div>
 
       {/* Status Info */}

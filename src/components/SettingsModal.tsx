@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Plus, Trash2, Save, ChevronRight, ChevronDown } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Plus, Trash2, Save, ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
 import { AppSettings, Category } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -22,6 +22,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [activeTab, setActiveTab] = useState<'categories' | 'tasks' | 'locations' | 'contractors' | 'equipment'>('categories');
   const [selectedCategory, setSelectedCategory] = useState<Category>(localSettings.categories[0]);
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('');
+
+  const [draggedCategoryIndex, setDraggedCategoryIndex] = useState<number | null>(null);
 
   // Sync local settings when props change
   React.useEffect(() => {
@@ -175,6 +177,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     });
   };
 
+  const handleDragStartCategory = (e: React.DragEvent, index: number) => {
+    setDraggedCategoryIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+    // Small timeout to allow the browser to grab the dragged element's image before adding a class
+    setTimeout(() => {
+      // you could add a specialized class here if needed
+    }, 0);
+  };
+
+  const handleDragOverCategory = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedCategoryIndex === null || draggedCategoryIndex === index) return;
+
+    const newCategories = [...localSettings.categories];
+    const draggedItem = newCategories[draggedCategoryIndex];
+    newCategories.splice(draggedCategoryIndex, 1);
+    newCategories.splice(index, 0, draggedItem);
+
+    setDraggedCategoryIndex(index);
+    setLocalSettings({ ...localSettings, categories: newCategories });
+  };
+
+  const handleDropCategory = () => {
+    setDraggedCategoryIndex(null);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
       <motion.div 
@@ -258,8 +287,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <div className="grid grid-cols-1 gap-3">
                   {localSettings.categories.map((cat, idx) => (
-                    <div key={cat} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border group">
+                    <div 
+                      key={cat} 
+                      draggable
+                      onDragStart={(e) => handleDragStartCategory(e, idx)}
+                      onDragOver={(e) => handleDragOverCategory(e, idx)}
+                      onDrop={handleDropCategory}
+                      onDragEnd={handleDropCategory}
+                      className={`flex justify-between items-center px-3 py-2 bg-slate-50 rounded-xl border group transition-all ${draggedCategoryIndex === idx ? 'opacity-50 ring-2 ring-blue-500 shadow-lg' : 'hover:shadow-md'}`}
+                    >
                       <div className="flex items-center gap-4">
+                        <div className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600">
+                          <GripVertical className="w-5 h-5" />
+                        </div>
                         <span className="font-medium text-slate-700 w-24">{cat}</span>
                         <div className="flex items-center gap-2">
                           <input 
@@ -286,7 +326,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {activeTab === 'tasks' && (
               <div className="space-y-6">
                 <div className="flex gap-4">
-                  <div className="w-1/3 space-y-4">
+                  <div className="w-1/4 space-y-4">
                     <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">대분류 선택</h3>
                     <div className="flex flex-col gap-1">
                       {localSettings.categories.map(cat => (
@@ -425,7 +465,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {activeTab === 'contractors' && (
               <div className="space-y-6">
                 <div className="flex gap-4">
-                  <div className="w-1/3 space-y-4">
+                  <div className="w-1/4 space-y-4">
                     <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">대분류 선택</h3>
                     <div className="flex flex-col gap-1">
                       {localSettings.categories.map(cat => (
@@ -469,7 +509,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       {(localSettings.contractors[selectedCategory] || []).map((con, idx) => (
-                        <div key={con} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border group">
+                        <div key={con} className="flex justify-between items-center px-3 py-2 bg-slate-50 rounded-xl border group">
                           <span className="font-medium text-slate-700">{con}</span>
                           <button 
                             onClick={() => handleRemoveContractor(selectedCategory, idx)}
@@ -515,7 +555,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {(localSettings.equipmentMaster || []).map((eq, idx) => (
-                    <div key={eq} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border group">
+                    <div key={eq} className="flex justify-between items-center px-3 py-2 bg-slate-50 rounded-xl border group">
                       <span className="font-medium text-slate-700">{eq}</span>
                       <button 
                         onClick={() => handleRemoveItem('equipmentMaster', idx)}

@@ -19,8 +19,14 @@ import {
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { ScheduleItem, Category, AppSettings } from '../types';
-import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
+import { 
+  ChevronDown, 
+  ChevronRight, 
+  GripVertical,
+  Trash2
+} from 'lucide-react';
 import { motion } from 'motion/react';
+import { ConfirmModal } from './ConfirmModal';
 import {
   DndContext, 
   closestCenter,
@@ -43,6 +49,7 @@ interface GanttChartProps {
   items: ScheduleItem[];
   zoom: 'day' | 'week' | 'month';
   onSelect: (item: ScheduleItem) => void;
+  onDelete?: (id: string) => void;
   settings: AppSettings;
   onReorder?: (items: ScheduleItem[]) => void;
 }
@@ -53,12 +60,13 @@ interface SortableRowProps {
   columnWidth: number;
   headerInterval: any[];
   onSelect: (item: ScheduleItem) => void;
+  onDeleteClick: (id: string) => void;
   zoom: 'day' | 'week' | 'month';
   settings: AppSettings;
 }
 
 const SortableRow: React.FC<SortableRowProps> = ({ 
-  item, startDate, columnWidth, headerInterval, onSelect, zoom, settings 
+  item, startDate, columnWidth, headerInterval, onSelect, onDeleteClick, zoom, settings 
 }) => {
   const {
     attributes,
@@ -105,13 +113,23 @@ const SortableRow: React.FC<SortableRowProps> = ({
       {/* Task Label (Sticky) */}
       <div 
         onClick={() => onSelect(item)}
-        className="sticky left-0 z-30 w-[250px] xl:w-[300px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center group-hover:bg-gray-50/50 transition-colors cursor-pointer"
+        className="sticky left-0 z-30 w-[250px] xl:w-[300px] flex-shrink-0 bg-white border-r border-gray-100 px-2 xl:px-4 flex items-center gap-1 group-hover:bg-gray-50/50 transition-colors cursor-pointer"
       >
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteClick(item.id);
+          }}
+          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded transition-all flex-shrink-0"
+          title="삭제"
+        >
+          <Trash2 size={13} />
+        </button>
         <div 
           {...attributes} 
           {...listeners} 
           onClick={(e) => e.stopPropagation()}
-          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0 mr-1 xl:mr-2"
+          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0 mr-1 xl:mr-1"
         >
           <GripVertical size={14} />
         </div>
@@ -148,33 +166,55 @@ const SortableRow: React.FC<SortableRowProps> = ({
         </div>
 
         {/* Task Bar */}
-        <motion.div 
-          initial={{ opacity: 0, scaleX: 0 }}
-          animate={{ opacity: 1, scaleX: 1 }}
-          className={`absolute top-1/2 -translate-y-1/2 h-2 xl:h-4 rounded-full shadow-sm transition-all flex items-center overflow-hidden hover:brightness-105 active:scale-[0.98] origin-left z-10
-            ${isDelayed ? 'bg-rose-500' : isCompleted ? 'bg-gray-300' : ''}
-          `}
-          style={{ 
-            left, 
-            width,
-            backgroundColor: !isDelayed && !isCompleted ? (settings.categoryColors[item.category] || '#3b82f6') : undefined
-          }}
-        >
-          {/* Progress Overlay */}
-          {!isCompleted && !isDelayed && (
-            <div 
-              className="absolute inset-0 bg-black/10 transition-all"
-              style={{ width: `${item.progress}%` }}
-            />
-          )}
+        {(item.periods && item.periods.length > 0 ? item.periods : [{ startDate: item.startDate, endDate: item.endDate }]).map((period, idx) => {
+          const start = new Date(period.startDate);
+          const end = new Date(period.endDate);
           
-          {/* Task Label inside bar if wide enough */}
-          {width > 60 && (
-            <span className="relative z-10 px-1.5 xl:px-3 text-[8px] xl:text-[9px] font-bold text-white truncate drop-shadow-sm">
-              {item.progress}%
-            </span>
-          )}
-        </motion.div>
+          let left = 0;
+          let width = 0;
+      
+          if (zoom === 'day') {
+            left = differenceInDays(start, startDate) * columnWidth;
+            width = (differenceInDays(end, start) + 1) * columnWidth;
+          } else if (zoom === 'week') {
+            left = (differenceInDays(start, startDate) / 7) * columnWidth;
+            width = ((differenceInDays(end, start) + 1) / 7) * columnWidth;
+          } else {
+            left = (differenceInDays(start, startDate) / 30) * columnWidth;
+            width = ((differenceInDays(end, start) + 1) / 30) * columnWidth;
+          }
+
+          return (
+            <motion.div 
+              key={idx}
+              initial={{ opacity: 0, scaleX: 0 }}
+              animate={{ opacity: 1, scaleX: 1 }}
+              className={`absolute top-1/2 -translate-y-1/2 h-2 xl:h-4 rounded-full shadow-sm transition-all flex items-center overflow-hidden hover:brightness-105 active:scale-[0.98] origin-left z-10
+                ${isDelayed ? 'bg-rose-500' : isCompleted ? 'bg-gray-300' : ''}
+              `}
+              style={{ 
+                left, 
+                width,
+                backgroundColor: !isDelayed && !isCompleted ? (settings.categoryColors[item.category] || '#3b82f6') : undefined
+              }}
+            >
+              {/* Progress Overlay */}
+              {!isCompleted && !isDelayed && (
+                <div 
+                  className="absolute inset-0 bg-black/10 transition-all"
+                  style={{ width: `${item.progress}%` }}
+                />
+              )}
+              
+              {/* Task Label inside bar if wide enough */}
+              {width > 60 && (
+                <span className="relative z-10 px-1.5 xl:px-3 text-[8px] xl:text-[9px] font-bold text-white truncate drop-shadow-sm">
+                  {item.progress}%
+                </span>
+              )}
+            </motion.div>
+          );
+        })}
 
         {/* Floating Label for small bars */}
         {width <= 60 && (
@@ -190,9 +230,17 @@ const SortableRow: React.FC<SortableRowProps> = ({
   );
 };
 
-const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings, onReorder }) => {
+const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, onDelete, settings, onReorder }) => {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<Category>>(new Set());
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleDeleteConfirm = () => {
+    if (deleteId && onDelete) {
+      onDelete(deleteId);
+      setDeleteId(null);
+    }
+  };
 
   const toggleCategory = (category: Category) => {
     const newSet = new Set(collapsedCategories);
@@ -387,7 +435,7 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
           <div className="flex sticky top-0 z-30 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
             {/* Sticky Corner */}
             <div className="sticky left-0 z-40 w-[250px] xl:w-[300px] flex-shrink-0 bg-gray-50 border-r border-gray-200 flex items-center px-2 xl:px-4 py-2.5">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest truncate">공정명 / 위치</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest truncate">공종 / 세부공종 / 위치</span>
             </div>
             
             {/* Date Labels */}
@@ -446,6 +494,7 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
                             columnWidth={columnWidth}
                             headerInterval={headerInterval}
                             onSelect={onSelect}
+                            onDeleteClick={setDeleteId}
                             zoom={zoom}
                             settings={settings}
                           />
@@ -459,6 +508,13 @@ const GanttChart: React.FC<GanttChartProps> = ({ items, zoom, onSelect, settings
           </div>
         </div>
       </div>
+      <ConfirmModal 
+        isOpen={deleteId !== null}
+        onClose={() => setDeleteId(null)}
+        onConfirm={handleDeleteConfirm}
+        title="공정 삭제"
+        message="정말로 이 공정을 삭제하시겠습니까? 삭제된 정보는 복구할 수 없습니다."
+      />
     </div>
   );
 };

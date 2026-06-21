@@ -151,9 +151,9 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
       <div className="max-w-7xl mx-auto space-y-4 xl:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl xl:text-3xl font-black text-gray-900 tracking-tight flex items-baseline">
+            <h1 className="text-lg xl:text-xl font-black text-gray-900 tracking-tight flex items-baseline">
               프로젝트 목록
-              <span className="text-gray-400 font-medium ml-2 text-lg xl:text-xl">Project List</span>
+              <span className="text-gray-400 font-medium ml-2 text-sm xl:text-md">Project List</span>
             </h1>
           </div>
 

@@ -1,12 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Project, DailyReport, Category, AppSettings, ScheduleItem, User } from '../types';
-import { Building2, Edit2, Save, X, Upload, Loader2, CloudSun, ChevronLeft, ChevronRight, Thermometer, TrendingUp } from 'lucide-react';
+import { Building2, Edit2, Save, X, Upload, Loader2, CloudSun, ChevronLeft, ChevronRight, Thermometer, TrendingUp, Trash2 } from 'lucide-react';
 import { compressImage } from '../utils/image';
 import { fetchWeather } from '../services/weatherService';
 import { supabaseService } from '../services/supabaseService';
 
 import { startOfWeek, addDays, format, isSameDay } from 'date-fns';
 import { ko } from 'date-fns/locale';
+
+import { AIReportPanel } from './AIReportPanel';
+import { ConfirmModal } from './ConfirmModal';
+import { AIRiskCard } from './AIRiskCard';
+
 
 interface DashboardViewProps {
   project: Project | null;
@@ -47,6 +52,9 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
   const [todayReport, setTodayReport] = useState<DailyReport | null>(null);
   const [allReports, setAllReports] = useState<DailyReport[]>([]);
+  const [allInspections, setAllInspections] = useState<any[]>([]);
+  const [allMaterialApprovals, setAllMaterialApprovals] = useState<any[]>([]);
+  const [allConcretePlans, setAllConcretePlans] = useState<any[]>([]);
   const [displayProgress, setDisplayProgress] = useState<{ planned: number; actual: number }>({ planned: 0, actual: 0 });
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [cumulativePersonnel, setCumulativePersonnel] = useState({ direct: 0, outsourced: 0, other: 0, total: 0 });
@@ -63,6 +71,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchEndX, setTouchEndX] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{url: string, title?: string} | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; event?: { type: string, id: string } }>({ open: false });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,23 +97,65 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
       const loadReports = async () => {
         let reports: DailyReport[] = [];
+        let inspections: any[] = [];
+        let materialApprovals: any[] = [];
+        let concretePlans: any[] = [];
+
         const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
           (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
 
         if (isSupabaseConfigured) {
+          // 개별 fetch로 분리하여 하나가 실패해도 나머지는 나오게 함
           try {
             reports = await supabaseService.getDailyReports(project.id);
-          } catch (err) {
-            console.error('Failed to load reports from Supabase:', err);
-            const savedReports = localStorage.getItem(`cp_daily_reports_${project.id}`);
-            if (savedReports) reports = JSON.parse(savedReports);
+          } catch (e) {
+            console.warn('Daily Reports fetch failed, trying local storage');
+            const saved = localStorage.getItem(`cp_daily_reports_${project.id}`);
+            if (saved) reports = JSON.parse(saved);
+          }
+
+          try {
+            inspections = await supabaseService.getInspectionRequests(project.id);
+          } catch (e) {
+            console.warn('Inspection Requests fetch failed');
+            const saved = localStorage.getItem(`cp_inspection_requests_${project.id}`);
+            if (saved) inspections = JSON.parse(saved);
+          }
+
+          try {
+            materialApprovals = await supabaseService.getMaterialApprovals(project.id);
+          } catch (e) {
+            console.warn('Material Approvals fetch failed');
+            const saved = localStorage.getItem(`cp_material_approvals_${project.id}`);
+            if (saved) materialApprovals = JSON.parse(saved);
+          }
+
+          try {
+            concretePlans = await supabaseService.getConcretePlans(project.id);
+          } catch (e) {
+            console.warn('Concrete Plans fetch failed');
+            const saved = localStorage.getItem(`cp_concrete_plans_${project.id}`);
+            if (saved) concretePlans = JSON.parse(saved);
           }
         } else {
+          // Non-Supabase mode
           const savedReports = localStorage.getItem(`cp_daily_reports_${project.id}`);
           if (savedReports) reports = JSON.parse(savedReports);
+          
+          const savedIns = localStorage.getItem(`cp_inspection_requests_${project.id}`);
+          if (savedIns) inspections = JSON.parse(savedIns);
+          
+          const savedMats = localStorage.getItem(`cp_material_approvals_${project.id}`);
+          if (savedMats) materialApprovals = JSON.parse(savedMats);
+          
+          const savedCons = localStorage.getItem(`cp_concrete_plans_${project.id}`);
+          if (savedCons) concretePlans = JSON.parse(savedCons);
         }
         
         setAllReports(reports);
+        setAllInspections(inspections);
+        setAllMaterialApprovals(materialApprovals);
+        setAllConcretePlans(concretePlans);
 
         // Selected date's report
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -234,18 +285,79 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   const daysCount = isMobile ? 3 : 7;
   const startDate = isMobile ? addDays(calendarDate, -1) : weekStart;
 
+  const canDeleteDocs = currentUser?.role === 'admin' || currentUser?.userRole === '골드';
+
+  const handleDeleteEvent = async (e: React.MouseEvent, event: { type: string, id: string }) => {
+    e.stopPropagation();
+    if (!canDeleteDocs) return;
+    setDeleteModal({ open: true, event });
+  };
+
+  const confirmDelete = async () => {
+    const event = deleteModal.event;
+    if (!event) return;
+
+    try {
+      if (import.meta.env.VITE_SUPABASE_URL) {
+        if (event.type === '공사일보') await supabaseService.deleteDailyReport(event.id);
+        else if (event.type === '검측요청서') await supabaseService.deleteInspectionRequest(event.id);
+        else if (event.type === '자재승인서') await supabaseService.deleteMaterialApproval(event.id);
+        else if (event.type === '타설계획서') await supabaseService.deleteConcretePlan(event.id);
+      }
+
+      // Update local state
+      if (event.type === '공사일보') {
+        const filtered = allReports.filter(r => r.id !== event.id);
+        setAllReports(filtered);
+        localStorage.setItem(`cp_daily_reports_${project.id}`, JSON.stringify(filtered));
+      } else if (event.type === '검측요청서') {
+        const filtered = allInspections.filter(r => r.id !== event.id);
+        setAllInspections(filtered);
+        localStorage.setItem(`cp_inspection_requests_${project.id}`, JSON.stringify(filtered));
+      } else if (event.type === '자재승인서') {
+        const filtered = allMaterialApprovals.filter(r => r.id !== event.id);
+        setAllMaterialApprovals(filtered);
+        localStorage.setItem(`cp_material_approvals_${project.id}`, JSON.stringify(filtered));
+      } else if (event.type === '타설계획서') {
+        const filtered = allConcretePlans.filter(r => r.id !== event.id);
+        setAllConcretePlans(filtered);
+        localStorage.setItem(`cp_concrete_plans_${project.id}`, JSON.stringify(filtered));
+      }
+      
+      alert(`${event.type} 항목이 삭제되었습니다.`);
+    } catch (error) {
+      console.error('Delete failed:', error);
+      alert('삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   const calendarDays = Array.from({ length: daysCount }).map((_, i) => {
     const date = addDays(startDate, i);
     const dateStr = format(date, 'yyyy-MM-dd');
     
     // Get reports to find events
-    let events: string[] = [];
+    let events: { type: string, id: string, label: string }[] = [];
     if (project) {
+      // Daily Reports
       const report = allReports.find(r => r.date === dateStr);
       if (report) {
-        events.push('공사일보');
-        if (report.approvalStatus === '승인') events.push('승인완료');
+        events.push({ type: '공사일보', id: report.id, label: '공사일보' });
       }
+
+      // Inspections
+      allInspections.filter(r => r.date === dateStr).forEach(ins => {
+        events.push({ type: '검측요청서', id: ins.id, label: '검측요청서' });
+      });
+
+      // Materials
+      allMaterialApprovals.filter(r => r.date === dateStr).forEach(mat => {
+        events.push({ type: '자재승인서', id: mat.id, label: '자재승인서' });
+      });
+
+      // Concrete Plans
+      allConcretePlans.filter(r => r.date === dateStr).forEach(con => {
+        events.push({ type: '타설계획서', id: con.id, label: '타설계획서' });
+      });
     }
 
     return {
@@ -295,11 +407,14 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
   const getManpowerMaxScale = (total: number) => {
     if (total <= 100) return 100;
+    if (total <= 200) return 200;
+    if (total <= 300) return 300;
     if (total <= 500) return 500;
     if (total <= 1000) return 1000;
+    if (total <= 2000) return 2000;
     if (total <= 5000) return 5000;
     if (total <= 10000) return 10000;
-    return Math.ceil(total / 5000) * 5000;
+    return Math.ceil(total / 10000) * 10000;
   };
 
   const manpowerMaxScale = getManpowerMaxScale(cumulativePersonnel.total);
@@ -323,7 +438,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   });
 
   return (
-    <div className="h-full bg-gray-50 p-2 md:p-4 lg:p-8 overflow-y-auto scrollbar-hide xl:scrollbar-default overflow-x-hidden">
+    <div className="h-full bg-gray-50 p-2 md:p-4 lg:p-8 overflow-y-auto scrollbar-hide xl:scrollbar-default xl:overflow-y-scroll overflow-x-hidden">
       <div className="w-full max-w-7xl mx-auto space-y-2 md:space-y-3">
         
         {/* Top Section */}
@@ -512,7 +627,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                 />
               </div>
               <div className="flex justify-between mt-1.5">
-                <span className="text-[9px] text-gray-400">계획대비 {Math.abs(displayProgress.actual - displayProgress.planned).toFixed(1)}% {displayProgress.actual >= displayProgress.planned ? '초과' : '미달'}</span>
+                <span className="text-[10px] text-gray-400">계획대비 {Math.abs(displayProgress.actual - displayProgress.planned).toFixed(1)}% {displayProgress.actual >= displayProgress.planned ? '초과' : '미달'}</span>
               </div>
 
               {/* Milestones */}
@@ -554,21 +669,21 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                     <div className="w-full bg-blue-500 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.direct / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
                   <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.direct}</div>
-                  <div className="text-[9px] text-gray-400 mt-0">직영</div>
+                  <div className="text-[10px] text-gray-400 mt-0">직영</div>
                 </div>
                 <div className="flex flex-col items-center flex-1 h-full">
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full bg-yellow-400 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.outsourced / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
                   <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.outsourced}</div>
-                  <div className="text-[9px] text-gray-400 mt-0">외주</div>
+                  <div className="text-[10px] text-gray-400 mt-0">외주</div>
                 </div>
                 <div className="flex flex-col items-center flex-1 h-full">
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full bg-green-400 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.other / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
                   <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.other}</div>
-                  <div className="text-[9px] text-gray-400 mt-0">기타</div>
+                  <div className="text-[10px] text-gray-400 mt-0">기타</div>
                 </div>
               </div>
             </div>
@@ -626,7 +741,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
               >
                 Today
               </button>
-              <h2 className="text-sm md:text-xl font-bold text-gray-900 min-w-[120px] md:min-w-[150px]">
+              <h2 className="text-sm md:text-lg font-bold text-gray-900 min-w-[120px] md:min-w-[150px]">
                 {format(calendarDate, 'yyyy년 MM월', { locale: ko })}
               </h2>
             </div>
@@ -683,13 +798,23 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   {day.events.map((event, eIdx) => (
                     <div 
                       key={eIdx} 
-                      className={`text-[10px] py-0.5 px-1.5 rounded truncate font-medium ${
-                        event === '공사일보' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 
-                        event === '승인완료' ? 'bg-green-100 text-green-700 border border-green-200' :
+                      className={`text-[10px] py-0.5 px-1.5 rounded font-medium group flex items-center justify-between gap-1 overflow-hidden pointer-events-auto ${
+                        event.type === '공사일보' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 
+                        event.type === '검측요청서' ? 'bg-blue-100 text-orange-700 border border-blue-200' :
+                        event.type === '자재승인서' ? 'bg-blue-100 text-green-700 border border-blue-200' :
+                        event.type === '타설계획서' ? 'bg-blue-100 text-purple-700 border border-blue-200' :
                         'bg-gray-100 text-gray-600 border border-gray-200'
                       }`}
                     >
-                      {event}
+                      <span className="truncate flex-1">{event.label}</span>
+                      {canDeleteDocs && (
+                        <button 
+                          onClick={(e) => handleDeleteEvent(e, event)}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-black/10 rounded transition-all shrink-0 cursor-pointer z-10"
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -925,6 +1050,9 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
             </div>
           </div>
 
+          <div className="col-span-2 md:col-span-12">
+            {/* removed AIReportPanel */}
+          </div>
         </div>
       </div>
 
@@ -955,6 +1083,18 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal 
+        isOpen={deleteModal.open}
+        onClose={() => setDeleteModal({ open: false })}
+        onConfirm={confirmDelete}
+        title={`${deleteModal.event?.type} 삭제`}
+        message={`정말로 이 ${deleteModal.event?.type} 항목을 삭제하시겠습니까? 삭제된 데이터는 복구할 수 없습니다.`}
+        confirmText="삭제하기"
+        cancelText="취소"
+        type="danger"
+      />
     </div>
   );
 }

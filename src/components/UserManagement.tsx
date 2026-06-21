@@ -201,7 +201,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-gray-400 text-xs">
-                    {new Date(user.createdAt).toLocaleDateString()}
+                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button 
