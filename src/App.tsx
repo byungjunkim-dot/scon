@@ -377,6 +377,12 @@ export default function App() {
   };
 
   const sortScheduleItem = (a: ScheduleItem, b: ScheduleItem) => {
+    if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+      return a.sortOrder - b.sortOrder;
+    }
+    if (a.sortOrder !== undefined) return -1;
+    if (b.sortOrder !== undefined) return 1;
+
     const indexA = settings.categories.indexOf(a.category);
     const indexB = settings.categories.indexOf(b.category);
     if (indexA !== indexB) return indexA - indexB;
@@ -447,60 +453,80 @@ export default function App() {
   };
 
   const handleEditProject = async (id: string, projectData: Omit<Project, 'id' | 'createdAt'>) => {
-    if (currentUser?.userRole !== '골드' && currentUser?.role !== 'admin') {
-      alert('프로젝트 수정 권한이 없습니다.');
-      return;
-    }
-    const updatedProject = projects.find(p => p.id === id);
-    if (updatedProject) {
-      const newProject = { ...updatedProject, ...projectData };
-      const updatedProjects = projects.map(p => p.id === id ? newProject : p);
-      setProjects(updatedProjects);
-      localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
+  if (currentUser?.userRole !== '골드' && currentUser?.role !== 'admin') {
+    alert('프로젝트 수정 권한이 없습니다.');
+    return;
+  }
 
-      if (isSupabaseConfigured) {
-        try {
-          await supabaseService.saveProject(newProject);
-        } catch (error) {
-          console.error('Error saving project to Supabase:', error);
-        }
-      }
-    }
+  const existingProject = projects.find(p => p.id === id);
+
+  if (!existingProject) {
+    alert('수정할 프로젝트를 찾을 수 없습니다.');
+    return;
+  }
+
+  const newProject: Project = {
+    ...existingProject,
+    ...projectData,
+    settings: existingProject.settings,
   };
 
-  const handleUpdateProject = async (updatedProject: Project) => {
-    if (currentUser?.userRole !== '골드' && currentUser?.role !== 'admin') {
-      alert('프로젝트 수정 권한이 없습니다.');
-      return;
+  try {
+    if (isSupabaseConfigured) {
+      const savedProject = await supabaseService.updateProject(newProject);
+      console.log('Project edited in Supabase:', savedProject);
     }
 
-    // 💡 핵심: 기존 데이터(특히 settings)가 증발하지 않도록 안전하게 합쳐줍니다(Merge).
-    const updatedProjects = projects.map(p => {
-      if (p.id === updatedProject.id) {
-        return {
-          ...p,
-          ...updatedProject,
-          // 넘어온 데이터에 settings가 빠져있어도, 기존(p.settings) 것을 그대로 유지!
-          settings: updatedProject.settings || p.settings
-        };
-      }
-      return p;
-    });
+    const updatedProjects = projects.map(p =>
+      p.id === id ? newProject : p
+    );
+
+    setProjects(updatedProjects);
+    localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
+  } catch (error) {
+    console.error('Error editing project in Supabase:', error);
+    alert('프로젝트 수정 내용이 Supabase에 저장되지 않았습니다. 콘솔 에러를 확인해주세요.');
+  }
+  };
+
+  const handleUpdateProject = async (updatedProject: Project): Promise<boolean> => {
+  if (currentUser?.userRole !== '골드' && currentUser?.role !== 'admin') {
+    alert('프로젝트 수정 권한이 없습니다.');
+    return false;
+  }
+
+  const existingProject = projects.find(p => p.id === updatedProject.id);
+
+  if (!existingProject) {
+    alert('수정할 프로젝트를 찾을 수 없습니다.');
+    return false;
+  }
+
+  const finalProject: Project = {
+    ...existingProject,
+    ...updatedProject,
+    settings: updatedProject.settings || existingProject.settings,
+  };
+
+  try {
+    if (isSupabaseConfigured) {
+      const savedProject = await supabaseService.updateProject(finalProject);
+      console.log('Project updated in Supabase:', savedProject);
+    }
+
+    const updatedProjects = projects.map(p =>
+      p.id === finalProject.id ? finalProject : p
+    );
 
     setProjects(updatedProjects);
     localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
 
-    if (isSupabaseConfigured) {
-      try {
-        // 안전하게 병합된 최종 데이터를 DB에 저장
-        const finalProject = updatedProjects.find(p => p.id === updatedProject.id);
-        if (finalProject) {
-          await supabaseService.saveProject(finalProject);
-        }
-      } catch (error) {
-        console.error('Error saving project to Supabase:', error);
-      }
-    }
+    return true;
+  } catch (error) {
+    console.error('Error updating project in Supabase:', error);
+    alert('프로젝트 정보가 Supabase에 저장되지 않았습니다. 콘솔 에러를 확인해주세요.');
+    return false;
+  }
   };
 
   const handleDeleteProject = async (id: string) => {
