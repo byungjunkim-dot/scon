@@ -1424,6 +1424,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     <Settings size={18} className="text-gray-400" />
                     <span>환경 설정</span>
                   </button>
+                  {/* 나중에 필요시 복구를 위해 숨김 처리
                   {currentUser?.role === 'admin' && (
                     <button
                       onClick={() => checkUnsavedChanges(handleLoadSamples)}
@@ -1433,6 +1434,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       <span>샘플 데이터 로드</span>
                     </button>
                   )}
+                  */}
                   {currentUser?.role === 'admin' && (
                     <button
                       onClick={() => checkUnsavedChanges(() => setViewMode('user-management'))}
