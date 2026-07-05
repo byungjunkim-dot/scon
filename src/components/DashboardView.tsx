@@ -15,7 +15,7 @@ import { AIRiskCard } from './AIRiskCard';
 
 interface DashboardViewProps {
   project: Project | null;
-  onUpdateProject: (project: Project) => void;
+  onUpdateProject: (project: Project) => Promise<boolean>;
   settings: AppSettings;
   currentUser: User | null;
 }
@@ -49,6 +49,8 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   const [editEndDate, setEditEndDate] = useState('');
   const [editImageUrl, setEditImageUrl] = useState('');
   const [isCompressing, setIsCompressing] = useState(false);
+  const [imageAspect, setImageAspect] = useState<'landscape' | 'portrait' | null>(null);
+  const [editImageAspect, setEditImageAspect] = useState<'landscape' | 'portrait' | null>(null);
 
   const [todayReport, setTodayReport] = useState<DailyReport | null>(null);
   const [allReports, setAllReports] = useState<DailyReport[]>([]);
@@ -234,20 +236,23 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
     setIsEditing(false);
   };
 
-  const handleSaveEdit = () => {
-    onUpdateProject({
-      ...project,
-      name: editName,
-      location: editLocation,
-      totalArea: editTotalArea === '' ? undefined : Number(editTotalArea),
-      floorsUnderground: editFloorsUG === '' ? undefined : Number(editFloorsUG),
-      floorsAboveground: editFloorsAG === '' ? undefined : Number(editFloorsAG),
-      totalBudget: editTotalBudget === '' ? undefined : Number(editTotalBudget),
-      startDate: editStartDate,
-      endDate: editEndDate,
-      imageUrl: editImageUrl,
-    });
+ const handleSaveEdit = async () => {
+  const ok = await onUpdateProject({
+    ...project,
+    name: editName,
+    location: editLocation,
+    totalArea: editTotalArea === '' ? undefined : Number(editTotalArea),
+    floorsUnderground: editFloorsUG === '' ? undefined : Number(editFloorsUG),
+    floorsAboveground: editFloorsAG === '' ? undefined : Number(editFloorsAG),
+    totalBudget: editTotalBudget === '' ? undefined : Number(editTotalBudget),
+    startDate: editStartDate || undefined,
+    endDate: editEndDate || undefined,
+    imageUrl: editImageUrl,
+  });
+
+  if (ok) {
     setIsEditing(false);
+  }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -267,6 +272,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
   const removeImage = () => {
     setEditImageUrl('');
+    setEditImageAspect(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -561,13 +567,25 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
               </div>
 
               {/* 대표이미지 영역 */}
-              <div className="flex flex-col">
-                <div className="flex-1 bg-gray-50 rounded-lg flex items-center justify-center relative overflow-hidden border border-gray-100 min-h-[220px]">
+              <div className="flex flex-col max-h-[415px]">
+                <div className="flex-1 bg-white rounded-lg flex items-center justify-center relative overflow-hidden min-h-[220px] max-h-[415px]">
                   {!isEditing ? (
                     project.imageUrl ? (
-                      <img src={project.imageUrl} alt={project.name} className="w-full h-full object-cover" />
+                      <img 
+                        src={project.imageUrl} 
+                        alt={project.name} 
+                        onLoad={(e) => {
+                          const img = e.currentTarget;
+                          if (img.naturalWidth >= img.naturalHeight) {
+                            setImageAspect('landscape');
+                          } else {
+                            setImageAspect('portrait');
+                          }
+                        }}
+                        className={imageAspect === 'portrait' ? "max-h-[415px] w-auto object-contain mx-auto rounded-lg shadow-sm" : "w-full h-full object-cover rounded-lg shadow-sm"} 
+                      />
                     ) : (
-                      <div className="flex flex-col items-center justify-center text-gray-300">
+                      <div className="flex flex-col items-center justify-center text-gray-300 bg-gray-50 w-full h-full rounded-lg">
                         <Building2 size={48} className="mb-2 opacity-50" />
                         <span className="text-sm font-medium">대표이미지 없음</span>
                       </div>
@@ -577,9 +595,21 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                       {isCompressing ? (
                         <Loader2 className="text-blue-600 animate-spin" size={24} />
                       ) : editImageUrl ? (
-                        <div className="relative w-full h-full rounded-lg overflow-hidden">
-                          <img src={editImageUrl} alt="Preview" className="w-full h-full object-cover" />
-                          <button onClick={removeImage} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full hover:bg-black/70 transition-colors"><X size={14} /></button>
+                        <div className="relative w-full h-full rounded-lg overflow-hidden flex items-center justify-center bg-white">
+                          <img 
+                            src={editImageUrl} 
+                            alt="Preview" 
+                            onLoad={(e) => {
+                              const img = e.currentTarget;
+                              if (img.naturalWidth >= img.naturalHeight) {
+                                setEditImageAspect('landscape');
+                              } else {
+                                setEditImageAspect('portrait');
+                              }
+                            }}
+                            className={editImageAspect === 'portrait' ? "max-h-[415px] w-auto object-contain mx-auto rounded-lg shadow-sm" : "w-full h-full object-cover rounded-lg shadow-sm"} 
+                          />
+                          <button onClick={removeImage} className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full hover:bg-black/70 transition-colors z-10"><X size={14} /></button>
                         </div>
                       ) : (
                         <div onClick={() => fileInputRef.current?.click()} className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all">
