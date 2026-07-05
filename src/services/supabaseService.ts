@@ -166,17 +166,63 @@ const fromScheduleRow = (row: ScheduleRow): ScheduleItemWithExtra => {
 };
 
 export const supabaseService = {
-  // Projects
-  async getProjects() {
-    const { data, error } = await supabase.from('projects').select('*');
-    if (error) throw error;
-    return data as Project[];
-  },
+// Projects
+async getProjects() {
+  const { data, error } = await supabase.from('projects').select('*');
+  if (error) throw error;
+  return data as Project[];
+},
 
-  async saveProject(project: Project) {
-    const { data, error } = await supabase.from('projects').upsert(project).select().single();
-    if (error) throw error;
-    return data as Project;
+async saveProject(project: Project) {
+  const { data, error } = await supabase
+    .from('projects')
+    .upsert(project, { onConflict: 'id' })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as Project;
+},
+
+async updateProject(project: Project) {
+  const payload = {
+    name: project.name ?? '',
+    projectCode: project.projectCode ?? null,
+    location: project.location ?? null,
+    resolvedAddress: project.resolvedAddress ?? null,
+    latitude: project.latitude ?? null,
+    longitude: project.longitude ?? null,
+    description: project.description ?? null,
+    imageUrl: project.imageUrl ?? null,
+    totalArea: project.totalArea ?? null,
+    floorsUnderground: project.floorsUnderground ?? null,
+    floorsAboveground: project.floorsAboveground ?? null,
+    totalBudget: project.totalBudget ?? null,
+    startDate: project.startDate ?? null,
+    endDate: project.endDate ?? null,
+    settings: project.settings ?? null,
+  };
+
+  console.log('[updateProject] id:', project.id);
+  console.log('[updateProject] payload:', payload);
+
+  const { data, error } = await supabase
+    .from('projects')
+    .update(payload)
+    .eq('id', project.id)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.error('[updateProject] Supabase error:', JSON.stringify(error, null, 2));
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error(`프로젝트 수정 실패: id=${project.id} 와 일치하는 projects row가 없습니다.`);
+  }
+
+  return data as Project;
   },
 
   async updateProjectSettings(projectId: string, settings: AppSettings) {
