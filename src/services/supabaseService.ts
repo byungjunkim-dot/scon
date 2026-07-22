@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Project, ScheduleItem, AppSettings, User, DailyReport, Drawing, Category, Status } from '../types';
+import { Project, ScheduleItem, AppSettings, User, DailyReport, Drawing, Category, Status, Allocation } from '../types';
 
 
 export const getCurrentUser = async () => {
@@ -548,6 +548,25 @@ async saveQuickMemo(memo: any) {
 
     if (error) throw error;
     return data;
+  },
+
+  async getPersonnelAllocations() {
+    const { data, error } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('id', 'personnel_allocations')
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data?.settings?.allocations || null) as Allocation[] | null;
+  },
+
+  async savePersonnelAllocations(allocations: Allocation[]) {
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ id: 'personnel_allocations', settings: { allocations } });
+
+    if (error) throw error;
   },
 
 };
