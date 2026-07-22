@@ -64,6 +64,8 @@ export interface Project {
   totalBudget?: number;
   startDate?: string;
   endDate?: string;
+  status?: '진행' | '완료' | '홀딩';
+  color?: string;
   user_id?: string;
   createdAt: string;
   settings?: AppSettings;
@@ -288,4 +290,21 @@ export interface QuickMemo {
   createdBy?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface AllocationPeriod {
+  startDate: string;
+  endDate: string;
+}
+
+export interface Allocation {
+  id: string;
+  projectId: string;
+  projectName: string;
+  userName: string;
+  workType: string;
+  jobTitle: string;
+  startDate: string;
+  endDate: string;
+  periods?: AllocationPeriod[];
 }
