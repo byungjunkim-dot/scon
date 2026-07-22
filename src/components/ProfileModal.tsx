@@ -216,22 +216,46 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">공종</label>
                     <div className="relative">
-                      <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input 
-                        type="text"
-                        list="profile-discipline-list"
-                        value={editDiscipline}
-                        onChange={(e) => setEditDiscipline(e.target.value)}
-                        className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
+                      <select
+                        value={CATEGORIES.includes(editDiscipline as any) ? editDiscipline : "custom"}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "custom") {
+                            setEditDiscipline("");
+                          } else {
+                            setEditDiscipline(val);
+                          }
+                        }}
+                        className="w-full pl-10 pr-10 p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer"
                         required
-                        placeholder="공종 (선택 또는 직접 입력)"
-                      />
-                      <datalist id="profile-discipline-list">
+                      >
+                        <option value="" disabled>공종을 선택해 주세요</option>
                         {CATEGORIES.map(cat => (
-                          <option key={cat} value={cat} />
+                          <option key={cat} value={cat}>{cat}</option>
                         ))}
-                      </datalist>
+                        <option value="custom">직접 입력</option>
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
                     </div>
+
+                    {!CATEGORIES.includes(editDiscipline as any) && (
+                      <div className="mt-2 relative">
+                        <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={editDiscipline}
+                          onChange={(e) => setEditDiscipline(e.target.value)}
+                          className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          placeholder="공종 직접 입력"
+                          required
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
