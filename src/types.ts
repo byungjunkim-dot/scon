@@ -308,3 +308,279 @@ export interface Allocation {
   endDate: string;
   periods?: AllocationPeriod[];
 }
+
+export interface ClientContract {
+  id: string;
+  projectId: string;
+  initialAmount: number;
+  amendedAmount: number;
+  currentAmount: number;
+  amendmentRound: number;
+  changeAmount: number; // 증감액
+  changeReason: string;
+  advancePayment: number; // 선급금
+  retentionMoney: number; // 유보금
+  performanceBond: number; // 계약보증금
+  designChangeAmount: number; // 설계변경 금액
+  priceFluctuationAmount: number; // 물가변동 금액
+  extraWorkAmount: number; // 추가공사 금액
+  contractBalance: number; // 계약 잔액
+  status: '작성중' | '승인요청' | '승인' | '반려';
+  attachments?: string[];
+  history?: ClientContractHistory[];
+}
+
+export interface ClientContractHistory {
+  id: string;
+  round: number;
+  date: string;
+  changeAmount: number;
+  contractAmountAfter: number;
+  reason: string;
+  approvedBy: string;
+}
+
+export type ClientBillingStatus = 
+  | '임시저장'
+  | '승인요청'
+  | '검토중'
+  | '보완요청'
+  | '반려'
+  | '승인'
+  | '세금계산서대기'
+  | '수금대기'
+  | '완료';
+
+export interface ClientBilling {
+  id: string;
+  projectId: string;
+  contractId: string;
+  billingRound: number;
+  targetPeriodStart: string;
+  targetPeriodEnd: string;
+  referenceDate: string;
+  createdDate: string;
+  submittedDate?: string;
+  approvedDate?: string;
+  billingExpectedDate: string;
+  taxInvoiceDate?: string;
+  collectionExpectedDate: string;
+  actualCollectionDate?: string;
+
+  // Amounts
+  prevCumulativeAmt: number;
+  currentClaimAmt: number;
+  cumulativeBillingAmt: number;
+  billingRate: number; // %
+  advanceDeductionAmt: number; // 선급금 공제
+  retentionAmt: number; // 유보금
+  otherDeductionsAmt: number; // 기타 공제
+  vatAmt: number; // 부가세 (미반영 / 0)
+  netClaimAmt: number; // 실청구액 (금회 - 선급 - 유보 - 기타)
+  collectedAmt: number; // 수금액
+  receivableAmt: number; // 미수금 (누계 실청구액 - 누계 수금액)
+
+  status: ClientBillingStatus;
+  remarks?: string;
+  attachments?: string[];
+}
+
+export interface ClientBillingItem {
+  id: string;
+  billingId: string;
+  majorCategory: Category; // 공종 대분류
+  middleCategory: string; // 중분류
+  minorCategory: string; // 소분류
+  itemCode: string;
+  itemName: string;
+  spec: string;
+  unit: string;
+  contractQty: number;
+  contractUnitPrice: number;
+  contractAmount: number;
+
+  prevCumulativeQty: number;
+  currentQty: number;
+  cumulativeQty: number;
+
+  prevCumulativeAmt: number;
+  currentBillingAmt: number; // currentQty * contractUnitPrice
+  cumulativeBillingAmt: number;
+  remainingAmt: number; // contractAmount - cumulativeBillingAmt
+
+  currentProgressRate: number; // %
+  cumulativeProgressRate: number; // %
+  calcBasis?: string;
+  remarks?: string;
+}
+
+export interface SubcontractorContract {
+  id: string;
+  projectId: string;
+  contractorName: string;
+  businessRegNo: string;
+  representative: string;
+  contactPerson: string;
+  contactPhone: string;
+  discipline: Category;
+  contractDate: string;
+  startDate: string;
+  endDate: string;
+
+  initialAmount: number;
+  amendedAmount: number;
+  currentAmount: number;
+
+  advancePayment: number;
+  warrantyBondRate: number; // 하자보증률 %
+  performanceBondRate: number; // 계약이행보증률 %
+  retentionRate: number; // 유보금률 %
+  paymentTerms: string;
+  paymentDueDate: string;
+  laborCostType: '직접노무비' | '간접노무비';
+  directPaymentStatus: boolean; // 노무비/장비대/자재비 직불 여부
+  bondExpirationDate: string; // 보증서 유효기간
+  status: '작성중' | '계약체결' | '변경계약' | '해지' | '완료';
+  attachments?: string[];
+  history?: SubcontractorContractHistory[];
+}
+
+export interface SubcontractorContractHistory {
+  id: string;
+  round: number;
+  date: string;
+  changeAmount: number;
+  amountAfter: number;
+  reason: string;
+}
+
+export type SubcontractorBillingStatus =
+  | '청구'
+  | '검토'
+  | '승인'
+  | '지급완료'
+  | '반려';
+
+export interface SubcontractorBilling {
+  id: string;
+  projectId: string;
+  subcontractorContractId: string;
+  subcontractorName: string;
+  discipline: Category;
+  billingRound: number;
+  targetPeriodStart: string;
+  targetPeriodEnd: string;
+  claimDate: string;
+  reviewDate?: string;
+  approvalDate?: string;
+  paymentScheduledDate: string;
+  actualPaymentDate?: string;
+
+  // Amounts
+  prevCumulativeAmt: number;
+  currentClaimAmt: number; // 업체 청구액
+  fieldReviewedAmt: number; // 현장 검토액
+  finalApprovedAmt: number; // 최종 승인액
+  cumulativeApprovedAmt: number;
+  executionRate: number; // % (누계 / 외주계약금액)
+
+  advanceDeductionAmt: number;
+  retentionAmt: number;
+  warrantyDeductionAmt: number; // 하자보증금
+  laborCostAmt: number;
+  equipmentCostAmt: number;
+  materialCostAmt: number;
+  otherDeductionsAmt: number;
+  vatAmt: number; // 부가세 (미반영 / 0)
+  netPayableAmt: number; // 실지급액 (금회승인 - 선급 - 유보 - 하자 - 기타)
+  actualPaidAmt: number; // 실제 지급 완료액
+  unpaidAmt: number; // 미지급액
+
+  paymentType: '현금' | '어음';
+  taxInvoiceIssued: boolean;
+  directPaymentStatus: boolean;
+  status: SubcontractorBillingStatus;
+  remarks?: string;
+  attachments?: string[];
+}
+
+export interface SubcontractorBillingItem {
+  id: string;
+  subcontractorBillingId: string;
+  subcontractorContractId: string;
+  itemCode: string;
+  discipline: Category;
+  itemName: string;
+  spec: string;
+  unit: string;
+  contractQty: number;
+  contractUnitPrice: number;
+  contractAmount: number;
+
+  prevCumulativeQty: number;
+  currentQty: number;
+  cumulativeQty: number;
+
+  currentApprovedAmt: number;
+  cumulativeApprovedAmt: number;
+  remainingContractAmt: number;
+  progressRate: number; // %
+  inspectionResult: '합격' | '불합격' | '조건부합격';
+  reviewerOpinion?: string;
+  isOverContractApproved?: boolean;
+  overApprovalReason?: string;
+}
+
+export interface SiteExecutionBudget {
+  id: string;
+  projectId: string;
+  discipline: Category;
+  executionBudgetAmt: number; // 실행예산
+  subcontractCost: number; // 외주비
+  materialCost: number; // 자재비
+  laborCost: number; // 노무비
+  equipmentCost: number; // 장비비
+  expenseCost: number; // 경비
+  siteOverheadAmt: number; // 현장관리비
+
+  accumulatedIncurredCost: number; // 누적 발생원가
+  estimatedRemainingCost: number; // 잔여공사 예상원가
+  expectedFinalCost: number; // 예상 최종원가 = 누적 + 잔여예상
+  costExecutionRate: number; // 원가 집행률 (%) = 누적발생 / 실행예산 * 100
+  expectedProfit: number; // 예상 손익 = 현재 도급계약금액 - 예상 최종원가
+  expectedProfitMargin: number; // 예상 손익률 (%) = 예상손익 / 현재 도급계약금액 * 100
+  remainingBudget: number; // 잔여 예산
+  varianceReason?: string;
+}
+
+export interface MonthlyClosing {
+  id: string;
+  projectId: string;
+  yearMonth: string; // YYYY-MM
+  isClosed: boolean;
+  closedAt?: string;
+  closedBy?: string;
+  unlockedAt?: string;
+  unlockedBy?: string;
+  unlockReason?: string;
+}
+
+export interface BillingAuditLog {
+  id: string;
+  projectId: string;
+  timestamp: string;
+  user: string;
+  action: string;
+  module: string;
+  details: string;
+}
+
+export interface BillingComment {
+  id: string;
+  targetId: string; // Billing or Contract ID
+  projectId: string;
+  author: string;
+  content: string;
+  createdAt: string;
+}
+

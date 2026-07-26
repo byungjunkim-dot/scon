@@ -28,7 +28,8 @@ import {
   AlertTriangle,
   Sparkles,
   ShieldAlert,
-  Image as ImageIcon
+  Image as ImageIcon,
+  DollarSign
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExcelJS from 'exceljs';
@@ -74,6 +75,7 @@ import { UserManagement } from './components/UserManagement';
 import { AiDiagnosisView } from './components/AiDiagnosisView';
 import { PhotoGalleryView } from './components/PhotoGalleryView';
 import { QuickMemoView } from './components/QuickMemoView';
+import { BillingAndSubcontractorView } from './components/BillingAndSubcontractorView';
 
 import { Project, ScheduleItem, Category, Status, AppSettings, User } from './types';
 import {
@@ -94,7 +96,7 @@ import { isSupabaseConfigured } from './lib/supabase';
 import { supabaseService } from './services/supabaseService';
 
 type ViewMode = 'auth' | 'projects' | 'project-detail' | 'user-management';
-type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'ai-diagnosis';
+type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'ai-diagnosis' | 'billing';
 type TabMode = 'gantt' | 'table' | 'comparison' | 'baseline';
 type DocumentTab = 'daily-report' | 'inspection' | 'material' | 'concrete';
 type AiDiagnosisTab = 'ai-risk' | 'ai-report';
@@ -243,7 +245,7 @@ export default function App() {
             }
           }
         } catch (error) {
-          console.error('Error loading data from Supabase:', error);
+          console.warn('Supabase data could not be loaded. Falling back to local data.');
         }
       }
     };
@@ -304,7 +306,7 @@ export default function App() {
             loadSchedulesFromLocalStorage();
           }
         } catch (error) {
-          console.error('Error loading schedules from Supabase:', error);
+          console.warn('Supabase schedules could not be loaded. Falling back to local data.');
           loadSchedulesFromLocalStorage();
         }
       } else {
@@ -574,10 +576,10 @@ export default function App() {
     setViewMode('projects');
   };
 
-  const handleSelectProject = (id: string) => {
+  const handleSelectProject = (id: string, initialMenu: MainMenu = 'dashboard') => {
     setCurrentProjectId(id);
     setViewMode('project-detail');
-    setMainMenu('dashboard');
+    setMainMenu(initialMenu);
   };
 
   const handleAddSchedule = async (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
@@ -1190,35 +1192,35 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               </div>
               <h1 className="text-lg font-bold tracking-tight text-gray-900">S-<span className="text-blue-600">CON</span></h1>
             </div>
-            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4">
-              <div className="flex items-center gap-3 order-1 sm:order-2">
-                <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-100">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
-                    {currentUser?.name.charAt(0)}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-gray-900">{currentUser?.name}</span>
-                    <span className="text-[10px] text-gray-400 font-medium">{currentUser?.affiliation}</span>
-                  </div>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                  title="로그아웃"
-                >
-                  <LogOut size={20} />
-                </button>
-              </div>
-
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4 sm:gap-6">
               {currentUser?.role === 'admin' && (
                 <button
                   onClick={() => setViewMode('user-management')}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all text-sm font-bold order-2 sm:order-1 w-full sm:w-auto"
+                  className="flex items-center justify-center gap-1.5 text-gray-500 hover:text-blue-600 transition-all text-sm font-bold order-2 sm:order-1"
                 >
                   <UserIcon size={16} />
                   <span>회원 관리</span>
                 </button>
               )}
+              
+              <div className="flex items-center gap-3 order-1 sm:order-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
+                    {currentUser?.name.charAt(0)}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-gray-900">{currentUser?.name}</span>
+                    <span className="text-[10px] text-gray-500 font-medium">{currentUser?.affiliation}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="p-1.5 text-gray-400 hover:text-red-600 transition-all"
+                  title="로그아웃"
+                >
+                  <LogOut size={18} />
+                </button>
+              </div>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -1306,6 +1308,13 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               >
                 <Sparkles size={18} className={mainMenu === 'ai-diagnosis' ? 'text-blue-600' : 'text-gray-400'} />
                 <span>AI 진단</span>
+              </button>
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('billing'))}
+                className={`w-full hidden xl:flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'billing' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <DollarSign size={18} className={mainMenu === 'billing' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>기성&외주</span>
               </button>
 
               {mainMenu === 'ai-diagnosis' && (
@@ -1782,6 +1791,18 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                         schedules={schedules}
                         tab={aiDiagnosisTab}
                       />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'billing' && (
+                    <motion.div
+                      key="billing"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full overflow-y-auto"
+                    >
+                      <BillingAndSubcontractorView projectId={currentProjectId || ''} settings={settings} />
                     </motion.div>
                   )}
 
