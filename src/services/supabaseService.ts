@@ -569,4 +569,33 @@ async saveQuickMemo(memo: any) {
     if (error) throw error;
   },
 
+  // Billing
+  async getBillingData(projectId: string) {
+    const { data, error } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('id', `billing_data_${projectId}`)
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data?.settings || {}) as any;
+  },
+
+  async saveBillingData(projectId: string, billingData: any) {
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ id: `billing_data_${projectId}`, settings: billingData });
+
+    if (error) throw error;
+  },
+
+  async deleteBillingData(projectId: string) {
+    const { error } = await supabase
+      .from('settings')
+      .delete()
+      .eq('id', `billing_data_${projectId}`);
+
+    if (error) throw error;
+  },
+
 };
