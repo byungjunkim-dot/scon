@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Plus, FolderOpen, Calendar, MapPin, Search, Building2, Upload, X, Loader2, Star, Users, Lock } from 'lucide-react';
+import { Plus, FolderOpen, Calendar, MapPin, Search, Building2, Upload, X, Loader2, Star, Users, Lock, FileText } from 'lucide-react';
 import { Project, User } from '../types';
 import { compressImage } from '../utils/image';
 import { PersonnelStatusView } from './PersonnelStatusView';
+import { BillingAndSubcontractorView } from './BillingAndSubcontractorView';
+import { ConsolidatedBillingDashboard } from './ConsolidatedBillingDashboard';
 
 interface ProjectListProps {
   projects: Project[];
-  onSelect: (id: string) => void;
+  onSelect: (id: string, initialMenu?: any) => void;
   onAdd: (projectData: Omit<Project, 'id' | 'createdAt'>) => void;
   onEdit?: (id: string, projectData: Omit<Project, 'id' | 'createdAt'>) => void;
   onOpenDeleteModal: () => void;
@@ -28,7 +30,7 @@ const SAMPLE_COLORS = [
 ];
 
 const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, onEdit, onOpenDeleteModal, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'projects' | 'personnel'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'personnel' | 'billing'>('projects');
   const [isAdding, setIsAdding] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
@@ -224,18 +226,21 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
     <div className="min-h-screen bg-gray-50 p-4 pb-24 xl:p-8">
       <div className="max-w-7xl mx-auto space-y-4 xl:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2 sm:gap-3 bg-white p-1 rounded-2xl border border-gray-200/80 shadow-sm w-fit">
+          <div className="flex items-center gap-3 sm:gap-4 w-fit">
             <button
               onClick={() => setActiveTab('projects')}
-              className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              className={`text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'projects'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  ? 'text-blue-600'
+                  : 'text-gray-500 hover:text-gray-800'
               }`}
             >
               <FolderOpen size={16} />
               <span>프로젝트 현황</span>
             </button>
+            
+            <div className="w-px h-3 bg-gray-300"></div>
+
             <button
               onClick={() => {
                 const isSilverOrAbove = currentUser?.userRole === '실버' || currentUser?.userRole === '골드' || currentUser?.role === 'admin';
@@ -245,14 +250,38 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                 }
                 setActiveTab('personnel');
               }}
-              className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              className={`text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'personnel'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  ? 'text-blue-600'
+                  : 'text-gray-500 hover:text-gray-800'
               }`}
             >
               <Users size={16} />
               <span>인력 현황</span>
+              {!(currentUser?.userRole === '실버' || currentUser?.userRole === '골드' || currentUser?.role === 'admin') && (
+                <Lock size={12} className="text-gray-400 ml-0.5" />
+              )}
+            </button>
+
+            <div className="w-px h-3 bg-gray-300"></div>
+
+            <button
+              onClick={() => {
+                const isSilverOrAbove = currentUser?.userRole === '실버' || currentUser?.userRole === '골드' || currentUser?.role === 'admin';
+                if (!isSilverOrAbove) {
+                  alert('기성 및 외주 현황 페이지는 실버 등급 이상만 접근 가능합니다.');
+                  return;
+                }
+                setActiveTab('billing');
+              }}
+              className={`text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'billing'
+                  ? 'text-blue-600'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <FileText size={16} />
+              <span>기성 및 외주 현황</span>
               {!(currentUser?.userRole === '실버' || currentUser?.userRole === '골드' || currentUser?.role === 'admin') && (
                 <Lock size={12} className="text-gray-400 ml-0.5" />
               )}
@@ -287,7 +316,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                       className="fixed bottom-8 right-6 z-50 sm:static sm:z-auto bg-blue-600 text-white w-14 h-14 sm:w-auto sm:h-auto rounded-full sm:rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-2xl shadow-blue-500/40 sm:shadow-lg sm:shadow-blue-500/20 whitespace-nowrap sm:px-6 sm:py-2"
                     >
                       <Plus size={24} className="sm:w-5 sm:h-5" />
-                      <span className="hidden sm:inline">신규 현장 등록</span>
+                      <span className="hidden sm:inline">신규</span>
                     </button>
                   </div>
                 )}
@@ -321,7 +350,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                       alert('접근 권한이 없습니다. 가입코드와 프로젝트 코드가 일치하지 않습니다.');
                     }
                   }}
-                  className={`bg-white p-3 xl:p-6 rounded-2xl xl:rounded-3xl border border-gray-100 shadow-sm transition-all group relative overflow-hidden flex flex-row xl:flex-col gap-3 xl:gap-0 items-center xl:items-stretch ${canAccess ? 'hover:shadow-xl hover:-translate-y-1 cursor-pointer' : 'opacity-75 cursor-not-allowed'}`}
+                  className={`bg-white p-3 xl:p-6 rounded-lg border border-gray-100 shadow-sm transition-all group relative overflow-hidden flex flex-row xl:flex-col gap-3 xl:gap-0 items-center xl:items-stretch ${canAccess ? 'hover:shadow-xl hover:-translate-y-1 cursor-pointer' : 'opacity-75 cursor-not-allowed'}`}
                 >
                   <div className="w-24 h-24 xl:w-auto xl:h-40 xl:-mx-6 xl:-mt-6 xl:mb-6 relative overflow-hidden flex-shrink-0 rounded-xl xl:rounded-none">
                     {project.imageUrl ? (
@@ -430,7 +459,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
               </div>
             )}
           </div>
-        ) : (
+        ) : activeTab === 'personnel' ? (
           (() => {
             const isSilverOrAbove = currentUser?.userRole === '실버' || currentUser?.userRole === '골드' || currentUser?.role === 'admin';
             if (!isSilverOrAbove) {
@@ -447,6 +476,24 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
               );
             }
             return <PersonnelStatusView projects={projects} currentUser={currentUser} />;
+          })()
+        ) : (
+          (() => {
+            const isSilverOrAbove = currentUser?.userRole === '실버' || currentUser?.userRole === '골드' || currentUser?.role === 'admin';
+            if (!isSilverOrAbove) {
+              return (
+                <div className="bg-white rounded-3xl border border-gray-100 p-16 text-center shadow-sm space-y-4">
+                  <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-500">
+                    <Lock size={32} />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">접근 권한 제한</h3>
+                  <p className="text-gray-500 max-w-md mx-auto">
+                    기성 및 외주 현황 페이지는 <strong className="text-blue-600">실버 등급 이상</strong> 회원만 접근할 수 있습니다.
+                  </p>
+                </div>
+              );
+            }
+            return <ConsolidatedBillingDashboard projects={projects} currentUser={currentUser} onSelectProject={onSelect} />;
           })()
         )}
       </div>

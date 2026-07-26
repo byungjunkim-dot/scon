@@ -669,7 +669,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
       {/* Overview Charts Container */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Left Card: 진행 프로젝트 목록 (Active Projects List) */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col h-full justify-between">
+        <div className="bg-white p-6 rounded-lg flex flex-col h-full justify-between">
           <div>
             <div className="mb-4">
               <h3 className="text-md font-bold text-gray-800">진행 프로젝트</h3>
@@ -711,7 +711,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
         </div>
 
         {/* Middle Card: Overall allocation status donut chart */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col h-full justify-between">
+        <div className="bg-white p-6 rounded-lg flex flex-col h-full justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -818,7 +818,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
         </div>
 
         {/* Right Card: Occupation allocation vertical bar chart (직종별) */}
-        <div className="hidden lg:flex bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex-col h-full justify-between">
+        <div className="hidden lg:flex bg-white p-6 rounded-lg flex-col h-full justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -902,7 +902,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
       </div>
 
       {/* Monthly Cumulative Allocation Line Chart */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+      <div className="bg-white p-6 rounded-lg flex flex-col">
         <div className="mb-4 flex flex-row items-center justify-between gap-3">
           <div>
             <h3 className="text-md font-bold text-gray-800">월별 투입 인력 현황</h3>
@@ -1043,7 +1043,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
       </div>
 
       {/* Filter and Gantt Timeline View */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg overflow-hidden flex flex-col">
         {/* Header and Filters */}
         <div className="p-5 border-b border-gray-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gray-50/50">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-start gap-3 w-full lg:w-auto">
@@ -1230,7 +1230,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
         </div>
 
         {activeGanttTab === 'project' && (
-          <div className="overflow-x-hidden md:overflow-x-auto overflow-y-auto max-h-[calc(100vh-240px)] min-h-[400px] border border-gray-200 rounded-2xl shadow-sm bg-white" ref={scrollContainerRef}>
+          <div className="overflow-x-hidden md:overflow-x-auto overflow-y-auto max-h-[calc(100vh-240px)] min-h-[400px] border border-gray-200 rounded-lg bg-white" ref={scrollContainerRef}>
           <div className="flex flex-col relative w-full">
             
             {/* Timeline Header Row */}
@@ -1690,7 +1690,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
       )}
 
       {activeGanttTab === 'worker' && (
-        <div className="overflow-x-hidden md:overflow-x-auto overflow-y-auto max-h-[calc(100vh-240px)] min-h-[400px] bg-white border border-gray-200 rounded-2xl shadow-sm" ref={workerScrollContainerRef}>
+        <div className="overflow-x-hidden md:overflow-x-auto overflow-y-auto max-h-[calc(100vh-240px)] min-h-[400px] bg-white border border-gray-200 rounded-lg" ref={workerScrollContainerRef}>
           <div className="flex flex-col relative w-full">
             
             {/* Timeline Header Row */}
