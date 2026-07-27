@@ -174,13 +174,38 @@ async getProjects() {
 },
 
 async saveProject(project: Project) {
+  const payload = {
+    id: project.id,
+    name: project.name ?? '',
+    projectCode: project.projectCode ?? null,
+    location: project.location ?? null,
+    resolvedAddress: project.resolvedAddress ?? null,
+    latitude: project.latitude ?? null,
+    longitude: project.longitude ?? null,
+    description: project.description ?? null,
+    imageUrl: project.imageUrl ?? null,
+    totalArea: project.totalArea ?? null,
+    floorsUnderground: project.floorsUnderground ?? null,
+    floorsAboveground: project.floorsAboveground ?? null,
+    totalBudget: project.totalBudget ?? null,
+    startDate: project.startDate ?? null,
+    endDate: project.endDate ?? null,
+    status: project.status ?? '진행',
+    color: project.color ?? null,
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
   const { data, error } = await supabase
     .from('projects')
-    .upsert(project, { onConflict: 'id' })
+    .upsert(payload, { onConflict: 'id' })
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('[saveProject] Supabase error:', JSON.stringify(error, null, 2));
+    throw error;
+  }
   return data as Project;
 },
 
@@ -200,6 +225,9 @@ async updateProject(project: Project) {
     totalBudget: project.totalBudget ?? null,
     startDate: project.startDate ?? null,
     endDate: project.endDate ?? null,
+    status: project.status ?? '진행',
+    color: project.color ?? null,
+    user_id: project.user_id ?? null,
     settings: project.settings ?? null,
   };
 
