@@ -30,7 +30,26 @@ const SAMPLE_COLORS = [
 ];
 
 const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, onEdit, onOpenDeleteModal, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'projects' | 'personnel' | 'billing'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'personnel' | 'billing'>(() => {
+    const saved = localStorage.getItem('cp_project_list_tab');
+    if (saved === 'billing' || saved === 'personnel' || saved === 'projects') {
+      return saved;
+    }
+    return 'projects';
+  });
+
+  useEffect(() => {
+    const handleTabChange = (e: CustomEvent) => {
+      if (e.detail && (e.detail === 'billing' || e.detail === 'personnel' || e.detail === 'projects')) {
+        setActiveTab(e.detail);
+        localStorage.setItem('cp_project_list_tab', e.detail);
+      }
+    };
+    window.addEventListener('change-project-list-tab' as any, handleTabChange);
+    return () => {
+      window.removeEventListener('change-project-list-tab' as any, handleTabChange);
+    };
+  }, []);
   const [isAdding, setIsAdding] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
@@ -46,9 +65,10 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
   const [newTotalBudget, setNewTotalBudget] = useState<number | ''>('');
   const [newStartDate, setNewStartDate] = useState('');
   const [newEndDate, setNewEndDate] = useState('');
-  const [newStatus, setNewStatus] = useState<'진행' | '완료' | '홀딩'>('진행');
+  const [newStatus, setNewStatus] = useState<'준비' | '진행' | '완료' | '홀딩'>('진행');
   const [newColor, setNewColor] = useState('#7da0ca');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState<('준비' | '진행' | '완료' | '홀딩')[]>(['진행']);
   const [isCompressing, setIsCompressing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -228,7 +248,10 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3 sm:gap-4 w-fit">
             <button
-              onClick={() => setActiveTab('projects')}
+              onClick={() => {
+                setActiveTab('projects');
+                localStorage.setItem('cp_project_list_tab', 'projects');
+              }}
               className={`text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'projects'
                   ? 'text-blue-600'
@@ -249,6 +272,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                   return;
                 }
                 setActiveTab('personnel');
+                localStorage.setItem('cp_project_list_tab', 'personnel');
               }}
               className={`text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'personnel'
@@ -273,6 +297,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                   return;
                 }
                 setActiveTab('billing');
+                localStorage.setItem('cp_project_list_tab', 'billing');
               }}
               className={`text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'billing'
@@ -322,6 +347,34 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                 )}
               </>
             )}
+
+            {(activeTab === 'billing' || activeTab === 'personnel') && (
+              <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-sm">
+                {(['준비', '진행', '완료', '홀딩'] as const).map((status) => {
+                  const isChecked = selectedStatuses.includes(status);
+                  return (
+                    <label
+                      key={status}
+                      className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700 select-none hover:text-blue-600 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {
+                          if (isChecked) {
+                            setSelectedStatuses(selectedStatuses.filter(s => s !== status));
+                          } else {
+                            setSelectedStatuses([...selectedStatuses, status]);
+                          }
+                        }}
+                        className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span>{status}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -368,7 +421,9 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                     {(() => {
                       const status = project.status || '진행';
                       let statusColors = 'bg-blue-50/90 text-blue-600 border border-blue-100/50';
-                      if (status === '완료') {
+                      if (status === '준비') {
+                        statusColors = 'bg-purple-50/90 text-purple-600 border border-purple-100/50';
+                      } else if (status === '완료') {
                         statusColors = 'bg-emerald-50/90 text-emerald-600 border border-emerald-100/50';
                       } else if (status === '홀딩') {
                         statusColors = 'bg-amber-50/90 text-amber-600 border border-amber-100/50';
@@ -475,7 +530,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                 </div>
               );
             }
-            return <PersonnelStatusView projects={projects} currentUser={currentUser} />;
+            return <PersonnelStatusView projects={projects} currentUser={currentUser} selectedStatuses={selectedStatuses} onSelectedStatusesChange={setSelectedStatuses} />;
           })()
         ) : (
           (() => {
@@ -493,7 +548,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                 </div>
               );
             }
-            return <ConsolidatedBillingDashboard projects={projects} currentUser={currentUser} onSelectProject={onSelect} />;
+            return <ConsolidatedBillingDashboard projects={projects} currentUser={currentUser} onSelectProject={onSelect} selectedStatuses={selectedStatuses} onSelectedStatusesChange={setSelectedStatuses} />;
           })()
         )}
       </div>
@@ -743,10 +798,11 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-500 uppercase">진행 현황</label>
-                <div className="grid grid-cols-3 gap-2 bg-gray-50 p-1 rounded-xl border border-gray-100">
-                  {(['진행', '완료', '홀딩'] as const).map((statusVal) => {
+                <div className="grid grid-cols-4 gap-2 bg-gray-50 p-1 rounded-xl border border-gray-100">
+                  {(['준비', '진행', '완료', '홀딩'] as const).map((statusVal) => {
                     const isSelected = newStatus === statusVal;
                     let activeStyles = 'bg-blue-600 text-white shadow-sm';
+                    if (statusVal === '준비') activeStyles = 'bg-purple-600 text-white shadow-sm';
                     if (statusVal === '완료') activeStyles = 'bg-emerald-600 text-white shadow-sm';
                     if (statusVal === '홀딩') activeStyles = 'bg-amber-600 text-white shadow-sm';
 

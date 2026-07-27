@@ -34,14 +34,39 @@ const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, val
 interface PersonnelStatusViewProps {
   projects: Project[];
   currentUser: User | null;
+  selectedStatuses?: ('준비' | '진행' | '완료' | '홀딩')[];
+  onSelectedStatusesChange?: (statuses: ('준비' | '진행' | '완료' | '홀딩')[]) => void;
 }
 
-export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projects, currentUser }) => {
+export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
+  projects = [],
+  currentUser,
+  selectedStatuses: externalSelectedStatuses,
+  onSelectedStatusesChange
+}) => {
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter active projects (whose status is '진행' or undefined/null)
-  const activeProjects = projects.filter(p => (p.status || '진행') === '진행');
+  const [internalSelectedStatuses, setInternalSelectedStatuses] = useState<('준비' | '진행' | '완료' | '홀딩')[]>(['진행']);
+  const selectedStatuses = externalSelectedStatuses !== undefined ? externalSelectedStatuses : internalSelectedStatuses;
+
+  const matchesStatus = (p: Project) => {
+    const rawStatus = String(p.status || '진행').trim().toLowerCase();
+    let normalizedStatus: '준비' | '진행' | '완료' | '홀딩' = '진행';
+    if (rawStatus.includes('준비') || rawStatus.includes('계획') || rawStatus.includes('예정') || rawStatus.includes('대기')) {
+      normalizedStatus = '준비';
+    } else if (rawStatus.includes('완료') || rawStatus.includes('준공')) {
+      normalizedStatus = '완료';
+    } else if (rawStatus.includes('홀딩') || rawStatus.includes('보류') || rawStatus.includes('중단')) {
+      normalizedStatus = '홀딩';
+    } else {
+      normalizedStatus = '진행';
+    }
+    return selectedStatuses.includes(normalizedStatus);
+  };
+
+  // Filter active projects (whose status matches selectedStatuses)
+  const activeProjects = projects.filter(p => matchesStatus(p));
   
   // Filter allocations for active projects only
   const activeAllocations = allocations.filter(a => activeProjects.some(p => p.id === a.projectId));
@@ -71,14 +96,23 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
   // Year selection for the monthly allocation trend chart
   const [selectedChartYear, setSelectedChartYear] = useState<number>(2026);
 
-  // Filter projects for Gantt chart based on status filter
+  // Filter projects for Gantt chart based on status filter and selectedStatuses
   const ganttProjects = React.useMemo(() => {
     return projects.filter(p => {
+      if (!matchesStatus(p)) return false;
       if (ganttStatusFilter === '전체') return true;
-      const status = p.status || '진행';
-      return status === ganttStatusFilter;
+      const rawStatus = String(p.status || '진행').trim().toLowerCase();
+      let normalizedStatus = '진행';
+      if (rawStatus.includes('준비') || rawStatus.includes('계획') || rawStatus.includes('예정') || rawStatus.includes('대기')) {
+        normalizedStatus = '준비';
+      } else if (rawStatus.includes('완료') || rawStatus.includes('준공')) {
+        normalizedStatus = '완료';
+      } else if (rawStatus.includes('홀딩') || rawStatus.includes('보류') || rawStatus.includes('중단')) {
+        normalizedStatus = '홀딩';
+      }
+      return normalizedStatus === ganttStatusFilter;
     });
-  }, [projects, ganttStatusFilter]);
+  }, [projects, selectedStatuses, ganttStatusFilter]);
 
   // Filter allocations for gantt projects
   const ganttAllocations = React.useMemo(() => {
@@ -1097,6 +1131,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
                     className="px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer"
                   >
                     <option value="전체">전체 프로젝트</option>
+                    <option value="준비">준비중</option>
                     <option value="진행">진행중</option>
                     <option value="완료">완료됨</option>
                     <option value="홀딩">홀딩됨</option>
@@ -1159,6 +1194,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({ projec
                     className="px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer"
                   >
                     <option value="전체">전체 프로젝트</option>
+                    <option value="준비">준비중</option>
                     <option value="진행">진행중</option>
                     <option value="완료">완료됨</option>
                     <option value="홀딩">홀딩됨</option>

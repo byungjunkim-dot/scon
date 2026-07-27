@@ -42,7 +42,21 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExcelJS from 'exceljs';
-import { Project, User } from '../types';
+import { Project, User, ClientContract } from '../types';
+import { supabaseService } from '../services/supabaseService';
+
+const normalizeDate = (dateStr: string | undefined | null): string => {
+  if (!dateStr) return '';
+  const clean = String(dateStr).trim().replace(/\s+/g, '');
+  const match = clean.match(/^(\d{4})[./-]?(\d{1,2})[./-]?(\d{1,2})/);
+  if (match) {
+    const y = match[1];
+    const m = match[2].padStart(2, '0');
+    const d = match[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return '';
+};
 
 interface ConsolidatedBillingDashboardProps {
   projects: Project[];
@@ -51,6 +65,8 @@ interface ConsolidatedBillingDashboardProps {
     projectId: string,
     initialMenu?: 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'ai-diagnosis' | 'billing'
   ) => void;
+  selectedStatuses?: ('준비' | '진행' | '완료' | '홀딩')[];
+  onSelectedStatusesChange?: (statuses: ('준비' | '진행' | '완료' | '홀딩')[]) => void;
 }
 
 // Simple deterministic hash for consistent mock numbers per project
@@ -236,119 +252,342 @@ const DEFAULT_SUBBILLINGS = [
   }
 ];
 
+const DEFAULT_CLIENT_BILLINGS = [
+  {
+    id: 'cb-1',
+    billingRound: 1,
+    referenceDate: '2026-04-30',
+    targetPeriodEnd: '2026-04-30',
+    actualCollectionDate: '2026-05-28',
+    currentClaimAmt: 1200000000,
+    cumulativeBillingAmt: 1200000000,
+    collectedAmt: 1020000000,
+    netClaimAmt: 1020000000,
+    status: '완료'
+  },
+  {
+    id: 'cb-2',
+    billingRound: 2,
+    referenceDate: '2026-05-31',
+    targetPeriodEnd: '2026-05-31',
+    actualCollectionDate: '2026-06-29',
+    currentClaimAmt: 1500000000,
+    cumulativeBillingAmt: 2700000000,
+    collectedAmt: 1275000000,
+    netClaimAmt: 1275000000,
+    status: '완료'
+  },
+  {
+    id: 'cb-3',
+    billingRound: 3,
+    referenceDate: '2026-06-30',
+    targetPeriodEnd: '2026-06-30',
+    actualCollectionDate: undefined,
+    currentClaimAmt: 1000000000,
+    cumulativeBillingAmt: 3700000000,
+    collectedAmt: 350000000,
+    netClaimAmt: 850000000,
+    receivableAmt: 500000000,
+    status: '수금대기'
+  }
+];
+
+const DEFAULT_SUB_BILLINGS_WITH_DATES = [
+  {
+    id: 'subb-1',
+    subcontractorContractId: 'subc-1',
+    billingRound: 3,
+    referenceDate: '2026-06-30',
+    currentClaimAmt: 200000000,
+    finalApprovedAmt: 180000000,
+    cumulativeApprovedAmt: 1710000000
+  },
+  {
+    id: 'subb-2',
+    subcontractorContractId: 'subc-2',
+    billingRound: 3,
+    referenceDate: '2026-06-30',
+    currentClaimAmt: 3800000000,
+    finalApprovedAmt: 3500000000,
+    cumulativeApprovedAmt: 14500000000
+  },
+  {
+    id: 'subb-3',
+    subcontractorContractId: 'subc-3',
+    billingRound: 3,
+    referenceDate: '2026-06-30',
+    currentClaimAmt: 600000000,
+    finalApprovedAmt: 500000000,
+    cumulativeApprovedAmt: 1500000000
+  }
+];
+
 export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboardProps> = ({
   projects = [],
   currentUser,
-  onSelectProject
+  onSelectProject,
+  selectedStatuses: externalSelectedStatuses,
+  onSelectedStatusesChange
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'전체' | '진행' | '완료' | '홀딩'>('전체');
-  const [sortBy, setSortBy] = useState<'budget' | 'billingRate' | 'subRate' | 'name'>('budget');
+  const [internalSelectedStatuses, setInternalSelectedStatuses] = useState<('준비' | '진행' | '완료' | '홀딩')[]>(['진행']);
+
+  const selectedStatuses = externalSelectedStatuses !== undefined ? externalSelectedStatuses : internalSelectedStatuses;
+  const setSelectedStatuses = onSelectedStatusesChange || setInternalSelectedStatuses;
+  const [sortBy, setSortBy] = useState<'registered' | 'budget' | 'billingRate' | 'subRate' | 'name'>('registered');
   const [activeChartTab, setActiveChartTab] = useState<'billing' | 'rates' | 'discipline' | 'monthly'>('billing');
   const [trendYear, setTrendYear] = useState<string>('2026');
+  const [supabaseBillingMap, setSupabaseBillingMap] = useState<Record<string, any>>({});
 
-  // Compute multi-project dataset
+  // Fetch billing data from Supabase for all projects
+  React.useEffect(() => {
+    if (!Array.isArray(projects) || projects.length === 0) return;
+    let isMounted = true;
+    const loadAllBillingData = async () => {
+      const map: Record<string, any> = {};
+      await Promise.all(
+        projects.map(async (p) => {
+          if (!p?.id || p.name === '본사 사업 관리' || p.name?.includes('본사 사업 관리')) return;
+          try {
+            const data = await supabaseService.getBillingData(p.id);
+            if (data && Object.keys(data).length > 0) {
+              map[p.id] = data;
+            }
+          } catch (e) {
+            // fallback
+          }
+        })
+      );
+      if (isMounted) {
+        setSupabaseBillingMap(map);
+      }
+    };
+    loadAllBillingData();
+    return () => { isMounted = false; };
+  }, [projects]);
+
+  // Compute multi-project dataset (exclude HQ Management project '본사 사업 관리')
   const projectSummaries = useMemo(() => {
     if (!Array.isArray(projects)) return [];
     return projects
-      .filter((p): p is Project => !!p)
+      .filter((p): p is Project => !!p && p.name !== '본사 사업 관리' && !p.name.includes('본사 사업 관리'))
       .map((p, idx) => {
         const hash = getProjectHash(p.id);
 
-        // Check if custom data stored in localStorage for this project
-        let storedClientContract = null;
-        let storedClientBillings = null;
-        let storedSubContracts = null;
-        let storedSubBillings = null;
+        const supabaseData = supabaseBillingMap[p.id];
+        let storedClientContract = supabaseData?.clientContract || null;
+        let storedClientBillings = supabaseData?.clientBillings || null;
+        let storedSubContracts = supabaseData?.subContracts || null;
+        let storedSubBillings = supabaseData?.subBillings || null;
 
-        try {
-          const saved = localStorage.getItem(`cp_billing_data_${p.id}`);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            storedClientContract = parsed.clientContract;
-            storedClientBillings = parsed.clientBillings;
-            storedSubContracts = parsed.subContracts;
-            storedSubBillings = parsed.subBillings;
+        const hasSavedData = Boolean(supabaseData) || Boolean(localStorage.getItem(`cp_billing_data_${p.id}`));
+
+        if (!hasSavedData) {
+          try {
+            const saved = localStorage.getItem(`cp_billing_data_${p.id}`);
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              storedClientContract = parsed.clientContract || null;
+              storedClientBillings = parsed.clientBillings || null;
+              storedSubContracts = parsed.subContracts || null;
+              storedSubBillings = parsed.subBillings || null;
+            }
+          } catch (e) {
+            // Fallback
           }
-        } catch (e) {
-          // Fallback to computed
         }
 
-      // Base Contract Amount
-      let clientContractAmt = p.totalBudget;
-      if (!clientContractAmt || clientContractAmt === 0) {
-        clientContractAmt = storedClientContract?.currentAmount || (35000000000 + (hash % 25) * 1500000000);
-      }
+        // Base Contract Amount (Check unit: if < 100000, it's in 억 원 unit, convert to KRW)
+        let rawContractAmt = 0;
+        if (storedClientContract && typeof storedClientContract.currentAmount === 'number' && storedClientContract.currentAmount > 0) {
+          rawContractAmt = storedClientContract.currentAmount;
+        } else if (p.totalBudget && p.totalBudget > 0) {
+          rawContractAmt = p.totalBudget;
+        }
 
-      // Cumulative Billing
-      let cumulativeBilling = 0;
-      let collectedAmt = 0;
-      let receivableAmt = 0;
+        let clientContractAmt = 0;
+        if (rawContractAmt > 0) {
+          clientContractAmt = rawContractAmt < 100000 ? rawContractAmt * 100000000 : rawContractAmt;
+        } else {
+          clientContractAmt = 13500000000;
+        }
 
-      if (storedClientBillings && Array.isArray(storedClientBillings) && storedClientBillings.length > 0) {
-        cumulativeBilling = storedClientBillings.reduce((max: number, b: any) => Math.max(max, b.cumulativeBillingAmt || 0), 0);
-        collectedAmt = storedClientBillings.reduce((sum: number, b: any) => sum + (b.collectedAmt || 0), 0);
-        receivableAmt = cumulativeBilling - collectedAmt;
-      } else {
-        const billingRatio = 0.35 + ((hash % 45) / 100);
-        cumulativeBilling = Math.round(clientContractAmt * Math.min(0.95, billingRatio));
-        collectedAmt = Math.round(cumulativeBilling * (0.85 + (hash % 12) / 100));
-        receivableAmt = Math.max(0, cumulativeBilling - collectedAmt);
-      }
+        // Cumulative Billing & Collection
+        let cumulativeBilling = 0;
+        let collectedAmt = 0;
+        let receivableAmt = 0;
 
-      const clientBillingRate = clientContractAmt > 0 ? (cumulativeBilling / clientContractAmt) * 100 : 0;
+        if (Array.isArray(storedClientBillings)) {
+          if (storedClientBillings.length > 0) {
+            cumulativeBilling = storedClientBillings.reduce((max: number, b: any) => {
+              const amt = Number(b.cumulativeBillingAmt || b.currentClaimAmt || 0);
+              return Math.max(max, amt);
+            }, 0);
+            collectedAmt = storedClientBillings.reduce((sum: number, b: any) => sum + Number(b.collectedAmt || 0), 0);
+            receivableAmt = Math.max(0, cumulativeBilling - collectedAmt);
+          } else {
+            // Explicitly empty billings array -> 0
+            cumulativeBilling = 0;
+            collectedAmt = 0;
+            receivableAmt = 0;
+          }
+        } else {
+          if (p.id === 'pjt-1' || p.id === 'p-1') {
+            cumulativeBilling = 3700000000;
+            collectedAmt = 2650000000;
+            receivableAmt = 1050000000;
+          } else {
+            cumulativeBilling = 0;
+            collectedAmt = 0;
+            receivableAmt = 0;
+          }
+        }
 
-      // Subcontractor Amounts
-      let actualSubContracts = DEFAULT_SUBCONTRACTS;
-      if (storedSubContracts && Array.isArray(storedSubContracts)) {
-        actualSubContracts = storedSubContracts;
-      }
+        const clientBillingRate = clientContractAmt > 0 ? (cumulativeBilling / clientContractAmt) * 100 : 0;
 
-      let actualSubBillings = DEFAULT_SUBBILLINGS;
-      if (storedSubBillings && Array.isArray(storedSubBillings)) {
-        actualSubBillings = storedSubBillings;
-      }
+        // Subcontractor Amounts
+        let actualSubContracts: any[] = [];
+        if (Array.isArray(storedSubContracts)) {
+          actualSubContracts = storedSubContracts;
+        } else if (p.id === 'pjt-1' || p.id === 'p-1') {
+          actualSubContracts = DEFAULT_SUBCONTRACTS;
+        } else {
+          actualSubContracts = [];
+        }
 
-      const subContractAmt = actualSubContracts.reduce((sum: number, sc: any) => sum + (sc.currentAmount || 0), 0);
-      const subExecutedAmt = actualSubBillings.reduce((sum: number, sb: any) => sum + (sb.finalApprovedAmt || 0), 0);
-      const subClaimedAmt = actualSubBillings.reduce((sum: number, sb: any) => sum + (sb.currentClaimAmt || sb.finalApprovedAmt || 0), 0);
+        let actualSubBillings: any[] = [];
+        if (Array.isArray(storedSubBillings)) {
+          actualSubBillings = storedSubBillings;
+        } else if (p.id === 'pjt-1' || p.id === 'p-1') {
+          actualSubBillings = DEFAULT_SUBBILLINGS;
+        } else {
+          actualSubBillings = [];
+        }
 
-      const subExecutionRate = subContractAmt > 0 ? (subExecutedAmt / subContractAmt) * 100 : 0;
+        // Filter subBillings so only billings matching an actual registered subContract are counted!
+        const validContractorKeys = new Set(
+          actualSubContracts.flatMap((sc: any) => [sc.id, sc.contractorName]).filter(Boolean)
+        );
 
-      // Expected Profit & Margin
-      const profitMargin = 11.5 + (hash % 7);
-      const expectedProfit = Math.round(clientContractAmt * (profitMargin / 100));
+        const validSubBillings = actualSubBillings.filter((sb: any) =>
+          validContractorKeys.has(sb.subcontractorContractId) || validContractorKeys.has(sb.subcontractorName)
+        );
 
-      // Over-spending Risk Flag (if sub execution rate significantly exceeds billing rate)
-      const isOverBudgetRisk = subExecutionRate > clientBillingRate + 8;
+        const subContractAmt = actualSubContracts.reduce((sum: number, sc: any) => sum + Number(sc.currentAmount || 0), 0);
+        const subExecutedAmt = validSubBillings.reduce((sum: number, sb: any) => sum + Number(sb.finalApprovedAmt || 0), 0);
+        const subClaimedAmt = validSubBillings.reduce((sum: number, sb: any) => sum + Number(sb.currentClaimAmt || sb.finalApprovedAmt || 0), 0);
 
-      const subContractorsCount = actualSubContracts.length;
+        const subExecutionRate = subContractAmt > 0 ? (subExecutedAmt / subContractAmt) * 100 : 0;
 
-      return {
-        id: p.id,
-        name: p.name,
-        code: p.projectCode || `PRJ-${String(idx + 1).padStart(3, '0')}`,
-        status: p.status || '진행',
-        imageUrl: p.imageUrl,
-        location: p.location || '위치 미정',
-        startDate: p.startDate || '2025.03.01',
-        endDate: p.endDate || '2027.08.31',
-        clientContractAmt,
-        cumulativeBilling,
-        collectedAmt,
-        receivableAmt,
-        clientBillingRate,
-        subContractAmt,
-        subExecutedAmt,
-        subExecutionRate,
-        subClaimedAmt,
-        profitMargin,
-        expectedProfit,
-        isOverBudgetRisk,
-        subContractorsCount
-      };
-    });
-  }, [projects]);
+        // Expected Profit & Margin
+        const profitMargin = 11.5 + (hash % 7);
+        const expectedProfit = Math.round(clientContractAmt * (profitMargin / 100));
+
+        // Over-spending Risk Flag
+        const isOverBudgetRisk = subExecutionRate > clientBillingRate + 8 && subContractAmt > 0;
+
+        const subContractorsCount = actualSubContracts.length;
+
+        const defaultContract: ClientContract = (p.id === 'pjt-1' || p.id === 'p-1') ? {
+          id: 'cc-01',
+          projectId: p.id,
+          contractDate: '2025-01-15',
+          constructionStartDate: '2025-02-01',
+          constructionEndDate: '2027-12-31',
+          initialAmount: 10000000000,
+          amendedAmount: 13500000000,
+          currentAmount: 13500000000,
+          amendmentRound: 1,
+          changeAmount: 3500000000,
+          changeReason: '지상층 골조 사양 변경 및 지하 증축에 따른 설계 변경',
+          advancePayment: 1000000000,
+          retentionMoney: 675000000,
+          performanceBond: 1350000000,
+          designChangeAmount: 2500000000,
+          priceFluctuationAmount: 700000000,
+          extraWorkAmount: 300000000,
+          contractBalance: 11143000000,
+          status: '승인',
+          attachments: ['도급계약서_1차변경.pdf', '설계변경승인서.pdf'],
+          history: [
+            { id: 'cch-1', round: 1, contractDate: '2026-02-15', constructionStartDate: '2025-02-01', constructionEndDate: '2027-12-31', changeAmount: 3500000000, contractAmountAfter: 13500000000, reason: '지하층 지하수위 대응 강화 및 지상층 설계변경', approvedBy: '발주처 관리자' }
+          ]
+        } : {
+          id: `cc-${p.id}`,
+          projectId: p.id,
+          contractDate: p.startDate ? normalizeDate(p.startDate) || '2026-01-15' : '2026-01-15',
+          constructionStartDate: p.startDate ? normalizeDate(p.startDate) || '2026-01-15' : '2026-01-15',
+          constructionEndDate: p.endDate ? normalizeDate(p.endDate) || '2027-12-31' : '2027-12-31',
+          initialAmount: clientContractAmt,
+          amendedAmount: clientContractAmt,
+          currentAmount: clientContractAmt,
+          amendmentRound: 0,
+          changeAmount: 0,
+          changeReason: '최초 계약',
+          advancePayment: Math.round(clientContractAmt * 0.1),
+          retentionMoney: Math.round(clientContractAmt * 0.05),
+          performanceBond: Math.round(clientContractAmt * 0.1),
+          designChangeAmount: 0,
+          priceFluctuationAmount: 0,
+          extraWorkAmount: 0,
+          contractBalance: clientContractAmt - collectedAmt,
+          status: '승인',
+          history: []
+        };
+
+        const effectiveClientContract: ClientContract = storedClientContract ? {
+          ...storedClientContract,
+          contractDate: storedClientContract.contractDate || (p.startDate ? normalizeDate(p.startDate) : defaultContract.contractDate),
+          constructionStartDate: storedClientContract.constructionStartDate || (p.startDate ? normalizeDate(p.startDate) : defaultContract.constructionStartDate),
+          constructionEndDate: storedClientContract.constructionEndDate || (p.endDate ? normalizeDate(p.endDate) : defaultContract.constructionEndDate),
+          initialAmount: (storedClientContract.initialAmount && storedClientContract.initialAmount > 0)
+            ? storedClientContract.initialAmount
+            : (storedClientContract.currentAmount || clientContractAmt)
+        } : defaultContract;
+
+        const rawStatus = String(p.status || '진행').trim().toLowerCase();
+        let normalizedStatus: '준비' | '진행' | '완료' | '홀딩' = '진행';
+        if (rawStatus.includes('준비') || rawStatus.includes('계획') || rawStatus.includes('예정') || rawStatus.includes('대기')) {
+          normalizedStatus = '준비';
+        } else if (rawStatus.includes('완료') || rawStatus.includes('준공')) {
+          normalizedStatus = '완료';
+        } else if (rawStatus.includes('홀딩') || rawStatus.includes('보류') || rawStatus.includes('중단')) {
+          normalizedStatus = '홀딩';
+        } else {
+          normalizedStatus = '진행';
+        }
+
+        return {
+          id: p.id,
+          name: p.name,
+          code: p.projectCode || `PRJ-${String(idx + 1).padStart(3, '0')}`,
+          status: normalizedStatus,
+          imageUrl: p.imageUrl,
+          location: p.location || '위치 미정',
+          startDate: p.startDate || '2025.03.01',
+          endDate: p.endDate || '2027.08.31',
+          clientContractAmt,
+          cumulativeBilling,
+          collectedAmt,
+          receivableAmt,
+          clientBillingRate,
+          subContractAmt,
+          subExecutedAmt,
+          subExecutionRate,
+          subClaimedAmt,
+          profitMargin,
+          expectedProfit,
+          isOverBudgetRisk,
+          subContractorsCount,
+          createdAt: p.createdAt || '',
+          originalIndex: idx,
+          clientContract: effectiveClientContract,
+          clientBillings: storedClientBillings || (p.id === 'pjt-1' || p.id === 'p-1' ? DEFAULT_CLIENT_BILLINGS : []),
+          subContracts: actualSubContracts,
+          subBillings: validSubBillings
+        };
+      });
+  }, [projects, supabaseBillingMap]);
 
   const availableYears = useMemo(() => {
     const extractYear = (dateStr: string | undefined | null, defaultYear: number): number => {
@@ -391,20 +630,30 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
   const filteredProjects = useMemo(() => {
     return projectSummaries
       .filter(p => {
-        const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.location.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchStatus = statusFilter === '전체' || p.status === statusFilter;
+        const sTerm = searchTerm.trim().toLowerCase();
+        const matchSearch = !sTerm ||
+          (p.name && p.name.toLowerCase().includes(sTerm)) ||
+          (p.code && p.code.toLowerCase().includes(sTerm)) ||
+          (p.location && p.location.toLowerCase().includes(sTerm));
+        const matchStatus = selectedStatuses.length === 0 || selectedStatuses.includes(p.status as any);
         return matchSearch && matchStatus;
       })
       .sort((a, b) => {
+        if (sortBy === 'registered') {
+          const dateA = a.createdAt || a.startDate || '';
+          const dateB = b.createdAt || b.startDate || '';
+          if (dateA && dateB && dateA !== dateB) {
+            return dateB.localeCompare(dateA);
+          }
+          return b.originalIndex - a.originalIndex;
+        }
         if (sortBy === 'budget') return b.clientContractAmt - a.clientContractAmt;
         if (sortBy === 'billingRate') return b.clientBillingRate - a.clientBillingRate;
         if (sortBy === 'subRate') return b.subExecutionRate - a.subExecutionRate;
         if (sortBy === 'name') return a.name.localeCompare(b.name);
         return 0;
       });
-  }, [projectSummaries, searchTerm, statusFilter, sortBy]);
+  }, [projectSummaries, searchTerm, selectedStatuses, sortBy]);
 
   // Global Aggregated KPIs
   const totalStats = useMemo(() => {
@@ -446,17 +695,29 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
 
   // Chart Dataset 1: Project Comparison (Top 8 projects by contract)
   const chartProjectData = useMemo(() => {
-    return filteredProjects.slice(0, 8).map(p => ({
-      name: p.name.length > 8 ? p.name.slice(0, 8) + '...' : p.name,
-      fullName: p.name,
-      '도급계약액(억)': Math.round(p.clientContractAmt / 100000000),
-      '누계기성액(억)': Math.round(p.cumulativeBilling / 100000000),
-      '수금액(억)': Math.round(p.collectedAmt / 100000000),
-      '외주계약액(억)': Math.round(p.subContractAmt / 100000000),
-      '외주집행액(억)': Math.round(p.subExecutedAmt / 100000000),
-      '도급기성율(%)': Number(p.clientBillingRate.toFixed(1)),
-      '외주집행율(%)': Number(p.subExecutionRate.toFixed(1)),
-    }));
+    return filteredProjects.slice(0, 8).map(p => {
+      const subContractVal100M = Math.round(p.subContractAmt / 100000000);
+      const subExecutedVal100M = Math.round(p.subExecutedAmt / 100000000);
+      const subClaimedVal = p.subClaimedAmt || 0;
+      const subPendingVal100M = Math.round(Math.max(0, subClaimedVal - p.subExecutedAmt) / 100000000);
+      const subRemainingVal100M = Math.max(0, subContractVal100M - Math.max(subExecutedVal100M, Math.round(subClaimedVal / 100000000)));
+
+      return {
+        name: p.name.length > 8 ? p.name.slice(0, 8) + '...' : p.name,
+        fullName: p.name,
+        '도급계약액(억)': Math.round(p.clientContractAmt / 100000000),
+        '누계기성액(억)': Math.round(p.cumulativeBilling / 100000000),
+        '수금액(억)': Math.round(p.collectedAmt / 100000000),
+        '외주계약액(억)': Math.round(p.subContractAmt / 100000000),
+        '외주집행액(억)': Math.round(p.subExecutedAmt / 100000000),
+        '도급기성율(%)': Number(p.clientBillingRate.toFixed(1)),
+        '외주집행율(%)': Number(p.subExecutionRate.toFixed(1)),
+        '외주총액(억)': subContractVal100M,
+        '외주승인(억)': subExecutedVal100M,
+        '승인대기(억)': subPendingVal100M,
+        '외주잔액(억)': subRemainingVal100M,
+      };
+    });
   }, [filteredProjects]);
 
   // Chart Dataset 3: Discipline Breakdown
@@ -474,16 +735,214 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
   }, [totalStats]);
 
   // Chart Dataset 4: Monthly Billing Trend
+  const clientMonthlyTrendData = useMemo(() => {
+    const selectedYear = parseInt(trendYear, 10) || 2026;
+    const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+    return months.map((m) => {
+      const monthLabel = `${m}월`;
+      const lastDay = new Date(selectedYear, m, 0).getDate();
+      const monthEndDateStr = `${selectedYear}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      let totalContractVal = 0;
+      let totalBillingVal = 0;
+      let totalCollectedVal = 0;
+
+      filteredProjects.forEach((p: any) => {
+        const rawStartDate = p.startDate || p.clientContract?.contractDate;
+        const formattedStartDate = normalizeDate(rawStartDate);
+        if (formattedStartDate && formattedStartDate > monthEndDateStr) {
+          return;
+        }
+
+        const rawContractDate = p.clientContract?.contractDate || p.startDate;
+        const formattedContractDate = normalizeDate(rawContractDate);
+
+        if (!formattedContractDate || formattedContractDate <= monthEndDateStr) {
+          let startAmt = Number(p.clientContract?.initialAmount || 0);
+          if (startAmt === 0) {
+            startAmt = Number(p.clientContractAmt || 0);
+            if (p.clientContract?.history && p.clientContract.history.length > 0) {
+              const histSum = p.clientContract.history.reduce((s: number, h: any) => s + Number(h.changeAmount || 0), 0);
+              startAmt = Math.max(0, startAmt - histSum);
+            }
+          } else if (startAmt < 100000) {
+            startAmt = startAmt * 100000000;
+          }
+
+          let runningContract = startAmt;
+
+          if (p.clientContract?.history && Array.isArray(p.clientContract.history)) {
+            p.clientContract.history.forEach((h: any) => {
+              const hDate = normalizeDate(h.date);
+              if (hDate && hDate <= monthEndDateStr) {
+                let changeAmt = Number(h.changeAmount || 0);
+                if (Math.abs(changeAmt) < 100000 && changeAmt !== 0) {
+                  changeAmt = changeAmt * 100000000;
+                }
+                runningContract += changeAmt;
+              }
+            });
+          }
+          totalContractVal += runningContract;
+        }
+
+        const billings = (p.clientBillings && Array.isArray(p.clientBillings)) ? p.clientBillings : [];
+
+        const validBillings = billings.filter((b: any) => {
+          const rawD = b.referenceDate || b.targetPeriodEnd || b.createdDate || b.submittedDate;
+          const d = normalizeDate(rawD);
+          return d && d <= monthEndDateStr;
+        });
+
+        if (validBillings.length > 0) {
+          const latestBilling = validBillings.reduce((prev: any, curr: any) => {
+            const prevDate = normalizeDate(prev.referenceDate || prev.targetPeriodEnd || '');
+            const currDate = normalizeDate(curr.referenceDate || curr.targetPeriodEnd || '');
+            return currDate >= prevDate ? curr : prev;
+          }, validBillings[0]);
+
+          totalBillingVal += Number(latestBilling.cumulativeBillingAmt || latestBilling.currentClaimAmt || 0);
+
+          validBillings.forEach((b: any) => {
+            const collectDate = normalizeDate(b.actualCollectionDate || b.collectionDate);
+            if (collectDate && collectDate <= monthEndDateStr) {
+              totalCollectedVal += Number(b.collectedAmt || b.netClaimAmt || 0);
+            } else if (!collectDate && Number(b.collectedAmt || 0) > 0) {
+              totalCollectedVal += Number(b.collectedAmt);
+            }
+          });
+        } else if (p.cumulativeBilling > 0 || p.collectedAmt > 0) {
+          const startY = parseInt(p.startDate ? p.startDate.slice(0, 4) : '2025', 10) || 2025;
+          if (selectedYear > startY || (selectedYear === startY && m >= 4)) {
+            if (m < 4) {
+              // Before billing
+            } else if (m <= 7) {
+              const factor = (m - 3) / 4;
+              totalBillingVal += Math.round(p.cumulativeBilling * factor);
+              totalCollectedVal += Math.round(p.collectedAmt * factor);
+            } else {
+              totalBillingVal += p.cumulativeBilling;
+              totalCollectedVal += p.collectedAmt;
+            }
+          }
+        }
+      });
+
+      const billingValIn100M = Math.round(totalBillingVal / 100000000);
+      const collectedValIn100M = Math.round(totalCollectedVal / 100000000);
+      const receivableValIn100M = Math.max(0, billingValIn100M - collectedValIn100M);
+      const contractValIn100M = Math.round(totalContractVal / 100000000);
+      const balanceValIn100M = Math.max(0, contractValIn100M - billingValIn100M);
+
+      return {
+        month: monthLabel,
+        '기성총액': billingValIn100M,
+        '기성총액(수금완료액 기준)': collectedValIn100M,
+        '미수금': receivableValIn100M,
+        '잔액': balanceValIn100M,
+      };
+    });
+  }, [filteredProjects, trendYear]);
+
+  const subMonthlyTrendData = useMemo(() => {
+    const selectedYear = parseInt(trendYear, 10) || 2026;
+    const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+    return months.map((m) => {
+      const monthLabel = `${m}월`;
+      const lastDay = new Date(selectedYear, m, 0).getDate();
+      const monthEndDateStr = `${selectedYear}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      let totalSubContractVal = 0;
+      let totalSubExecutedVal = 0;
+      let totalSubClaimedVal = 0;
+
+      filteredProjects.forEach((p: any) => {
+        // 외주현황 필터링: 프로젝트별 외주업체 최초계약일 기준
+        const subContractDates = (Array.isArray(p.subContracts) ? p.subContracts : [])
+          .map((sc: any) => normalizeDate(sc.contractDate || sc.startDate))
+          .filter((d: any) => d);
+        const earliestSubContractDate = subContractDates.length > 0
+          ? subContractDates.sort()[0]
+          : normalizeDate(p.startDate);
+        
+        if (earliestSubContractDate && earliestSubContractDate > monthEndDateStr) {
+          return;
+        }
+
+        let pSubContractVal = 0;
+        if (Array.isArray(p.subContracts) && p.subContracts.length > 0) {
+          p.subContracts.forEach((sc: any) => {
+            const scDate = normalizeDate(sc.contractDate || sc.startDate || p.startDate);
+            if (!scDate || scDate <= monthEndDateStr) {
+              pSubContractVal += Number(sc.currentAmount || sc.initialAmount || 0);
+            }
+          });
+        } else {
+          const pDate = normalizeDate(p.startDate);
+          if (!pDate || pDate <= monthEndDateStr) {
+            pSubContractVal = Number(p.subContractAmt || 0);
+          }
+        }
+        totalSubContractVal += pSubContractVal;
+
+        const subBillings = (p.subBillings && Array.isArray(p.subBillings)) ? p.subBillings : [];
+
+        const validSubBillings = subBillings.filter((sb: any) => {
+          const rawD = sb.referenceDate || sb.createdDate;
+          const d = normalizeDate(rawD);
+          return d && d <= monthEndDateStr;
+        });
+
+        if (validSubBillings.length > 0) {
+          validSubBillings.forEach((sb: any) => {
+            totalSubExecutedVal += Number(sb.finalApprovedAmt || sb.cumulativeApprovedAmt || 0);
+            totalSubClaimedVal += Number(sb.currentClaimAmt || sb.finalApprovedAmt || 0);
+          });
+        } else if (p.subExecutedAmt > 0 || p.subClaimedAmt > 0) {
+          const startY = parseInt(p.startDate ? p.startDate.slice(0, 4) : '2025', 10) || 2025;
+          if (selectedYear > startY || (selectedYear === startY && m >= 4)) {
+            if (m < 4) {
+              // Before active sub execution
+            } else if (m <= 7) {
+              const factor = (m - 3) / 4;
+              totalSubExecutedVal += Math.round(p.subExecutedAmt * factor);
+              totalSubClaimedVal += Math.round(p.subClaimedAmt * factor);
+            } else {
+              totalSubExecutedVal += p.subExecutedAmt;
+              totalSubClaimedVal += p.subClaimedAmt;
+            }
+          }
+        }
+      });
+
+      const executedValIn100M = Math.round(totalSubExecutedVal / 100000000);
+      const claimedValIn100M = Math.round(totalSubClaimedVal / 100000000);
+      const pendingValIn100M = Math.max(0, claimedValIn100M - executedValIn100M);
+      const subContractValIn100M = Math.round(totalSubContractVal / 100000000);
+      const remainingValIn100M = Math.max(0, subContractValIn100M - claimedValIn100M);
+
+      return {
+        month: monthLabel,
+        '외주승인 총액': executedValIn100M,
+        '승인대기 총액': pendingValIn100M,
+        '외주잔액': remainingValIn100M,
+      };
+    });
+  }, [filteredProjects, trendYear]);
+
   const monthlyTrendData = useMemo(() => {
-    return [
-      { month: '2월', '도급기성': Math.round(totalStats.totalBilling * 0.35 / 100000000), '수금액': Math.round(totalStats.totalCollected * 0.32 / 100000000), '외주집행': Math.round(totalStats.totalSubExecuted * 0.33 / 100000000) },
-      { month: '3월', '도급기성': Math.round(totalStats.totalBilling * 0.48 / 100000000), '수금액': Math.round(totalStats.totalCollected * 0.45 / 100000000), '외주집행': Math.round(totalStats.totalSubExecuted * 0.46 / 100000000) },
-      { month: '4월', '도급기성': Math.round(totalStats.totalBilling * 0.62 / 100000000), '수금액': Math.round(totalStats.totalCollected * 0.58 / 100000000), '외주집행': Math.round(totalStats.totalSubExecuted * 0.60 / 100000000) },
-      { month: '5월', '도급기성': Math.round(totalStats.totalBilling * 0.76 / 100000000), '수금액': Math.round(totalStats.totalCollected * 0.72 / 100000000), '외주집행': Math.round(totalStats.totalSubExecuted * 0.75 / 100000000) },
-      { month: '6월', '도급기성': Math.round(totalStats.totalBilling * 0.89 / 100000000), '수금액': Math.round(totalStats.totalCollected * 0.86 / 100000000), '외주집행': Math.round(totalStats.totalSubExecuted * 0.88 / 100000000) },
-      { month: '7월 (현재)', '도급기성': Math.round(totalStats.totalBilling / 100000000), '수금액': Math.round(totalStats.totalCollected / 100000000), '외주집행': Math.round(totalStats.totalSubExecuted / 100000000) },
-    ];
-  }, [totalStats]);
+    return clientMonthlyTrendData.map((cd, idx) => {
+      const sd = subMonthlyTrendData[idx];
+      return {
+        month: cd.month,
+        '도급기성': cd['기성총액'],
+        '수금액': cd['기성총액(수금완료액 기준)'],
+        '외주집행': sd ? sd['외주승인 총액'] : 0,
+      };
+    });
+  }, [clientMonthlyTrendData, subMonthlyTrendData]);
 
   // Export Excel Function
   const handleExportExcel = async () => {
@@ -633,153 +1092,6 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
   const subRemainingRate = totalStats.totalSubContract > 0
     ? (totalSubRemaining / totalStats.totalSubContract) * 100
     : 0;
-
-  const clientMonthlyTrendData = useMemo(() => {
-    const months = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
-    
-    const getRatiosForYear = (yearStr: string) => {
-      const yrNum = parseInt(yearStr, 10) || 2026;
-      const seed = yrNum % 3;
-      if (seed === 0) {
-        return [
-          { billing: 0.15, collection: 0.12 },
-          { billing: 0.22, collection: 0.18 },
-          { billing: 0.32, collection: 0.28 },
-          { billing: 0.42, collection: 0.36 },
-          { billing: 0.52, collection: 0.45 },
-          { billing: 0.62, collection: 0.54 },
-          { billing: 0.72, collection: 0.64 },
-          { billing: 0.80, collection: 0.72 },
-          { billing: 0.86, collection: 0.78 },
-          { billing: 0.92, collection: 0.84 },
-          { billing: 0.96, collection: 0.89 },
-          { billing: 1.00, collection: 0.92 },
-        ];
-      } else if (seed === 1) {
-        return [
-          { billing: 0.10, collection: 0.08 },
-          { billing: 0.18, collection: 0.15 },
-          { billing: 0.26, collection: 0.22 },
-          { billing: 0.35, collection: 0.30 },
-          { billing: 0.44, collection: 0.38 },
-          { billing: 0.52, collection: 0.45 },
-          { billing: 0.60, collection: 0.52 },
-          { billing: 0.68, collection: 0.60 },
-          { billing: 0.76, collection: 0.68 },
-          { billing: 0.84, collection: 0.76 },
-          { billing: 0.92, collection: 0.84 },
-          { billing: 1.00, collection: 0.91 },
-        ];
-      } else {
-        return [
-          { billing: 0.08, collection: 0.06 },
-          { billing: 0.14, collection: 0.11 },
-          { billing: 0.22, collection: 0.18 },
-          { billing: 0.30, collection: 0.25 },
-          { billing: 0.38, collection: 0.32 },
-          { billing: 0.46, collection: 0.39 },
-          { billing: 0.54, collection: 0.46 },
-          { billing: 0.62, collection: 0.54 },
-          { billing: 0.70, collection: 0.62 },
-          { billing: 0.78, collection: 0.70 },
-          { billing: 0.88, collection: 0.80 },
-          { billing: 1.00, collection: 0.90 },
-        ];
-      }
-    };
-
-    const ratios = getRatiosForYear(trendYear);
-
-    return months.map((month, idx) => {
-      const r = ratios[idx];
-      const billingVal = Math.round((totalStats.totalBilling * r.billing) / 100000000); // 억원
-      const collectedVal = Math.round((totalStats.totalCollected * r.collection) / 100000000); // 억원
-      const receivableVal = Math.max(0, billingVal - collectedVal);
-      const contractVal = Math.round(totalStats.totalContract / 100000000); // 억원
-      const balanceVal = Math.max(0, contractVal - billingVal);
-
-      return {
-        month,
-        '기성총액': billingVal,
-        '기성총액(수금완료액 기준)': collectedVal,
-        '미수금': receivableVal,
-        '잔액': balanceVal,
-      };
-    });
-  }, [totalStats, trendYear]);
-
-  const subMonthlyTrendData = useMemo(() => {
-    const months = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
-    
-    const getRatiosForYear = (yearStr: string) => {
-      const yrNum = parseInt(yearStr, 10) || 2026;
-      const seed = yrNum % 3;
-      if (seed === 0) {
-        return [
-          { claimed: 0.12, executed: 0.10 },
-          { claimed: 0.20, executed: 0.16 },
-          { claimed: 0.30, executed: 0.25 },
-          { claimed: 0.40, executed: 0.34 },
-          { claimed: 0.50, executed: 0.42 },
-          { claimed: 0.60, executed: 0.50 },
-          { claimed: 0.70, executed: 0.60 },
-          { claimed: 0.78, executed: 0.68 },
-          { claimed: 0.84, executed: 0.74 },
-          { claimed: 0.90, executed: 0.80 },
-          { claimed: 0.95, executed: 0.86 },
-          { claimed: 1.00, executed: 0.90 },
-        ];
-      } else if (seed === 1) {
-        return [
-          { claimed: 0.08, executed: 0.06 },
-          { claimed: 0.15, executed: 0.12 },
-          { claimed: 0.24, executed: 0.20 },
-          { claimed: 0.32, executed: 0.26 },
-          { claimed: 0.40, executed: 0.34 },
-          { claimed: 0.48, executed: 0.40 },
-          { claimed: 0.56, executed: 0.48 },
-          { claimed: 0.64, executed: 0.55 },
-          { claimed: 0.72, executed: 0.62 },
-          { claimed: 0.80, executed: 0.70 },
-          { claimed: 0.90, executed: 0.80 },
-          { claimed: 1.00, executed: 0.88 },
-        ];
-      } else {
-        return [
-          { claimed: 0.06, executed: 0.04 },
-          { claimed: 0.12, executed: 0.09 },
-          { claimed: 0.20, executed: 0.16 },
-          { claimed: 0.28, executed: 0.22 },
-          { claimed: 0.36, executed: 0.29 },
-          { claimed: 0.44, executed: 0.36 },
-          { claimed: 0.52, executed: 0.43 },
-          { claimed: 0.60, executed: 0.50 },
-          { claimed: 0.68, executed: 0.58 },
-          { claimed: 0.76, executed: 0.66 },
-          { claimed: 0.86, executed: 0.76 },
-          { claimed: 1.00, executed: 0.88 },
-        ];
-      }
-    };
-
-    const ratios = getRatiosForYear(trendYear);
-
-    return months.map((month, idx) => {
-      const r = ratios[idx];
-      const claimedVal = Math.round((totalStats.totalSubClaimed * r.claimed) / 100000000); // 억원
-      const executedVal = Math.round((totalStats.totalSubExecuted * r.executed) / 100000000); // 억원
-      const pendingVal = Math.max(0, claimedVal - executedVal);
-      const subContractVal = Math.round(totalStats.totalSubContract / 100000000); // 억원
-      const remainingVal = Math.max(0, subContractVal - claimedVal);
-
-      return {
-        month,
-        '외주승인 총액': executedVal,
-        '승인대기 총액': pendingVal,
-        '외주잔액': remainingVal,
-      };
-    });
-  }, [totalStats, trendYear]);
 
   return (
     <div className="space-y-6">
@@ -1027,31 +1339,13 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
               />
             </div>
 
-            {/* Status Filter */}
-            <div className="flex items-center">
-              {(['전체', '진행', '완료', '홀딩'] as const).map((s, idx, arr) => (
-                <React.Fragment key={s}>
-                  <button
-                    onClick={() => setStatusFilter(s)}
-                    className={`px-2.5 py-1 text-xs font-bold transition-all focus:outline-none ${
-                      statusFilter === s ? 'text-blue-600 font-extrabold' : 'text-gray-500 hover:text-blue-600/80'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                  {idx < arr.length - 1 && (
-                    <span className="w-[1px] h-3 bg-gray-300 mx-1" />
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-
             {/* Sort Dropdown */}
             <select
               value={sortBy}
               onChange={(e: any) => setSortBy(e.target.value)}
               className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
+              <option value="registered">등록일 순 (최신순)</option>
               <option value="budget">도급액 큰 순</option>
               <option value="billingRate">기성율 높은 순</option>
               <option value="subRate">외주집행율 높은 순</option>
@@ -1084,6 +1378,7 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
               ) : (
                 filteredProjects.map((p) => {
                   let statusBadgeClass = 'bg-blue-50 text-blue-700 border-blue-200';
+                  if (p.status === '준비') statusBadgeClass = 'bg-purple-50 text-purple-700 border-purple-200';
                   if (p.status === '완료') statusBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
                   if (p.status === '홀딩') statusBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
 
@@ -1200,7 +1495,7 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
               {(
                 [
                   { id: 'billing', label: '현장별 도급 vs 기성' },
-                  { id: 'rates', label: '도급기성율 vs 외주집행율' },
+                  { id: 'rates', label: '외주현황' },
                   { id: 'discipline', label: '공종별 외주 비중' },
                   { id: 'monthly', label: '월별 집행 추이' }
                 ] as const
@@ -1244,18 +1539,20 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
 
             {activeChartTab === 'rates' && (
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartProjectData} margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
+                <BarChart data={chartProjectData} margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <YAxis unit="%" domain={[0, 100]} tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <YAxis unit="억" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
                   <Tooltip
-                    formatter={(val: number) => [`${val}%`, '']}
+                    formatter={(val: number, name: string) => [`${val} 억원`, name]}
                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)' }}
                   />
                   <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
-                  <Bar dataKey="도급기성율(%)" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={24} />
-                  <Line type="monotone" dataKey="외주집행율(%)" stroke="#f59e0b" strokeWidth={3} dot={{ r: 5, fill: '#f59e0b' }} />
-                </ComposedChart>
+                  <Bar dataKey="외주총액(억)" fill="#475569" radius={[4, 4, 0, 0]} barSize={12} name="외주총액" />
+                  <Bar dataKey="외주승인(억)" fill="#2563eb" radius={[4, 4, 0, 0]} barSize={12} name="외주승인" />
+                  <Bar dataKey="승인대기(억)" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={12} name="승인대기" />
+                  <Bar dataKey="외주잔액(억)" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={12} name="외주잔액" />
+                </BarChart>
               </ResponsiveContainer>
             )}
 

@@ -79,6 +79,7 @@ import {
 interface Props {
   projectId?: string;
   settings?: AppSettings;
+  onGoToConsolidatedDashboard?: () => void;
 }
 
 // Helper currency formatter
@@ -97,7 +98,7 @@ const formatNumber = (num: number) => {
   return (num || 0).toLocaleString('ko-KR');
 };
 
-export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-1', settings }) => {
+export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-1', settings, onGoToConsolidatedDashboard }) => {
   const disciplinesList = useMemo<Category[]>(() => {
     if (settings?.categories && settings.categories.length > 0) {
       return settings.categories;
@@ -145,6 +146,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   const [clientContract, setClientContract] = useState<ClientContract>({
     id: 'cc-01',
     projectId,
+    contractDate: '2025-01-15', // 계약일
+    constructionStartDate: '2025-02-01', // 공사 시작일
+    constructionEndDate: '2027-12-31', // 공사 완료일
     initialAmount: 10000000000, // 최초 100억
     amendedAmount: 13500000000, // 1차 변경 35억 증액 => 최종 135억
     currentAmount: 13500000000,
@@ -161,7 +165,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     status: '승인',
     attachments: ['도급계약서_1차변경.pdf', '설계변경승인서.pdf'],
     history: [
-      { id: 'cch-1', round: 1, date: '2026-02-15', changeAmount: 3500000000, contractAmountAfter: 13500000000, reason: '지하층 지하수위 대응 강화 및 지상층 설계변경', approvedBy: '발주처 관리자' }
+      { id: 'cch-1', round: 1, contractDate: '2026-02-15', constructionStartDate: '2025-02-01', constructionEndDate: '2027-12-31', changeAmount: 3500000000, contractAmountAfter: 13500000000, reason: '지하층 지하수위 대응 강화 및 지상층 설계변경', approvedBy: '발주처 관리자' }
     ]
   });
 
@@ -798,7 +802,23 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   const [isEditSubBillingModalOpen, setIsEditSubBillingModalOpen] = useState(false);
   const [editingSubBilling, setEditingSubBilling] = useState<SubcontractorBilling | null>(null);
   const [selectedSubHistoryName, setSelectedSubHistoryName] = useState<string>('all');
-  const [isSubHistoryInitialized, setIsSubHistoryInitialized] = useState(false);
+
+  // 등록된 외주 계약(subContracts)에 실제 존재하는 업체의 기성 내역만 유효 집계 대상으로 필터링
+  const validSubBillings = useMemo(() => {
+    if (!Array.isArray(subContracts) || subContracts.length === 0) return [];
+    if (!Array.isArray(subBillings)) return [];
+
+    const validContractorNames = new Set(
+      subContracts.map(sc => sc?.contractorName).filter((name): name is string => Boolean(name))
+    );
+    const validContractIds = new Set(
+      subContracts.map(sc => sc?.id).filter((id): id is string => Boolean(id))
+    );
+
+    return subBillings.filter(sb =>
+      sb && (validContractIds.has(sb.subcontractorContractId) || validContractorNames.has(sb.subcontractorName))
+    );
+  }, [subContracts, subBillings]);
 
   const subcontractorNames = useMemo(() => {
     const names = new Set<string>();
@@ -807,24 +827,22 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         if (sc && sc.contractorName) names.add(sc.contractorName);
       });
     }
-    if (Array.isArray(subBillings)) {
-      subBillings.forEach(sb => {
-        if (sb && sb.subcontractorName) names.add(sb.subcontractorName);
-      });
-    }
     return Array.from(names);
-  }, [subContracts, subBillings]);
+  }, [subContracts]);
 
   useEffect(() => {
-    if (!isSubHistoryInitialized && subcontractorNames.length > 0) {
-      setSelectedSubHistoryName(subcontractorNames[0]);
-      setIsSubHistoryInitialized(true);
+    if (subcontractorNames.length > 0) {
+      if (selectedSubHistoryName !== 'all' && !subcontractorNames.includes(selectedSubHistoryName)) {
+        setSelectedSubHistoryName(subcontractorNames[0]);
+      }
+    } else {
+      setSelectedSubHistoryName('all');
     }
-  }, [subcontractorNames, isSubHistoryInitialized]);
+  }, [subcontractorNames, selectedSubHistoryName]);
 
   const filteredSubHistory = useMemo(() => {
-    let list = Array.isArray(subBillings) ? subBillings : [];
-    if (selectedSubHistoryName !== 'all') {
+    let list = validSubBillings;
+    if (selectedSubHistoryName !== 'all' && subcontractorNames.includes(selectedSubHistoryName)) {
       list = list.filter(sb => sb && sb.subcontractorName === selectedSubHistoryName);
     }
     return [...list].sort((a, b) => {
@@ -832,12 +850,12 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       const bRound = b?.billingRound || 0;
       return bRound - aRound;
     });
-  }, [subBillings, selectedSubHistoryName]);
+  }, [validSubBillings, selectedSubHistoryName, subcontractorNames]);
 
   const subHistorySummary = useMemo(() => {
-    let list = Array.isArray(subBillings) ? subBillings : [];
+    let list = validSubBillings;
     let contractAmount = 0;
-    if (selectedSubHistoryName !== 'all') {
+    if (selectedSubHistoryName !== 'all' && subcontractorNames.includes(selectedSubHistoryName)) {
       list = list.filter(sb => sb && sb.subcontractorName === selectedSubHistoryName);
       const contract = subContracts.find(sc => sc.contractorName === selectedSubHistoryName);
       contractAmount = contract ? (contract.currentAmount || 0) : 0;
@@ -847,17 +865,15 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     const totalPaid = list.reduce((sum, item) => sum + (item?.actualPaidAmt || 0), 0);
     const totalUnpaid = list.reduce((sum, item) => sum + (item?.unpaidAmt || 0), 0);
     return { totalClaim, totalApproved, totalPaid, totalUnpaid, contractAmount };
-  }, [subBillings, selectedSubHistoryName, subContracts]);
+  }, [validSubBillings, selectedSubHistoryName, subcontractorNames, subContracts]);
 
   const subContractorStats = useMemo(() => {
     if (!Array.isArray(subContracts)) return [];
     return subContracts.map(sc => {
       if (!sc) return null;
-      const billings = Array.isArray(subBillings)
-        ? subBillings.filter(
-            sb => sb && (sb.subcontractorContractId === sc.id || sb.subcontractorName === sc.contractorName)
-          )
-        : [];
+      const billings = validSubBillings.filter(
+        sb => sb && (sb.subcontractorContractId === sc.id || sb.subcontractorName === sc.contractorName)
+      );
       const cumulativeClaim = billings.reduce((sum, sb) => sum + (sb?.currentClaimAmt || 0), 0);
       const cumulativeApproved = billings.reduce((sum, sb) => sum + (sb?.finalApprovedAmt || 0), 0);
       const cumulativePaid = billings.reduce((sum, sb) => sum + (sb?.actualPaidAmt || 0), 0);
@@ -870,24 +886,16 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         balance
       };
     }).filter((sc): sc is NonNullable<typeof sc> => sc !== null);
-  }, [subContracts, subBillings]);
+  }, [subContracts, validSubBillings]);
 
   const overallSubContractorTotals = useMemo(() => {
     const totalContract = Array.isArray(subContracts)
       ? subContracts.reduce((sum, sc) => sum + (sc?.currentAmount || 0), 0)
       : 0;
-    const totalClaim = Array.isArray(subBillings)
-      ? subBillings.reduce((sum, sb) => sum + (sb?.currentClaimAmt || 0), 0)
-      : 0;
-    const totalApproved = Array.isArray(subBillings)
-      ? subBillings.reduce((sum, sb) => sum + (sb?.finalApprovedAmt || 0), 0)
-      : 0;
-    const totalPaid = Array.isArray(subBillings)
-      ? subBillings.reduce((sum, sb) => sum + (sb?.actualPaidAmt || 0), 0)
-      : 0;
-    const totalUnpaid = Array.isArray(subBillings)
-      ? subBillings.reduce((sum, sb) => sum + (sb?.unpaidAmt || 0), 0)
-      : 0;
+    const totalClaim = validSubBillings.reduce((sum, sb) => sum + (sb?.currentClaimAmt || 0), 0);
+    const totalApproved = validSubBillings.reduce((sum, sb) => sum + (sb?.finalApprovedAmt || 0), 0);
+    const totalPaid = validSubBillings.reduce((sum, sb) => sum + (sb?.actualPaidAmt || 0), 0);
+    const totalUnpaid = validSubBillings.reduce((sum, sb) => sum + (sb?.unpaidAmt || 0), 0);
     return {
       totalContract,
       totalClaim,
@@ -895,10 +903,13 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       totalPaid,
       totalUnpaid
     };
-  }, [subContracts, subBillings]);
+  }, [subContracts, validSubBillings]);
 
   // Initial Contract Form State
   const [initialContractForm, setInitialContractForm] = useState({
+    contractDate: '2025-01-15',
+    constructionStartDate: '2025-02-01',
+    constructionEndDate: '2027-12-31',
     initialAmount: 10000000000,
     advancePayment: 1000000000,
     retentionMoney: 675000000,
@@ -952,15 +963,16 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   // Helper to save to Supabase
   const saveToSupabase = async (updatedDataFields: any) => {
     const dataToSave = {
-      clientContract: updatedDataFields.clientContract || clientContract,
-      clientBillings: updatedDataFields.clientBillings || clientBillings,
-      subContracts: updatedDataFields.subContracts || subContracts,
-      subBillings: updatedDataFields.subBillings || subBillings,
-      clientBillingItems: updatedDataFields.clientBillingItems || clientBillingItems,
-      subBillingItems: updatedDataFields.subBillingItems || subBillingItems,
-      executionBudgets: updatedDataFields.executionBudgets || executionBudgets,
+      clientContract: updatedDataFields.clientContract !== undefined ? updatedDataFields.clientContract : clientContract,
+      clientBillings: updatedDataFields.clientBillings !== undefined ? updatedDataFields.clientBillings : clientBillings,
+      subContracts: updatedDataFields.subContracts !== undefined ? updatedDataFields.subContracts : subContracts,
+      subBillings: updatedDataFields.subBillings !== undefined ? updatedDataFields.subBillings : subBillings,
+      clientBillingItems: updatedDataFields.clientBillingItems !== undefined ? updatedDataFields.clientBillingItems : clientBillingItems,
+      subBillingItems: updatedDataFields.subBillingItems !== undefined ? updatedDataFields.subBillingItems : subBillingItems,
+      executionBudgets: updatedDataFields.executionBudgets !== undefined ? updatedDataFields.executionBudgets : executionBudgets,
     };
     try {
+      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(dataToSave));
       await supabaseService.saveBillingData(projectId, dataToSave);
     } catch (err) {
       console.error('Failed to save billing data to Supabase:', err);
@@ -968,6 +980,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   };
   const [amendmentForm, setAmendmentForm] = useState({
     date: new Date().toISOString().split('T')[0],
+    constructionStartDate: '2025-02-01',
+    constructionEndDate: '2027-12-31',
     changeAmount: 0,
     designChangeAmount: 0,
     priceFluctuationAmount: 0,
@@ -1042,7 +1056,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     const newHistoryItem = {
       id: `cch-${Date.now()}`,
       round: newRound,
-      date: amendmentForm.date || new Date().toISOString().split('T')[0],
+      contractDate: amendmentForm.date || new Date().toISOString().split('T')[0],
+      constructionStartDate: amendmentForm.constructionStartDate,
+      constructionEndDate: amendmentForm.constructionEndDate,
       changeAmount: changeAmt,
       contractAmountAfter: newCurrentAmount,
       reason: amendmentForm.reason || '설계 변경 및 계약 금액 조정',
@@ -1111,6 +1127,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   // Save Initial Contract Handler (최초 계약 정보 수정)
   const handleSaveInitialContract = (e: React.FormEvent) => {
     e.preventDefault();
+    const newContractDate = initialContractForm.contractDate || '2025-01-15';
+    const newConstructionStartDate = initialContractForm.constructionStartDate || '2025-02-01';
+    const newConstructionEndDate = initialContractForm.constructionEndDate || '2027-12-31';
     const newInitial = Number(initialContractForm.initialAmount || 0);
     const newAdvance = Number(initialContractForm.advancePayment || 0);
     const newRetention = Number(initialContractForm.retentionMoney || 0);
@@ -1130,6 +1149,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
     const updatedContract: ClientContract = {
       ...clientContract,
+      contractDate: newContractDate,
+      constructionStartDate: newConstructionStartDate,
+      constructionEndDate: newConstructionEndDate,
       initialAmount: newInitial,
       currentAmount: newCurrentAmount,
       amendedAmount: newCurrentAmount,
@@ -1162,7 +1184,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         user: '공무담당자',
         action: '발주처 최초 계약 정보 수정',
         module: '발주처 계약',
-        details: `최초 계약금액: ${formatKRW(newInitial)}, 변경후 현재 계약금액: ${formatKRW(newCurrentAmount)}`
+        details: `최초 계약일: ${newContractDate}, 공사 시작일: ${newConstructionStartDate}, 공사 완료일: ${newConstructionEndDate}, 최초 계약금액: ${formatKRW(newInitial)}, 변경후 현재 계약금액: ${formatKRW(newCurrentAmount)}`
       },
       ...prev
     ]);
@@ -1179,7 +1201,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       if (h.id === editingHistoryItem.id) {
         return {
           ...h,
-          date: editingHistoryItem.date,
+          contractDate: editingHistoryItem.contractDate,
+          constructionStartDate: editingHistoryItem.constructionStartDate,
+          constructionEndDate: editingHistoryItem.constructionEndDate,
           changeAmount: Number(editingHistoryItem.changeAmount || 0),
           reason: editingHistoryItem.reason,
           approvedBy: editingHistoryItem.approvedBy
@@ -1215,15 +1239,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     };
 
     setClientContract(updatedContract);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.clientContract = updatedContract;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ clientContract: updatedContract });
 
     setAuditLogs(prev => [
       {
@@ -1275,15 +1291,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     };
 
     setClientContract(updatedContract);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.clientContract = updatedContract;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ clientContract: updatedContract });
 
     setAuditLogs(prev => [
       {
@@ -1332,15 +1340,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     };
 
     setClientContract(updatedContract);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.clientContract = updatedContract;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ clientContract: updatedContract });
 
     setAuditLogs(prev => [
       {
@@ -1370,15 +1370,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   const performDeleteSubBilling = (id: string) => {
     const updatedSubBillings = subBillings.filter(sb => sb.id !== id);
     setSubBillings(updatedSubBillings);
-    
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.subBillings = updatedSubBillings;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ subBillings: updatedSubBillings });
   };
 
   const handleEditSubBilling = (sb: SubcontractorBilling) => {
@@ -1413,15 +1405,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
     const updatedSubBillings = subBillings.map(sb => sb.id === updatedBilling.id ? updatedBilling : sb);
     setSubBillings(updatedSubBillings);
-    
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.subBillings = updatedSubBillings;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ subBillings: updatedSubBillings });
     
     setIsEditSubBillingModalOpen(false);
     setEditingSubBilling(null);
@@ -1482,15 +1466,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
     const updatedBillings = [...clientBillings, newBilling];
     setClientBillings(updatedBillings);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.clientBillings = updatedBillings;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ clientBillings: updatedBillings });
 
     setIsClientBillingModalOpen(false);
   };
@@ -1538,15 +1514,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     });
 
     setClientBillings(recalculated);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.clientBillings = recalculated;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ clientBillings: recalculated });
 
     setAuditLogs(prev => [
       {
@@ -1608,15 +1576,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     });
 
     setClientBillings(recalculated);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.clientBillings = recalculated;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ clientBillings: recalculated });
 
     setAuditLogs(prev => [
       {
@@ -1717,15 +1677,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     }
 
     setSubContracts(updatedSubContracts);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.subContracts = updatedSubContracts;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ subContracts: updatedSubContracts });
 
     setIsSubContractModalOpen(false);
     setEditingSubContractId(null);
@@ -1774,15 +1726,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   const performDeleteSubContract = (id: string) => {
     const updatedSubContracts = subContracts.filter(sc => sc.id !== id);
     setSubContracts(updatedSubContracts);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.subContracts = updatedSubContracts;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ subContracts: updatedSubContracts });
   };
 
   // Save Subcontractor Billing Handler
@@ -1836,15 +1780,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
     const updatedSubBillings = [...subBillings, createdSubBilling];
     setSubBillings(updatedSubBillings);
-
-    try {
-      const saved = localStorage.getItem(`cp_billing_data_${projectId}`) || '{}';
-      const parsed = JSON.parse(saved);
-      parsed.subBillings = updatedSubBillings;
-      localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(parsed));
-    } catch (err) {
-      console.error(err);
-    }
+    saveToSupabase({ subBillings: updatedSubBillings });
 
     setIsSubBillingModalOpen(false);
   };
@@ -1868,8 +1804,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   }, [clientBillings]);
 
   const cumulativeSubApprovedAmt = useMemo(() => {
-    return subBillings.reduce((sum, sb) => sum + sb.finalApprovedAmt, 0);
-  }, [subBillings]);
+    return validSubBillings.reduce((sum, sb) => sum + sb.finalApprovedAmt, 0);
+  }, [validSubBillings]);
 
   const calculatedProfitMargin = useMemo(() => {
     const marginAmt = cumulativeClientBillingAmt - cumulativeSubApprovedAmt;
@@ -1882,11 +1818,11 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       const round = cb.billingRound;
       const targetYM = cb.targetPeriodEnd ? cb.targetPeriodEnd.substring(0, 7) : '';
 
-      const currentYMSub = subBillings
+      const currentYMSub = validSubBillings
         .filter(sb => sb.targetPeriodEnd && sb.targetPeriodEnd.substring(0, 7) === targetYM)
         .reduce((sum, sb) => sum + sb.finalApprovedAmt, 0);
 
-      const cumYMSub = subBillings
+      const cumYMSub = validSubBillings
         .filter(sb => sb.targetPeriodEnd && sb.targetPeriodEnd.substring(0, 7) <= targetYM)
         .reduce((sum, sb) => sum + sb.finalApprovedAmt, 0);
 
@@ -1900,15 +1836,15 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         누적외주: Number((cumYMSub / 100000000).toFixed(2))
       };
     });
-  }, [clientBillings, subBillings]);
+  }, [clientBillings, validSubBillings]);
 
   const cumulativeSubPaidAmt = useMemo(() => {
-    return subBillings.reduce((sum, sb) => sum + sb.actualPaidAmt, 0);
-  }, [subBillings]);
+    return validSubBillings.reduce((sum, sb) => sum + sb.actualPaidAmt, 0);
+  }, [validSubBillings]);
 
   const totalSubUnpaidAmt = useMemo(() => {
-    return subBillings.reduce((sum, sb) => sum + sb.unpaidAmt, 0);
-  }, [subBillings]);
+    return validSubBillings.reduce((sum, sb) => sum + sb.unpaidAmt, 0);
+  }, [validSubBillings]);
 
   const totalExpectedFinalCost = useMemo(() => {
     return executionBudgets.reduce((sum, b) => sum + b.expectedFinalCost, 0);
@@ -1927,7 +1863,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       list.push({ type: 'warning', title: `발주처 기성 승인대기 ${pendingClient.length}건`, desc: '3차 발주처 기성이 승인 검토 중입니다.', module: '발주처 기성' });
     }
 
-    const pendingSub = subBillings.filter(sb => sb.status === '청구' || sb.status === '검토');
+    const pendingSub = validSubBillings.filter(sb => sb.status === '청구' || sb.status === '검토');
     if (pendingSub.length > 0) {
       list.push({ type: 'warning', title: `외주기성 검토/승인 대기 ${pendingSub.length}건`, desc: '(주)대성전력 외주기성 검토 요청 접수', module: '외주 기성' });
     }
@@ -1944,7 +1880,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
     // 4. Subcontractor execution > Client billing per discipline check
     clientBillingItems.forEach(cbi => {
-      const subBillingsForDisc = subBillings.filter(sb => sb.discipline === cbi.majorCategory);
+      const subBillingsForDisc = validSubBillings.filter(sb => sb.discipline === cbi.majorCategory);
       const subCum = subBillingsForDisc.reduce((s, sb) => s + sb.finalApprovedAmt, 0);
       if (subCum > cbi.cumulativeBillingAmt) {
         list.push({
@@ -1972,7 +1908,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     });
 
     return list;
-  }, [clientBillings, subBillings, totalClientReceivableAmt, totalSubUnpaidAmt, clientBillingItems, subBillingItems, subContracts]);
+  }, [clientBillings, validSubBillings, totalClientReceivableAmt, totalSubUnpaidAmt, clientBillingItems, subBillingItems, subContracts]);
 
   // Comparison Matrix Data
   const comparisonData = useMemo(() => {
@@ -1981,7 +1917,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       const clientItem = clientBillingItems.find(item => item.majorCategory === disc);
       
       // Calculate from dynamic subBillings instead of static items
-      const subBillingsForDisc = subBillings.filter(sb => sb.discipline === disc);
+      const subBillingsForDisc = validSubBillings.filter(sb => sb.discipline === disc);
       const subContract = subContracts.find(sc => sc.discipline === disc);
       const budget = executionBudgets.find(b => b.discipline === disc);
 
@@ -2022,7 +1958,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         isSubExceeded
       };
     });
-  }, [clientBillingItems, subBillings, subContracts, executionBudgets]);
+  }, [clientBillingItems, validSubBillings, subContracts, executionBudgets]);
 
   // Excel Export Handler
   const exportToExcel = (sheetName: string, dataArray: any[]) => {
@@ -2051,27 +1987,43 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
   return (
     <div className="p-4 md:p-6 bg-slate-50 min-h-screen text-slate-800">
-      {/* Main Module Tabs */}
-      <div className="flex items-center overflow-x-auto pb-3 mb-6 scrollbar-hide">
+      {/* Main Module Tabs (Sticky Header) */}
+      <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md pt-2 pb-3 mb-6 border-b border-slate-200/80 -mx-4 md:-mx-6 px-4 md:px-6 flex items-center overflow-x-auto scrollbar-hide">
         {[
           { id: 'client-contract', label: '1. 발주처 계약관리', icon: Building },
           { id: 'sub-contract', label: '2. 외주계약 관리', icon: Briefcase },
           { id: 'sub-billing', label: '3. 외주기성 관리', icon: DollarSign },
-          { id: 'closing', label: '4. 월마감 & 감사로그', icon: Lock }
+          { id: 'closing', label: '4. 월마감 & 감사로그', icon: Lock },
+          { id: 'consolidated-dashboard', label: '전사 대시보드', icon: PieChartIcon }
         ].reduce((acc, tab, idx) => {
           if (idx > 0) {
             acc.push(
               <span key={`sep-${idx}`} className="text-slate-300 mx-3 select-none">|</span>
             );
           }
+          const isDashboardLink = tab.id === 'consolidated-dashboard';
           acc.push(
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-1.5 font-extrabold text-xs whitespace-nowrap transition-all focus:outline-none bg-transparent border-none p-0 ${
-                activeTab === tab.id
-                  ? 'text-blue-600'
-                  : 'text-slate-500 hover:text-slate-900'
+              onClick={() => {
+                if (isDashboardLink) {
+                  if (onGoToConsolidatedDashboard) {
+                    onGoToConsolidatedDashboard();
+                  } else {
+                    localStorage.setItem('cp_project_list_tab', 'billing');
+                    window.dispatchEvent(new CustomEvent('change-project-list-tab', { detail: 'billing' }));
+                    window.dispatchEvent(new CustomEvent('go-to-project-list', { detail: 'billing' }));
+                  }
+                } else {
+                  setActiveTab(tab.id as any);
+                }
+              }}
+              className={`flex items-center gap-1.5 font-extrabold text-xs whitespace-nowrap transition-all focus:outline-none bg-transparent border-none p-0 cursor-pointer ${
+                isDashboardLink
+                  ? 'text-indigo-600 hover:text-indigo-800 bg-indigo-50/80 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs'
+                  : activeTab === tab.id
+                    ? 'text-blue-600'
+                    : 'text-slate-500 hover:text-slate-900'
               }`}
             >
               <tab.icon size={14} />
@@ -2118,6 +2070,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <button
                   onClick={() => {
                     setInitialContractForm({
+                      contractDate: clientContract.contractDate || '2025-01-15',
+                      constructionStartDate: clientContract.constructionStartDate || '2025-02-01',
+                      constructionEndDate: clientContract.constructionEndDate || '2027-12-31',
                       initialAmount: clientContract.initialAmount,
                       advancePayment: clientContract.advancePayment,
                       retentionMoney: clientContract.retentionMoney,
@@ -2132,7 +2087,24 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   최초 계약 정보 수정
                 </button>
                 <button
-                  onClick={() => setIsContractModalOpen(true)}
+                  onClick={() => {
+                    const lastHistory = clientContract.history && clientContract.history.length > 0
+                      ? clientContract.history[clientContract.history.length - 1]
+                      : null;
+                    setAmendmentForm({
+                      date: new Date().toISOString().split('T')[0],
+                      constructionStartDate: lastHistory?.constructionStartDate || clientContract.constructionStartDate || '2025-02-01',
+                      constructionEndDate: lastHistory?.constructionEndDate || clientContract.constructionEndDate || '2027-12-31',
+                      changeAmount: 0,
+                      designChangeAmount: 0,
+                      priceFluctuationAmount: 0,
+                      extraWorkAmount: 0,
+                      reason: '',
+                      approvedBy: '발주처 관리자',
+                      attachment: ''
+                    });
+                    setIsContractModalOpen(true);
+                  }}
                   disabled={isCurrentMonthClosed && !isAdminUnlocked}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
                 >
@@ -2205,7 +2177,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <thead>
                   <tr className="bg-slate-100 text-slate-700 font-bold border-y border-slate-200">
                     <th className="p-3">차수</th>
-                    <th className="p-3">변경 일자</th>
+                    <th className="p-3">계약일 / 공사기간</th>
                     <th className="p-3 text-right">증감액</th>
                     <th className="p-3 text-right">변경 후 계약금액</th>
                     <th className="p-3">변경 사유</th>
@@ -2214,19 +2186,52 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {(!clientContract.history || clientContract.history.length === 0) ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400 font-medium">
-                        등록된 계약 변경 이력이 없습니다. (실제 변경 발생 시 1차 변경부터 기록됩니다.)
-                      </td>
-                    </tr>
-                  ) : (
+                  {/* 최초 계약 이력 행 */}
+                  <tr className="hover:bg-blue-50/40 bg-blue-50/20 font-medium border-b border-slate-200">
+                    <td className="p-3 font-bold text-blue-900">
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[11px]">최초</span>
+                    </td>
+                    <td className="p-3 font-semibold text-slate-800">
+                      <div className="text-slate-900">계약: {clientContract.contractDate || '2025-01-15'}</div>
+                      <div className="text-slate-500 text-[10px]">공사: {clientContract.constructionStartDate || '2025-02-01'} ~ {clientContract.constructionEndDate || '2027-12-31'}</div>
+                    </td>
+                    <td className="p-3 text-right text-slate-400 font-semibold">-</td>
+                    <td className="p-3 text-right font-bold text-slate-900">{formatKRW(clientContract.initialAmount)}</td>
+                    <td className="p-3 text-slate-600">최초 도급 계약 체결</td>
+                    <td className="p-3 text-slate-600">발주처</td>
+                    <td className="p-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInitialContractForm({
+                            initialDate: clientContract.initialDate || '2025-01-15',
+                            initialEndDate: clientContract.initialEndDate || '2027-12-31',
+                            initialAmount: clientContract.initialAmount,
+                            advancePayment: clientContract.advancePayment,
+                            retentionMoney: clientContract.retentionMoney,
+                            performanceBond: clientContract.performanceBond
+                          });
+                          setIsInitialContractModalOpen(true);
+                        }}
+                        disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                        className="p-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
+                        title="최초 계약 정보 수정"
+                      >
+                        <Edit size={14} />
+                      </button>
+                    </td>
+                  </tr>
+
+                  {clientContract.history && clientContract.history.length > 0 && (
                     clientContract.history.map((h, index) => {
                       const isLastItem = index === clientContract.history.length - 1;
                       return (
                       <tr key={h.id} className="hover:bg-slate-50">
                         <td className="p-3 font-bold">{h.round}차 변경</td>
-                        <td className="p-3">{h.date}</td>
+                        <td className="p-3">
+                          <div className="text-slate-900">계약: {h.contractDate}</div>
+                          <div className="text-slate-500 text-[10px]">공사: {h.constructionStartDate || '2025-02-01'} ~ {h.constructionEndDate || '2027-12-31'}</div>
+                        </td>
                         <td className={`p-3 text-right font-bold ${h.changeAmount >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
                           {h.changeAmount > 0 ? `+${formatKRW(h.changeAmount)}` : formatKRW(h.changeAmount)}
                         </td>
@@ -2239,7 +2244,12 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setEditingHistoryItem({ ...h });
+                                  setEditingHistoryItem({
+                                    ...h,
+                                    contractDate: (h as any).date || h.contractDate,
+                                    constructionStartDate: h.constructionStartDate || '2025-02-01',
+                                    constructionEndDate: h.constructionEndDate || (h as any).endDate || '2027-12-31'
+                                  });
                                   setIsEditHistoryModalOpen(true);
                                 }}
                                 disabled={isCurrentMonthClosed && !isAdminUnlocked}
@@ -2611,6 +2621,13 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                       </tr>
                     );
                   })}
+                  {subContractorStats.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-400 font-medium">
+                        등록된 외주 계약 업체가 없습니다. '2. 외주계약 관리' 탭에서 외주 업체를 먼저 등록해 주세요.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2625,8 +2642,13 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <div className="flex items-center gap-2 text-indigo-600 mb-1">
                   <History size={18} className="text-indigo-600" />
                   <h3 className="text-base font-bold text-slate-900">
-                    {selectedSubHistoryName === 'all' ? (
-                      '외주업체별 차수별 기성 신청 및 사정 이력'
+                    {selectedSubHistoryName === 'all' || !subcontractorNames.includes(selectedSubHistoryName) ? (
+                      <span className="flex items-center gap-2">
+                        <span className="text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg text-xs font-black">
+                          외주업체
+                        </span>
+                        <span>기성 신청 이력</span>
+                      </span>
                     ) : (
                       <span className="flex items-center gap-2">
                         <span className="text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg text-xs font-black">
@@ -2816,21 +2838,62 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 </p>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  최초 계약금액 (원) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  required
-                  placeholder="예: 45000000000"
-                  value={initialContractForm.initialAmount || ''}
-                  onChange={e => setInitialContractForm({ ...initialContractForm, initialAmount: Number(e.target.value) })}
-                  className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-                <span className="text-[11px] text-slate-500 mt-0.5 block">
-                  입력값: {formatKRW(Number(initialContractForm.initialAmount || 0))}
-                </span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    계약일 <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={initialContractForm.contractDate || ''}
+                    onChange={e => setInitialContractForm({ ...initialContractForm, contractDate: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    공사 시작일 <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={initialContractForm.constructionStartDate || ''}
+                    onChange={e => setInitialContractForm({ ...initialContractForm, constructionStartDate: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    공사 완료일 <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={initialContractForm.constructionEndDate || ''}
+                    onChange={e => setInitialContractForm({ ...initialContractForm, constructionEndDate: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    최초 계약금액 (원) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="예: 45000000000"
+                    value={initialContractForm.initialAmount || ''}
+                    onChange={e => setInitialContractForm({ ...initialContractForm, initialAmount: Number(e.target.value) })}
+                    className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(initialContractForm.initialAmount || 0))}
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -2920,17 +2983,45 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
             </div>
 
             <form onSubmit={handleSaveEditHistory} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    변경 일자 <span className="text-rose-500">*</span>
+                    변경 계약일 <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="date"
                     required
-                    value={editingHistoryItem.date}
+                    value={editingHistoryItem.contractDate}
                     onChange={e =>
-                      setEditingHistoryItem({ ...editingHistoryItem, date: e.target.value })
+                      setEditingHistoryItem({ ...editingHistoryItem, contractDate: e.target.value })
+                    }
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    변경 공사 시작일
+                  </label>
+                  <input
+                    type="date"
+                    value={editingHistoryItem.constructionStartDate || ''}
+                    onChange={e =>
+                      setEditingHistoryItem({ ...editingHistoryItem, constructionStartDate: e.target.value })
+                    }
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    변경 공사 완료일
+                  </label>
+                  <input
+                    type="date"
+                    value={editingHistoryItem.constructionEndDate || ''}
+                    onChange={e =>
+                      setEditingHistoryItem({ ...editingHistoryItem, constructionEndDate: e.target.value })
                     }
                     className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
@@ -3045,10 +3136,10 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    변경 일자 <span className="text-rose-500">*</span>
+                    변경 계약일 <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="date"
@@ -3061,12 +3152,36 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
+                    변경 공사 시작일
+                  </label>
+                  <input
+                    type="date"
+                    value={amendmentForm.constructionStartDate || ''}
+                    onChange={e => setAmendmentForm({ ...amendmentForm, constructionStartDate: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    변경 공사 완료일
+                  </label>
+                  <input
+                    type="date"
+                    value={amendmentForm.constructionEndDate || ''}
+                    onChange={e => setAmendmentForm({ ...amendmentForm, constructionEndDate: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
                     계약 변경 증감액 (원) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
                     required
-                    placeholder="예: 2000000000 (증액) 또는 -500000000 (감액)"
+                    placeholder="예: 20억 또는 -5억"
                     value={amendmentForm.changeAmount || ''}
                     onChange={e => setAmendmentForm({ ...amendmentForm, changeAmount: Number(e.target.value) })}
                     className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
