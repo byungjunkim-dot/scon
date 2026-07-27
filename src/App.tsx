@@ -217,6 +217,25 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('cp_ai_diagnosis_tab', aiDiagnosisTab);
   }, [aiDiagnosisTab]);
+
+  useEffect(() => {
+    const handleGoToProjectList = (e: CustomEvent) => {
+      const tab = e.detail || 'billing';
+      localStorage.setItem('cp_project_list_tab', tab);
+      setViewMode('projects');
+      window.dispatchEvent(new CustomEvent('change-project-list-tab', { detail: tab }));
+    };
+    window.addEventListener('go-to-project-list' as any, handleGoToProjectList);
+    return () => {
+      window.removeEventListener('go-to-project-list' as any, handleGoToProjectList);
+    };
+  }, []);
+
+  const handleGoToConsolidatedDashboard = () => {
+    localStorage.setItem('cp_project_list_tab', 'billing');
+    setViewMode('projects');
+    window.dispatchEvent(new CustomEvent('change-project-list-tab', { detail: 'billing' }));
+  };
   // --- 화면 상태 자동 저장 로직 끝 ---
 
   const createBaselineId = (sourceId: string) => `b-${sourceId}`;
@@ -1802,7 +1821,11 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       exit={{ opacity: 0, scale: 0.98 }}
                       className="h-full overflow-y-auto"
                     >
-                      <BillingAndSubcontractorView projectId={currentProjectId || ''} settings={settings} />
+                      <BillingAndSubcontractorView
+                        projectId={currentProjectId || ''}
+                        settings={settings}
+                        onGoToConsolidatedDashboard={handleGoToConsolidatedDashboard}
+                      />
                     </motion.div>
                   )}
 

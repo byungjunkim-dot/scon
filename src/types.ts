@@ -64,7 +64,7 @@ export interface Project {
   totalBudget?: number;
   startDate?: string;
   endDate?: string;
-  status?: '진행' | '완료' | '홀딩';
+  status?: '준비' | '진행' | '완료' | '홀딩';
   color?: string;
   user_id?: string;
   createdAt: string;
@@ -312,6 +312,9 @@ export interface Allocation {
 export interface ClientContract {
   id: string;
   projectId: string;
+  contractDate?: string; // 계약일
+  constructionStartDate?: string; // 공사 시작일
+  constructionEndDate?: string; // 공사 완료일
   initialAmount: number;
   amendedAmount: number;
   currentAmount: number;
@@ -333,7 +336,9 @@ export interface ClientContract {
 export interface ClientContractHistory {
   id: string;
   round: number;
-  date: string;
+  contractDate: string; // 계약 변경일
+  constructionStartDate?: string; // 변경 공사 시작일
+  constructionEndDate?: string; // 변경 공사 완료일
   changeAmount: number;
   contractAmountAfter: number;
   reason: string;
