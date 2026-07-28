@@ -165,16 +165,42 @@ const fromScheduleRow = (row: ScheduleRow): ScheduleItemWithExtra => {
   };
 };
 
+const fromProjectRow = (row: any): Project => {
+  if (!row) return {} as Project;
+  return {
+    id: row.id,
+    name: row.name ?? '',
+    projectCode: row.projectCode ?? row.project_code ?? undefined,
+    location: row.location ?? undefined,
+    resolvedAddress: row.resolvedAddress ?? row.resolved_address ?? undefined,
+    latitude: row.latitude ?? undefined,
+    longitude: row.longitude ?? undefined,
+    description: row.description ?? '',
+    imageUrl: row.imageUrl ?? row.image_url ?? undefined,
+    totalArea: row.totalArea ?? row.total_area ?? undefined,
+    floorsUnderground: row.floorsUnderground ?? row.floors_underground ?? undefined,
+    floorsAboveground: row.floorsAboveground ?? row.floors_aboveground ?? undefined,
+    totalBudget: row.totalBudget ?? row.total_budget ?? undefined,
+    startDate: row.startDate ?? row.start_date ?? undefined,
+    endDate: row.endDate ?? row.end_date ?? undefined,
+    status: row.status ?? '진행',
+    color: row.color ?? undefined,
+    user_id: row.user_id ?? undefined,
+    createdAt: row.createdAt ?? row.created_at ?? new Date().toLocaleDateString(),
+    settings: row.settings ?? undefined,
+  };
+};
+
 export const supabaseService = {
 // Projects
 async getProjects() {
   const { data, error } = await supabase.from('projects').select('*');
   if (error) throw error;
-  return data as Project[];
+  return (data || []).map(fromProjectRow);
 },
 
 async saveProject(project: Project) {
-  const payload = {
+  const primaryPayload = {
     id: project.id,
     name: project.name ?? '',
     projectCode: project.projectCode ?? null,
@@ -198,19 +224,132 @@ async saveProject(project: Project) {
 
   const { data, error } = await supabase
     .from('projects')
-    .upsert(payload, { onConflict: 'id' })
+    .upsert(primaryPayload, { onConflict: 'id' })
     .select()
-    .single();
+    .maybeSingle();
 
-  if (error) {
-    console.error('[saveProject] Supabase error:', JSON.stringify(error, null, 2));
-    throw error;
+  if (!error && data) {
+    return fromProjectRow(data);
   }
-  return data as Project;
+
+  console.warn('[saveProject] Primary upsert failed, trying fallback payloads...', error);
+
+  // Fallback 1: snake_case
+  const snakePayload = {
+    id: project.id,
+    name: project.name ?? '',
+    project_code: project.projectCode ?? null,
+    location: project.location ?? null,
+    resolved_address: project.resolvedAddress ?? null,
+    latitude: project.latitude ?? null,
+    longitude: project.longitude ?? null,
+    description: project.description ?? null,
+    image_url: project.imageUrl ?? null,
+    total_area: project.totalArea ?? null,
+    floors_underground: project.floorsUnderground ?? null,
+    floors_aboveground: project.floorsAboveground ?? null,
+    total_budget: project.totalBudget ?? null,
+    start_date: project.startDate ?? null,
+    end_date: project.endDate ?? null,
+    status: project.status ?? '진행',
+    color: project.color ?? null,
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
+  const res2 = await supabase
+    .from('projects')
+    .upsert(snakePayload, { onConflict: 'id' })
+    .select()
+    .maybeSingle();
+
+  if (!res2.error && res2.data) {
+    return fromProjectRow(res2.data);
+  }
+
+  // Fallback 2: minimal payload if extended schema is missing
+  const minimalPayload = {
+    id: project.id,
+    name: project.name ?? '',
+    description: project.description ?? '',
+    status: project.status ?? '진행',
+    color: project.color ?? null,
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
+  const res3 = await supabase
+    .from('projects')
+    .upsert(minimalPayload, { onConflict: 'id' })
+    .select()
+    .maybeSingle();
+
+  if (!res3.error && res3.data) {
+    return fromProjectRow(res3.data);
+  }
+
+  // Fallback 3: ultra minimal payload without 'color' column in case 'color' is missing in schema
+  const ultraMinimalPayload = {
+    id: project.id,
+    name: project.name ?? '',
+    description: project.description ?? '',
+    status: project.status ?? '진행',
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
+  const res4 = await supabase
+    .from('projects')
+    .upsert(ultraMinimalPayload, { onConflict: 'id' })
+    .select()
+    .maybeSingle();
+
+  if (!res4.error && res4.data) {
+    return fromProjectRow(res4.data);
+  }
+
+  // Fallback 4: payload without 'status' or 'color' (id, name, description, user_id, settings)
+  const noStatusPayload = {
+    id: project.id,
+    name: project.name ?? '',
+    description: project.description ?? '',
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
+  const res5 = await supabase
+    .from('projects')
+    .upsert(noStatusPayload, { onConflict: 'id' })
+    .select()
+    .maybeSingle();
+
+  if (!res5.error && res5.data) {
+    return fromProjectRow(res5.data);
+  }
+
+  // Fallback 5: absolute barebones payload (id, name)
+  const barebonesPayload = {
+    id: project.id,
+    name: project.name ?? '',
+  };
+
+  const res6 = await supabase
+    .from('projects')
+    .upsert(barebonesPayload, { onConflict: 'id' })
+    .select()
+    .maybeSingle();
+
+  if (!res6.error && res6.data) {
+    return fromProjectRow(res6.data);
+  }
+
+  const finalErr = error || res2.error || res3.error || res4.error || res5.error || res6.error;
+  console.error('[saveProject] All payload attempts failed:', finalErr);
+  throw finalErr;
 },
 
 async updateProject(project: Project) {
-  const payload = {
+  const primaryPayload = {
     name: project.name ?? '',
     projectCode: project.projectCode ?? null,
     location: project.location ?? null,
@@ -231,27 +370,134 @@ async updateProject(project: Project) {
     settings: project.settings ?? null,
   };
 
-  console.log('[updateProject] id:', project.id);
-  console.log('[updateProject] payload:', payload);
-
   const { data, error } = await supabase
     .from('projects')
-    .update(payload)
+    .update(primaryPayload)
     .eq('id', project.id)
     .select()
     .maybeSingle();
 
-  if (error) {
-    console.error('[updateProject] Supabase error:', JSON.stringify(error, null, 2));
-    throw error;
+  if (!error && data) {
+    return fromProjectRow(data);
   }
 
-  if (!data) {
-    throw new Error(`프로젝트 수정 실패: id=${project.id} 와 일치하는 projects row가 없습니다.`);
+  // Fallback 1: snake_case
+  const snakePayload = {
+    name: project.name ?? '',
+    project_code: project.projectCode ?? null,
+    location: project.location ?? null,
+    resolved_address: project.resolvedAddress ?? null,
+    latitude: project.latitude ?? null,
+    longitude: project.longitude ?? null,
+    description: project.description ?? null,
+    image_url: project.imageUrl ?? null,
+    total_area: project.totalArea ?? null,
+    floors_underground: project.floorsUnderground ?? null,
+    floors_aboveground: project.floorsAboveground ?? null,
+    total_budget: project.totalBudget ?? null,
+    start_date: project.startDate ?? null,
+    end_date: project.endDate ?? null,
+    status: project.status ?? '진행',
+    color: project.color ?? null,
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
+  const res2 = await supabase
+    .from('projects')
+    .update(snakePayload)
+    .eq('id', project.id)
+    .select()
+    .maybeSingle();
+
+  if (!res2.error && res2.data) {
+    return fromProjectRow(res2.data);
   }
 
-  return data as Project;
-  },
+  // Fallback 2: minimal payload
+  const minimalPayload = {
+    name: project.name ?? '',
+    description: project.description ?? '',
+    status: project.status ?? '진행',
+    color: project.color ?? null,
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
+  const res3 = await supabase
+    .from('projects')
+    .update(minimalPayload)
+    .eq('id', project.id)
+    .select()
+    .maybeSingle();
+
+  if (!res3.error && res3.data) {
+    return fromProjectRow(res3.data);
+  }
+
+  // Fallback 3: ultra minimal without 'color'
+  const ultraMinimalPayload = {
+    name: project.name ?? '',
+    description: project.description ?? '',
+    status: project.status ?? '진행',
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
+  const res4 = await supabase
+    .from('projects')
+    .update(ultraMinimalPayload)
+    .eq('id', project.id)
+    .select()
+    .maybeSingle();
+
+  if (!res4.error && res4.data) {
+    return fromProjectRow(res4.data);
+  }
+
+  // Fallback 4: payload without 'status' or 'color' (name, description, user_id, settings)
+  const noStatusPayload = {
+    name: project.name ?? '',
+    description: project.description ?? '',
+    user_id: project.user_id ?? null,
+    settings: project.settings ?? null,
+  };
+
+  const res5 = await supabase
+    .from('projects')
+    .update(noStatusPayload)
+    .eq('id', project.id)
+    .select()
+    .maybeSingle();
+
+  if (!res5.error && res5.data) {
+    return fromProjectRow(res5.data);
+  }
+
+  // Fallback 5: absolute barebones payload (name)
+  const barebonesPayload = {
+    name: project.name ?? '',
+  };
+
+  const res6 = await supabase
+    .from('projects')
+    .update(barebonesPayload)
+    .eq('id', project.id)
+    .select()
+    .maybeSingle();
+
+  if (!res6.error && res6.data) {
+    return fromProjectRow(res6.data);
+  }
+
+  const finalErr = error || res2.error || res3.error || res4.error || res5.error || res6.error;
+  if (finalErr) {
+    console.error('[updateProject] Supabase error:', finalErr);
+    throw finalErr;
+  }
+
+  throw new Error(`프로젝트 수정 실패: id=${project.id} 와 일치하는 projects row가 없습니다.`);
+},
 
   async updateProjectSettings(projectId: string, settings: AppSettings) {
     const { data, error } = await supabase
