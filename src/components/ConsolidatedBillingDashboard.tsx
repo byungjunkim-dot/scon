@@ -409,7 +409,7 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
         if (rawContractAmt > 0) {
           clientContractAmt = rawContractAmt < 100000 ? rawContractAmt * 100000000 : rawContractAmt;
         } else {
-          clientContractAmt = 13500000000;
+          clientContractAmt = (p.id === 'pjt-1' || p.id === 'p-1') ? 13500000000 : 0;
         }
 
         // Cumulative Billing & Collection
@@ -862,9 +862,10 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
         // 외주현황 필터링: 프로젝트별 외주업체 최초계약일 기준
         const subContractDates = (Array.isArray(p.subContracts) ? p.subContracts : [])
           .map((sc: any) => normalizeDate(sc.contractDate || sc.startDate))
-          .filter((d: any) => d);
+          .filter((d: any) => d)
+          .sort((a: string, b: string) => a.localeCompare(b));
         const earliestSubContractDate = subContractDates.length > 0
-          ? subContractDates.sort()[0]
+          ? subContractDates[0]
           : normalizeDate(p.startDate);
         
         if (earliestSubContractDate && earliestSubContractDate > monthEndDateStr) {

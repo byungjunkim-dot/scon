@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Project, DailyReport, Category, AppSettings, ScheduleItem, User } from '../types';
 import { Building2, Edit2, Save, X, Upload, Loader2, CloudSun, ChevronLeft, ChevronRight, Thermometer, TrendingUp, Trash2 } from 'lucide-react';
 import { compressImage } from '../utils/image';
@@ -77,6 +77,170 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const formatSummaryEok = (amount: number) => {
+    if (!amount || amount === 0) return '0 원';
+    const eok = amount / 100000000;
+    if (Math.abs(eok) >= 0.1) {
+      const formatted = eok % 1 === 0 ? eok.toFixed(0) : eok.toFixed(1);
+      return `${formatted} 억원`;
+    }
+    return `${amount.toLocaleString()} 원`;
+  };
+
+  const [storageTick, setStorageTick] = useState(0);
+
+  useEffect(() => {
+    const handleStorageChange = () => setStorageTick(t => t + 1);
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('change-project-list-tab', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('change-project-list-tab', handleStorageChange);
+    };
+  }, []);
+
+  const financialSummary = useMemo(() => {
+    const isSample = project?.id === 'pjt-1' || project?.id === 'p-1';
+
+    if (!project) {
+      return {
+        clientTotal: 0,
+        clientClaim: 0,
+        clientReceivable: 0,
+        clientRemaining: 0,
+        subTotal: 0,
+        subClaim: 0,
+        subApproved: 0,
+        subRemaining: 0,
+      };
+    }
+
+    // Default base values
+    let clientTotal = isSample ? 13500000000 : 0;
+    let clientClaim = isSample ? 3700000000 : 0;
+    let clientReceivable = isSample ? 500000000 : 0;
+    let subTotal = isSample ? 32700000000 : 0;
+    let subClaim = 0;
+    let subApproved = 0;
+
+    // Load full billing data from localStorage key cp_billing_data_${project.id}
+    const fullBillingDataRaw = localStorage.getItem(`cp_billing_data_${project.id}`);
+    let fullBillingData: any = null;
+    if (fullBillingDataRaw) {
+      try {
+        fullBillingData = JSON.parse(fullBillingDataRaw);
+      } catch (e) {}
+    }
+
+    // 1. Client Contract Total
+    if (fullBillingData?.clientContract) {
+      const cc = fullBillingData.clientContract;
+      if (typeof cc.currentAmount === 'number' && cc.currentAmount > 0) {
+        clientTotal = cc.currentAmount;
+      } else if (typeof cc.initialAmount === 'number' && cc.initialAmount > 0) {
+        clientTotal = cc.initialAmount;
+      } else if (!isSample) {
+        clientTotal = 0;
+      }
+    } else {
+      const savedClientContract = localStorage.getItem(`cp_client_contract_${project.id}`);
+      if (savedClientContract) {
+        try {
+          const parsed = JSON.parse(savedClientContract);
+          if (parsed && typeof parsed.currentAmount === 'number' && parsed.currentAmount > 0) {
+            clientTotal = parsed.currentAmount;
+          } else if (parsed && typeof parsed.initialAmount === 'number' && parsed.initialAmount > 0) {
+            clientTotal = parsed.initialAmount;
+          } else if (!isSample) {
+            clientTotal = 0;
+          }
+        } catch (e) {}
+      } else if (!isSample) {
+        clientTotal = 0;
+      }
+    }
+
+    // 2. Client Billings
+    if (fullBillingData && Array.isArray(fullBillingData.clientBillings)) {
+      if (fullBillingData.clientBillings.length > 0) {
+        clientClaim = fullBillingData.clientBillings.reduce((sum: number, b: any) => sum + Number(b.currentClaimAmt || b.cumulativeBillingAmt || 0), 0);
+        clientReceivable = fullBillingData.clientBillings.reduce((sum: number, b: any) => sum + Number(b.receivableAmt || 0), 0);
+      } else if (!isSample) {
+        clientClaim = 0;
+        clientReceivable = 0;
+      }
+    } else {
+      const savedClientBillings = localStorage.getItem(`cp_client_billings_${project.id}`);
+      if (savedClientBillings) {
+        try {
+          const parsed: any[] = JSON.parse(savedClientBillings);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            clientClaim = parsed.reduce((sum, b) => sum + Number(b.currentClaimAmt || 0), 0);
+            clientReceivable = parsed.reduce((sum, b) => sum + Number(b.receivableAmt || 0), 0);
+          } else if (!isSample) {
+            clientClaim = 0;
+            clientReceivable = 0;
+          }
+        } catch (e) {}
+      }
+    }
+
+    const clientRemaining = Math.max(0, clientTotal - clientClaim);
+
+    // 3. Sub Contracts Total
+    if (fullBillingData && Array.isArray(fullBillingData.subContracts)) {
+      if (fullBillingData.subContracts.length > 0) {
+        subTotal = fullBillingData.subContracts.reduce((sum: number, sc: any) => sum + Number(sc.currentAmount || sc.initialAmount || 0), 0);
+      } else if (!isSample) {
+        subTotal = 0;
+      }
+    } else {
+      const savedSubContracts = localStorage.getItem(`cp_sub_contracts_${project.id}`);
+      if (savedSubContracts) {
+        try {
+          const parsed: any[] = JSON.parse(savedSubContracts);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            subTotal = parsed.reduce((sum, sc) => sum + Number(sc.currentAmount || 0), 0);
+          } else if (!isSample) {
+            subTotal = 0;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 4. Sub Billings
+    if (fullBillingData && Array.isArray(fullBillingData.subBillings)) {
+      const validParsed = fullBillingData.subBillings.filter((sb: any) => sb && sb.id !== 'subb-1' && sb.id !== 'subb-2' && sb.id !== 'subb-3');
+      subClaim = validParsed.reduce((sum: number, sb: any) => sum + Number(sb.subClaimAmt || sb.currentClaimAmt || 0), 0);
+      subApproved = validParsed.reduce((sum: number, sb: any) => sum + Number(sb.finalApprovedAmt || 0), 0);
+    } else {
+      const savedSubBillings = localStorage.getItem(`cp_sub_billings_${project.id}`);
+      if (savedSubBillings) {
+        try {
+          const parsed: any[] = JSON.parse(savedSubBillings);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const validParsed = parsed.filter((sb: any) => sb && sb.id !== 'subb-1' && sb.id !== 'subb-2' && sb.id !== 'subb-3');
+            subClaim = validParsed.reduce((sum, sb) => sum + Number(sb.subClaimAmt || sb.currentClaimAmt || 0), 0);
+            subApproved = validParsed.reduce((sum, sb) => sum + Number(sb.finalApprovedAmt || 0), 0);
+          }
+        } catch (e) {}
+      }
+    }
+
+    const subRemaining = Math.max(0, subTotal - subApproved);
+
+    return {
+      clientTotal,
+      clientClaim,
+      clientReceivable,
+      clientRemaining,
+      subTotal,
+      subClaim,
+      subApproved,
+      subRemaining,
+    };
+  }, [project, storageTick]);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
@@ -85,6 +249,19 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
   useEffect(() => {
     if (project) {
+      const fetchBillingData = async () => {
+        try {
+          const billingData = await supabaseService.getBillingData(project.id);
+          if (billingData && Object.keys(billingData).length > 0) {
+            localStorage.setItem(`cp_billing_data_${project.id}`, JSON.stringify(billingData));
+            setStorageTick(t => t + 1);
+          }
+        } catch (e) {
+          console.warn('Billing data fetch failed');
+        }
+      };
+      fetchBillingData();
+
       const fetchSchedules = async () => {
         try {
           const data = await supabaseService.getSchedules(project.id);
@@ -564,6 +741,157 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                     </div>
                   </div>
                 )}
+
+                {/* 도급 및 외주 내역 요약 박스 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 mt-4 border-t border-gray-100">
+                  {/* 좌: 발주처 도급 총액 */}
+                  <div className="space-y-2.5">
+                    <div>
+                      <span className="text-[11px] font-bold text-gray-400 block mb-0.5">도급 총액</span>
+                      <div className="text-xl font-black text-gray-900 tracking-tight">
+                        {formatSummaryEok(financialSummary.clientTotal)}
+                      </div>
+                    </div>
+
+                    {/* 하나의 통합 막대 (Stacked Bar) */}
+                    {(() => {
+                      const total = financialSummary.clientTotal || 1;
+                      const claim = financialSummary.clientClaim || 0;
+                      const receivable = financialSummary.clientReceivable || 0;
+                      const collected = Math.max(0, claim - receivable);
+                      const remaining = financialSummary.clientRemaining || 0;
+
+                      const collectedPct = (collected / total) * 100;
+                      const receivablePct = (receivable / total) * 100;
+                      const remainingPct = Math.max(0, 100 - collectedPct - receivablePct);
+
+                      const claimPct = (claim / total) * 100;
+                      const receivableClaimPct = claim > 0 ? (receivable / claim) * 100 : 0;
+                      const remainingTotalPct = (remaining / total) * 100;
+
+                      return (
+                        <div className="space-y-2.5">
+                          <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
+                            <div
+                              className="bg-blue-600 h-full transition-all duration-300"
+                              style={{ width: `${collectedPct}%` }}
+                              title={`기성(수금): ${formatSummaryEok(collected)}`}
+                            />
+                            <div
+                              className="bg-sky-400 h-full transition-all duration-300"
+                              style={{ width: `${receivablePct}%` }}
+                              title={`미수금: ${formatSummaryEok(receivable)}`}
+                            />
+                            <div
+                              className="bg-slate-300 h-full transition-all duration-300"
+                              style={{ width: `${remainingPct}%` }}
+                              title={`잔액: ${formatSummaryEok(remaining)}`}
+                            />
+                          </div>
+
+                          {/* bar 밑 금액 / 항목 표현 */}
+                          <div className="space-y-1.5 text-[11px]">
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1.5 font-semibold text-gray-600">
+                                <span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />
+                                기성
+                              </span>
+                              <span className="font-bold text-blue-600">{formatSummaryEok(financialSummary.clientClaim)}</span>
+                            </div>
+
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1.5 font-semibold text-gray-600">
+                                <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />
+                                미수금
+                              </span>
+                              <span className="font-bold text-sky-500">{formatSummaryEok(financialSummary.clientReceivable)}</span>
+                            </div>
+
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1.5 font-semibold text-gray-600">
+                                <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />
+                                잔액
+                              </span>
+                              <span className="font-bold text-gray-800">{formatSummaryEok(financialSummary.clientRemaining)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* 우: 외주 계약 총액 */}
+                  <div className="space-y-2.5">
+                    <div>
+                      <span className="text-[11px] font-bold text-gray-400 block mb-0.5">외주 총액</span>
+                      <div className="text-xl font-black text-gray-900 tracking-tight">
+                        {formatSummaryEok(financialSummary.subTotal)}
+                      </div>
+                    </div>
+
+                    {/* 하나의 통합 막대 (Stacked Bar) */}
+                    {(() => {
+                      const total = financialSummary.subTotal || 1;
+                      const claim = financialSummary.subClaim || 0;
+                      const approved = financialSummary.subApproved || 0;
+                      const pending = Math.max(0, claim - approved);
+                      const remaining = financialSummary.subRemaining || 0;
+
+                      const approvedPct = (approved / total) * 100;
+                      const pendingPct = (pending / total) * 100;
+                      const remainingPct = Math.max(0, 100 - approvedPct - pendingPct);
+
+                      return (
+                        <div className="space-y-2.5">
+                          <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
+                            <div
+                              className="bg-amber-500 h-full transition-all duration-300"
+                              style={{ width: `${approvedPct}%` }}
+                              title={`승인: ${formatSummaryEok(approved)}`}
+                            />
+                            <div
+                              className="bg-amber-300 h-full transition-all duration-300"
+                              style={{ width: `${pendingPct}%` }}
+                              title={`청구대기: ${formatSummaryEok(pending)}`}
+                            />
+                            <div
+                              className="bg-slate-300 h-full transition-all duration-300"
+                              style={{ width: `${remainingPct}%` }}
+                              title={`잔액: ${formatSummaryEok(remaining)}`}
+                            />
+                          </div>
+
+                          {/* bar 밑 금액 / 항목 표현 */}
+                          <div className="space-y-1.5 text-[11px]">
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1.5 font-semibold text-gray-600">
+                                <span className="w-2 h-2 rounded-full bg-amber-300 inline-block" />
+                                청구
+                              </span>
+                              <span className="font-bold text-amber-500">{formatSummaryEok(financialSummary.subClaim)}</span>
+                            </div>
+
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1.5 font-semibold text-gray-600">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                                승인
+                              </span>
+                              <span className="font-bold text-amber-600">{formatSummaryEok(financialSummary.subApproved)}</span>
+                            </div>
+
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1.5 font-semibold text-gray-600">
+                                <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />
+                                잔액
+                              </span>
+                              <span className="font-bold text-gray-800">{formatSummaryEok(financialSummary.subRemaining)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
               </div>
 
               {/* 대표이미지 영역 */}

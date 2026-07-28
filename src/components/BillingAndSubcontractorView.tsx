@@ -31,8 +31,6 @@ import {
   Download,
   Upload,
   Calendar,
-  Lock,
-  Unlock,
   Eye,
   Edit,
   Trash2,
@@ -54,7 +52,9 @@ import {
   Calculator,
   UserCheck,
   Percent,
-  RotateCcw
+  RotateCcw,
+  LayoutDashboard,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -73,12 +73,14 @@ import {
   MonthlyClosing,
   BillingAuditLog,
   BillingComment,
-  AppSettings
+  AppSettings,
+  User
 } from '../types';
 
 interface Props {
   projectId?: string;
   settings?: AppSettings;
+  currentUser?: User | null;
   onGoToConsolidatedDashboard?: () => void;
 }
 
@@ -98,7 +100,7 @@ const formatNumber = (num: number) => {
   return (num || 0).toLocaleString('ko-KR');
 };
 
-export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-1', settings, onGoToConsolidatedDashboard }) => {
+export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-1', settings, currentUser, onGoToConsolidatedDashboard }) => {
   const disciplinesList = useMemo<Category[]>(() => {
     if (settings?.categories && settings.categories.length > 0) {
       return settings.categories;
@@ -119,550 +121,651 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<
-    'client-contract' | 'sub-contract' | 'sub-billing' | 'closing'
-  >('client-contract');
+    'dashboard' | 'client-contract' | 'sub-contract' | 'sub-billing'
+  >('dashboard');
 
   // Common filters & search
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDiscipline, setSelectedDiscipline] = useState<string>('전체');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('전체');
 
-  // Monthly Closing State
-  const [closings, setClosings] = useState<MonthlyClosing[]>([
-    { id: 'close-1', projectId, yearMonth: '2026-05', isClosed: true, closedAt: '2026-06-05', closedBy: '김현장 (소장)' },
-    { id: 'close-2', projectId, yearMonth: '2026-06', isClosed: true, closedAt: '2026-07-05', closedBy: '김현장 (소장)' },
-    { id: 'close-3', projectId, yearMonth: '2026-07', isClosed: false }
-  ]);
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-07');
-  const isCurrentMonthClosed = useMemo(() => {
-    return closings.find(c => c.yearMonth === selectedMonth)?.isClosed || false;
-  }, [closings, selectedMonth]);
+  // Compatibility shims for removed closing & audit log features
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [closings, setClosings] = useState<any[]>([]);
+  const isCurrentMonthClosed = false;
+  const isAdminUnlocked = true;
 
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
-  const [unlockReason, setUnlockReason] = useState('');
-  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const isSampleProject = projectId === 'pjt-1' || projectId === 'p-1';
 
-  // 1. 발주처 계약 데이터 (Client Contract)
-  const [clientContract, setClientContract] = useState<ClientContract>({
-    id: 'cc-01',
-    projectId,
-    contractDate: '2025-01-15', // 계약일
-    constructionStartDate: '2025-02-01', // 공사 시작일
-    constructionEndDate: '2027-12-31', // 공사 완료일
-    initialAmount: 10000000000, // 최초 100억
-    amendedAmount: 13500000000, // 1차 변경 35억 증액 => 최종 135억
-    currentAmount: 13500000000,
-    amendmentRound: 1, // 1차 변경
-    changeAmount: 3500000000,
-    changeReason: '지상층 골조 사양 변경 및 지하 증축에 따른 설계 변경',
-    advancePayment: 1000000000, // 선급금 10%
-    retentionMoney: 675000000, // 유보금 5%
-    performanceBond: 1350000000, // 계약보증금 10%
-    designChangeAmount: 2500000000,
-    priceFluctuationAmount: 700000000,
-    extraWorkAmount: 300000000,
-    contractBalance: 11143000000, // 연동 전 초기값
-    status: '승인',
-    attachments: ['도급계약서_1차변경.pdf', '설계변경승인서.pdf'],
-    history: [
-      { id: 'cch-1', round: 1, contractDate: '2026-02-15', constructionStartDate: '2025-02-01', constructionEndDate: '2027-12-31', changeAmount: 3500000000, contractAmountAfter: 13500000000, reason: '지하층 지하수위 대응 강화 및 지상층 설계변경', approvedBy: '발주처 관리자' }
-    ]
+  const getEmptyClientContract = (pId: string): ClientContract => ({
+    id: `cc-${pId}`,
+    projectId: pId,
+    contractDate: new Date().toISOString().split('T')[0],
+    constructionStartDate: '',
+    constructionEndDate: '',
+    initialAmount: 0,
+    amendedAmount: 0,
+    currentAmount: 0,
+    amendmentRound: 0,
+    changeAmount: 0,
+    changeReason: '',
+    advancePayment: 0,
+    retentionMoney: 0,
+    performanceBond: 0,
+    designChangeAmount: 0,
+    priceFluctuationAmount: 0,
+    extraWorkAmount: 0,
+    contractBalance: 0,
+    status: '작성중',
+    attachments: [],
+    history: []
   });
 
-  // 2. 발주처 기성 데이터 (Client Billings)
-  const [clientBillings, setClientBillings] = useState<ClientBilling[]>([
-    {
-      id: 'cb-1',
-      projectId,
-      contractId: 'cc-01',
-      billingRound: 1,
-      targetPeriodStart: '2026-04-01',
-      targetPeriodEnd: '2026-04-30',
-      referenceDate: '2026-04-30',
-      createdDate: '2026-05-02',
-      submittedDate: '2026-05-03',
-      approvedDate: '2026-05-10',
-      billingExpectedDate: '2026-05-15',
-      taxInvoiceDate: '2026-05-15',
-      collectionExpectedDate: '2026-05-30',
-      actualCollectionDate: '2026-05-28',
-      prevCumulativeAmt: 0,
-      currentClaimAmt: 1200000000, // 금회 청구액 12억
-      cumulativeBillingAmt: 1200000000,
-      billingRate: 8.89, // 12억 / 135억 * 100
-      advanceDeductionAmt: 120000000,
-      retentionAmt: 60000000,
-      otherDeductionsAmt: 0,
-      vatAmt: 0,
-      netClaimAmt: 1020000000, // 12억 - 1.2억 - 0.6억 = 10.2억
-      collectedAmt: 1020000000, // 수금 완료
-      receivableAmt: 0,
-      status: '완료',
-      remarks: '1차 기성 정상 수금 완료'
-    },
-    {
-      id: 'cb-2',
-      projectId,
-      contractId: 'cc-01',
-      billingRound: 2,
-      targetPeriodStart: '2026-05-01',
-      targetPeriodEnd: '2026-05-31',
-      referenceDate: '2026-05-31',
-      createdDate: '2026-06-02',
-      submittedDate: '2026-06-04',
-      approvedDate: '2026-06-12',
-      billingExpectedDate: '2026-06-15',
-      taxInvoiceDate: '2026-06-15',
-      collectionExpectedDate: '2026-06-30',
-      actualCollectionDate: '2026-06-29',
-      prevCumulativeAmt: 1200000000,
-      currentClaimAmt: 1500000000, // 2차 금회 청구액 15억
-      cumulativeBillingAmt: 2700000000, // 누계 27억
-      billingRate: 20.00, // 27억 / 135억 * 100
-      advanceDeductionAmt: 150000000,
-      retentionAmt: 75000000,
-      otherDeductionsAmt: 0,
-      vatAmt: 0,
-      netClaimAmt: 1275000000, // 15억 - 1.5억 - 0.75억 = 12.75억
-      collectedAmt: 1275000000,
-      receivableAmt: 0,
-      status: '완료',
-      remarks: '2차 기성 정상 수금 완료'
-    },
-    {
-      id: 'cb-3',
-      projectId,
-      contractId: 'cc-01',
-      billingRound: 3,
-      targetPeriodStart: '2026-06-01',
-      targetPeriodEnd: '2026-06-30',
-      referenceDate: '2026-06-30',
-      createdDate: '2026-07-01',
-      submittedDate: '2026-07-03',
-      approvedDate: '2026-07-15',
-      billingExpectedDate: '2026-07-20',
-      taxInvoiceDate: '2026-07-20',
-      collectionExpectedDate: '2026-07-31',
-      actualCollectionDate: undefined,
-      prevCumulativeAmt: 2700000000,
-      currentClaimAmt: 1000000000, // 3차 금회 청구액 10억
-      cumulativeBillingAmt: 3700000000, // 누계 37억
-      billingRate: 27.41, // 37억 / 135억 * 100
-      advanceDeductionAmt: 100000000,
-      retentionAmt: 50000000,
-      otherDeductionsAmt: 0,
-      vatAmt: 0,
-      netClaimAmt: 850000000, // 실청구액 8.5억
-      collectedAmt: 350000000, // 수금액 3.5억
-      receivableAmt: 500000000, // 미수금 5억
-      status: '수금대기',
-      remarks: '3차 기성 승인완료, 수금 진행 중'
+  // 1. 발주처 계약 데이터 (Client Contract)
+  const [clientContract, setClientContract] = useState<ClientContract>(() => {
+    if (isSampleProject) {
+      return {
+        id: 'cc-01',
+        projectId,
+        contractDate: '2025-01-15',
+        constructionStartDate: '2025-02-01',
+        constructionEndDate: '2027-12-31',
+        initialAmount: 10000000000,
+        amendedAmount: 13500000000,
+        currentAmount: 13500000000,
+        amendmentRound: 1,
+        changeAmount: 3500000000,
+        changeReason: '지상층 골조 사양 변경 및 지하 증축에 따른 설계 변경',
+        advancePayment: 1000000000,
+        retentionMoney: 675000000,
+        performanceBond: 1350000000,
+        designChangeAmount: 2500000000,
+        priceFluctuationAmount: 700000000,
+        extraWorkAmount: 300000000,
+        contractBalance: 11143000000,
+        status: '승인',
+        attachments: ['도급계약서_1차변경.pdf', '설계변경승인서.pdf'],
+        history: [
+          { id: 'cch-1', round: 1, contractDate: '2026-02-15', constructionStartDate: '2025-02-01', constructionEndDate: '2027-12-31', changeAmount: 3500000000, contractAmountAfter: 13500000000, reason: '지하층 지하수위 대응 강화 및 지상층 설계변경', approvedBy: '발주처 관리자' }
+        ]
+      };
     }
-  ]);
+    return getEmptyClientContract(projectId);
+  });
+
+  const hasInitialContract = Number(clientContract.initialAmount || 0) > 0;
+
+  // 2. 발주처 기성 데이터 (Client Billings)
+  const [clientBillings, setClientBillings] = useState<ClientBilling[]>(() => {
+    if (isSampleProject) {
+      return [
+        {
+          id: 'cb-1',
+          projectId,
+          contractId: 'cc-01',
+          billingRound: 1,
+          targetPeriodStart: '2026-04-01',
+          targetPeriodEnd: '2026-04-30',
+          referenceDate: '2026-04-30',
+          createdDate: '2026-05-02',
+          submittedDate: '2026-05-03',
+          approvedDate: '2026-05-10',
+          billingExpectedDate: '2026-05-15',
+          taxInvoiceDate: '2026-05-15',
+          collectionExpectedDate: '2026-05-30',
+          actualCollectionDate: '2026-05-28',
+          prevCumulativeAmt: 0,
+          currentClaimAmt: 1200000000,
+          cumulativeBillingAmt: 1200000000,
+          billingRate: 8.89,
+          advanceDeductionAmt: 120000000,
+          retentionAmt: 60000000,
+          otherDeductionsAmt: 0,
+          vatAmt: 0,
+          netClaimAmt: 1020000000,
+          collectedAmt: 1020000000,
+          receivableAmt: 0,
+          status: '완료',
+          remarks: '1차 기성 정상 수금 완료'
+        },
+        {
+          id: 'cb-2',
+          projectId,
+          contractId: 'cc-01',
+          billingRound: 2,
+          targetPeriodStart: '2026-05-01',
+          targetPeriodEnd: '2026-05-31',
+          referenceDate: '2026-05-31',
+          createdDate: '2026-06-02',
+          submittedDate: '2026-06-04',
+          approvedDate: '2026-06-12',
+          billingExpectedDate: '2026-06-15',
+          taxInvoiceDate: '2026-06-15',
+          collectionExpectedDate: '2026-06-30',
+          actualCollectionDate: '2026-06-29',
+          prevCumulativeAmt: 1200000000,
+          currentClaimAmt: 1500000000,
+          cumulativeBillingAmt: 2700000000,
+          billingRate: 20.00,
+          advanceDeductionAmt: 150000000,
+          retentionAmt: 75000000,
+          otherDeductionsAmt: 0,
+          vatAmt: 0,
+          netClaimAmt: 1275000000,
+          collectedAmt: 1275000000,
+          receivableAmt: 0,
+          status: '완료',
+          remarks: '2차 기성 정상 수금 완료'
+        },
+        {
+          id: 'cb-3',
+          projectId,
+          contractId: 'cc-01',
+          billingRound: 3,
+          targetPeriodStart: '2026-06-01',
+          targetPeriodEnd: '2026-06-30',
+          referenceDate: '2026-06-30',
+          createdDate: '2026-07-01',
+          submittedDate: '2026-07-03',
+          approvedDate: '2026-07-15',
+          billingExpectedDate: '2026-07-20',
+          taxInvoiceDate: '2026-07-20',
+          collectionExpectedDate: '2026-07-31',
+          actualCollectionDate: undefined,
+          prevCumulativeAmt: 2700000000,
+          currentClaimAmt: 1000000000,
+          cumulativeBillingAmt: 3700000000,
+          billingRate: 27.41,
+          advanceDeductionAmt: 100000000,
+          retentionAmt: 50000000,
+          otherDeductionsAmt: 0,
+          vatAmt: 0,
+          netClaimAmt: 850000000,
+          collectedAmt: 350000000,
+          receivableAmt: 500000000,
+          status: '수금대기',
+          remarks: '3차 기성 승인완료, 수금 진행 중'
+        }
+      ];
+    }
+    return [];
+  });
 
   // 발주처 공종별 기성 내역
-  const [clientBillingItems, setClientBillingItems] = useState<ClientBillingItem[]>([
-    {
-      id: 'cbi-1',
-      billingId: 'cb-3',
-      majorCategory: '공통관리',
-      middleCategory: '가설공사',
-      minorCategory: '가설펜스 및 휀스',
-      itemCode: 'A001',
-      itemName: '가설펜스 설치 및 유지',
-      spec: 'H=3.0m EGI',
-      unit: 'm',
-      contractQty: 1000,
-      contractUnitPrice: 150000,
-      contractAmount: 150000000,
-      prevCumulativeQty: 800,
-      currentQty: 100,
-      cumulativeQty: 900,
-      prevCumulativeAmt: 120000000,
-      currentBillingAmt: 15000000,
-      cumulativeBillingAmt: 135000000,
-      remainingAmt: 15000000,
-      currentProgressRate: 10,
-      cumulativeProgressRate: 90,
-      calcBasis: '현장 실측 900m 시공 완료',
-      remarks: '정상 진도'
-    },
-    {
-      id: 'cbi-2',
-      billingId: 'cb-3',
-      majorCategory: '토목',
-      middleCategory: '토공사',
-      minorCategory: '터파기 및 흙막이',
-      itemCode: 'B001',
-      itemName: '토사 굴착 및 사토처리',
-      spec: '풍화암 포함',
-      unit: 'm3',
-      contractQty: 50000,
-      contractUnitPrice: 40000,
-      contractAmount: 2000000000,
-      prevCumulativeQty: 42000,
-      currentQty: 5000,
-      cumulativeQty: 47000,
-      prevCumulativeAmt: 1680000000,
-      currentBillingAmt: 200000000,
-      cumulativeBillingAmt: 1880000000,
-      remainingAmt: 120000000,
-      currentProgressRate: 10,
-      cumulativeProgressRate: 94,
-      calcBasis: '덤프 계량표 확인',
-      remarks: '토공 마무리 단계'
-    },
-    {
-      id: 'cbi-3',
-      billingId: 'cb-3',
-      majorCategory: '건축',
-      middleCategory: '골조공사',
-      minorCategory: '레미콘 및 철근',
-      itemCode: 'C001',
-      itemName: '철근콘크리트 골조 공사',
-      spec: '25-24-150 / SD400',
-      unit: 'm2',
-      contractQty: 80000,
-      contractUnitPrice: 350000,
-      contractAmount: 28000000000,
-      prevCumulativeQty: 38000,
-      currentQty: 12000,
-      cumulativeQty: 50000,
-      prevCumulativeAmt: 13300000000,
-      currentBillingAmt: 4200000000,
-      cumulativeBillingAmt: 17500000000,
-      remainingAmt: 10500000000,
-      currentProgressRate: 15,
-      cumulativeProgressRate: 62.5,
-      calcBasis: '지상 8층 타설 완료',
-      remarks: '주요 골조 정상 추진'
-    },
-    {
-      id: 'cbi-4',
-      billingId: 'cb-3',
-      majorCategory: '전기',
-      middleCategory: '전기설비',
-      minorCategory: '배관배선',
-      itemCode: 'E001',
-      itemName: '전기 배관 배선 공사',
-      spec: 'HIV 2.5sq',
-      unit: '식',
-      contractQty: 1,
-      contractUnitPrice: 4000000000,
-      contractAmount: 4000000000,
-      prevCumulativeQty: 0.3,
-      currentQty: 0.15,
-      cumulativeQty: 0.45,
-      prevCumulativeAmt: 1200000000,
-      currentBillingAmt: 600000000,
-      cumulativeBillingAmt: 1800000000,
-      remainingAmt: 2200000000,
-      currentProgressRate: 15,
-      cumulativeProgressRate: 45,
-      calcBasis: '지하층 및 지상 4층 입선 작업',
-      remarks: '골조 후속 공정 연계'
-    },
-    {
-      id: 'cbi-5',
-      billingId: 'cb-3',
-      majorCategory: '기계',
-      middleCategory: '배관설비',
-      minorCategory: '소방 및 위생배관',
-      itemCode: 'M001',
-      itemName: '기계 설비 배관 공사',
-      spec: '배관 및 밸브류',
-      unit: '식',
-      contractQty: 1,
-      contractUnitPrice: 5000000000,
-      contractAmount: 5000000000,
-      prevCumulativeQty: 0.35,
-      currentQty: 0.15,
-      cumulativeQty: 0.50,
-      prevCumulativeAmt: 1750000000,
-      currentBillingAmt: 750000000,
-      cumulativeBillingAmt: 2500000000,
-      remainingAmt: 2500000000,
-      currentProgressRate: 15,
-      cumulativeProgressRate: 50,
-      calcBasis: '기계실 입상관 작업',
-      remarks: '정상 진행'
+  const [clientBillingItems, setClientBillingItems] = useState<ClientBillingItem[]>(() => {
+    if (isSampleProject) {
+      return [
+        {
+          id: 'cbi-1',
+          billingId: 'cb-3',
+          majorCategory: '공통관리',
+          middleCategory: '가설공사',
+          minorCategory: '가설펜스 및 휀스',
+          itemCode: 'A001',
+          itemName: '가설펜스 설치 및 유지',
+          spec: 'H=3.0m EGI',
+          unit: 'm',
+          contractQty: 1000,
+          contractUnitPrice: 150000,
+          contractAmount: 150000000,
+          prevCumulativeQty: 800,
+          currentQty: 100,
+          cumulativeQty: 900,
+          prevCumulativeAmt: 120000000,
+          currentBillingAmt: 15000000,
+          cumulativeBillingAmt: 135000000,
+          remainingAmt: 15000000,
+          currentProgressRate: 10,
+          cumulativeProgressRate: 90,
+          calcBasis: '현장 실측 900m 시공 완료',
+          remarks: '정상 진도'
+        },
+        {
+          id: 'cbi-2',
+          billingId: 'cb-3',
+          majorCategory: '토목',
+          middleCategory: '토공사',
+          minorCategory: '터파기 및 흙막이',
+          itemCode: 'B001',
+          itemName: '토사 굴착 및 사토처리',
+          spec: '풍화암 포함',
+          unit: 'm3',
+          contractQty: 50000,
+          contractUnitPrice: 40000,
+          contractAmount: 2000000000,
+          prevCumulativeQty: 42000,
+          currentQty: 5000,
+          cumulativeQty: 47000,
+          prevCumulativeAmt: 1680000000,
+          currentBillingAmt: 200000000,
+          cumulativeBillingAmt: 1880000000,
+          remainingAmt: 120000000,
+          currentProgressRate: 10,
+          cumulativeProgressRate: 94,
+          calcBasis: '덤프 계량표 확인',
+          remarks: '토공 마무리 단계'
+        },
+        {
+          id: 'cbi-3',
+          billingId: 'cb-3',
+          majorCategory: '건축',
+          middleCategory: '골조공사',
+          minorCategory: '레미콘 및 철근',
+          itemCode: 'C001',
+          itemName: '철근콘크리트 골조 공사',
+          spec: '25-24-150 / SD400',
+          unit: 'm2',
+          contractQty: 80000,
+          contractUnitPrice: 350000,
+          contractAmount: 28000000000,
+          prevCumulativeQty: 38000,
+          currentQty: 12000,
+          cumulativeQty: 50000,
+          prevCumulativeAmt: 13300000000,
+          currentBillingAmt: 4200000000,
+          cumulativeBillingAmt: 17500000000,
+          remainingAmt: 10500000000,
+          currentProgressRate: 15,
+          cumulativeProgressRate: 62.5,
+          calcBasis: '지상 8층 타설 완료',
+          remarks: '주요 골조 정상 추진'
+        },
+        {
+          id: 'cbi-4',
+          billingId: 'cb-3',
+          majorCategory: '전기',
+          middleCategory: '전기설비',
+          minorCategory: '배관배선',
+          itemCode: 'E001',
+          itemName: '전기 배관 배선 공사',
+          spec: 'HIV 2.5sq',
+          unit: '식',
+          contractQty: 1,
+          contractUnitPrice: 4000000000,
+          contractAmount: 4000000000,
+          prevCumulativeQty: 0.3,
+          currentQty: 0.15,
+          cumulativeQty: 0.45,
+          prevCumulativeAmt: 1200000000,
+          currentBillingAmt: 600000000,
+          cumulativeBillingAmt: 1800000000,
+          remainingAmt: 2200000000,
+          currentProgressRate: 15,
+          cumulativeProgressRate: 45,
+          calcBasis: '지하층 및 지상 4층 입선 작업',
+          remarks: '골조 후속 공정 연계'
+        },
+        {
+          id: 'cbi-5',
+          billingId: 'cb-3',
+          majorCategory: '기계',
+          middleCategory: '배관설비',
+          minorCategory: '소방 및 위생배관',
+          itemCode: 'M001',
+          itemName: '기계 설비 배관 공사',
+          spec: '배관 및 밸브류',
+          unit: '식',
+          contractQty: 1,
+          contractUnitPrice: 5000000000,
+          contractAmount: 5000000000,
+          prevCumulativeQty: 0.35,
+          currentQty: 0.15,
+          cumulativeQty: 0.50,
+          prevCumulativeAmt: 1750000000,
+          currentBillingAmt: 750000000,
+          cumulativeBillingAmt: 2500000000,
+          remainingAmt: 2500000000,
+          currentProgressRate: 15,
+          cumulativeProgressRate: 50,
+          calcBasis: '기계실 입상관 작업',
+          remarks: '정상 진행'
+        }
+      ];
     }
-  ]);
+    return [];
+  });
 
   // 3. 외주계약 데이터 (Subcontractor Contracts)
-  const [subContracts, setSubContracts] = useState<SubcontractorContract[]>([
-    {
-      id: 'subc-1',
-      projectId,
-      contractorName: '(주)삼우토건',
-      businessRegNo: '120-81-45678',
-      representative: '박토목',
-      contactPerson: '최팀장',
-      contactPhone: '010-2345-6789',
-      discipline: '토목',
-      contractDate: '2025-03-15',
-      startDate: '2025-04-01',
-      endDate: '2026-08-31',
-      initialAmount: 1800000000,
-      amendedAmount: 1900000000,
-      currentAmount: 1900000000,
-      advancePayment: 190000000,
-      warrantyBondRate: 5,
-      performanceBondRate: 10,
-      retentionRate: 5,
-      paymentTerms: '익월 25일 현금 지급',
-      paymentDueDate: '2026-07-25',
-      laborCostType: '직접노무비',
-      directPaymentStatus: false,
-      bondExpirationDate: '2026-09-30',
-      status: '계약체결',
-      attachments: ['토공하도급계약서.pdf', '계약이행보증서.pdf']
-    },
-    {
-      id: 'subc-2',
-      projectId,
-      contractorName: '(주)한남건설골조',
-      businessRegNo: '214-88-99012',
-      representative: '이골조',
-      contactPerson: '정이사',
-      contactPhone: '010-3456-7890',
-      discipline: '건축',
-      contractDate: '2025-04-10',
-      startDate: '2025-05-01',
-      endDate: '2026-12-31',
-      initialAmount: 22000000000,
-      amendedAmount: 23500000000,
-      currentAmount: 23500000000,
-      advancePayment: 2350000000,
-      warrantyBondRate: 5,
-      performanceBondRate: 10,
-      retentionRate: 5,
-      paymentTerms: '익월 30일 현금/어음 50:50',
-      paymentDueDate: '2026-07-30',
-      laborCostType: '직접노무비',
-      directPaymentStatus: true, // 노무비 직불
-      bondExpirationDate: '2027-01-31',
-      status: '계약체결',
-      attachments: ['골조하도급계약서.pdf', '직불동의서.pdf']
-    },
-    {
-      id: 'subc-3',
-      projectId,
-      contractorName: '(주)대성전력',
-      businessRegNo: '105-86-12345',
-      representative: '김전기',
-      contactPerson: '강부장',
-      contactPhone: '010-4567-8901',
-      discipline: '전기',
-      contractDate: '2025-05-20',
-      startDate: '2025-06-01',
-      endDate: '2027-02-28',
-      initialAmount: 3200000000,
-      amendedAmount: 3200000000,
-      currentAmount: 3200000000,
-      advancePayment: 320000000,
-      warrantyBondRate: 5,
-      performanceBondRate: 10,
-      retentionRate: 5,
-      paymentTerms: '익월 25일 현금 지급',
-      paymentDueDate: '2026-07-25',
-      laborCostType: '간접노무비',
-      directPaymentStatus: false,
-      bondExpirationDate: '2027-03-31',
-      status: '계약체결',
-      attachments: ['전기공사계약서.pdf']
-    },
-    {
-      id: 'subc-4',
-      projectId,
-      contractorName: '(주)태양설비',
-      businessRegNo: '119-81-33445',
-      representative: '윤기계',
-      contactPerson: '송차장',
-      contactPhone: '010-5678-9012',
-      discipline: '기계',
-      contractDate: '2025-05-25',
-      startDate: '2025-06-01',
-      endDate: '2027-02-28',
-      initialAmount: 4100000000,
-      amendedAmount: 4100000000,
-      currentAmount: 4100000000,
-      advancePayment: 410000000,
-      warrantyBondRate: 5,
-      performanceBondRate: 10,
-      retentionRate: 5,
-      paymentTerms: '익월 25일 현금 지급',
-      paymentDueDate: '2026-07-25',
-      laborCostType: '직접노무비',
-      directPaymentStatus: false,
-      bondExpirationDate: '2027-03-31',
-      status: '계약체결',
-      attachments: ['기계설비계약서.pdf']
+  const [subContracts, setSubContracts] = useState<SubcontractorContract[]>(() => {
+    if (isSampleProject) {
+      return [
+        {
+          id: 'subc-1',
+          projectId,
+          contractorName: '(주)삼우토건',
+          businessRegNo: '120-81-45678',
+          representative: '박토목',
+          contactPerson: '최팀장',
+          contactPhone: '010-2345-6789',
+          discipline: '토목',
+          contractDate: '2025-03-15',
+          startDate: '2025-04-01',
+          endDate: '2026-08-31',
+          initialAmount: 1800000000,
+          amendedAmount: 1900000000,
+          currentAmount: 1900000000,
+          advancePayment: 190000000,
+          warrantyBondRate: 5,
+          performanceBondRate: 10,
+          retentionRate: 5,
+          paymentTerms: '익월 25일 현금 지급',
+          paymentDueDate: '2026-07-25',
+          laborCostType: '직접노무비',
+          directPaymentStatus: false,
+          bondExpirationDate: '2026-09-30',
+          status: '계약체결',
+          attachments: ['토공하도급계약서.pdf', '계약이행보증서.pdf']
+        },
+        {
+          id: 'subc-2',
+          projectId,
+          contractorName: '(주)한남건설골조',
+          businessRegNo: '214-88-99012',
+          representative: '이골조',
+          contactPerson: '정이사',
+          contactPhone: '010-3456-7890',
+          discipline: '건축',
+          contractDate: '2025-04-10',
+          startDate: '2025-05-01',
+          endDate: '2026-12-31',
+          initialAmount: 22000000000,
+          amendedAmount: 23500000000,
+          currentAmount: 23500000000,
+          advancePayment: 2350000000,
+          warrantyBondRate: 5,
+          performanceBondRate: 10,
+          retentionRate: 5,
+          paymentTerms: '익월 30일 현금/어음 50:50',
+          paymentDueDate: '2026-07-30',
+          laborCostType: '직접노무비',
+          directPaymentStatus: true,
+          bondExpirationDate: '2027-01-31',
+          status: '계약체결',
+          attachments: ['골조하도급계약서.pdf', '직불동의서.pdf']
+        },
+        {
+          id: 'subc-3',
+          projectId,
+          contractorName: '(주)대성전력',
+          businessRegNo: '105-86-12345',
+          representative: '김전기',
+          contactPerson: '강부장',
+          contactPhone: '010-4567-8901',
+          discipline: '전기',
+          contractDate: '2025-05-20',
+          startDate: '2025-06-01',
+          endDate: '2027-02-28',
+          initialAmount: 3200000000,
+          amendedAmount: 3200000000,
+          currentAmount: 3200000000,
+          advancePayment: 320000000,
+          warrantyBondRate: 5,
+          performanceBondRate: 10,
+          retentionRate: 5,
+          paymentTerms: '익월 25일 현금 지급',
+          paymentDueDate: '2026-07-25',
+          laborCostType: '간접노무비',
+          directPaymentStatus: false,
+          bondExpirationDate: '2027-03-31',
+          status: '계약체결',
+          attachments: ['전기공사계약서.pdf']
+        },
+        {
+          id: 'subc-4',
+          projectId,
+          contractorName: '(주)태양설비',
+          businessRegNo: '119-81-33445',
+          representative: '윤기계',
+          contactPerson: '송차장',
+          contactPhone: '010-5678-9012',
+          discipline: '기계',
+          contractDate: '2025-05-25',
+          startDate: '2025-06-01',
+          endDate: '2027-02-28',
+          initialAmount: 4100000000,
+          amendedAmount: 4100000000,
+          currentAmount: 4100000000,
+          advancePayment: 410000000,
+          warrantyBondRate: 5,
+          performanceBondRate: 10,
+          retentionRate: 5,
+          paymentTerms: '익월 25일 현금 지급',
+          paymentDueDate: '2026-07-25',
+          laborCostType: '직접노무비',
+          directPaymentStatus: false,
+          bondExpirationDate: '2027-03-31',
+          status: '계약체결',
+          attachments: ['기계설비계약서.pdf']
+        }
+      ];
     }
-  ]);
+    return [];
+  });
 
   // 4. 외주기성 데이터 (Subcontractor Billings)
-  const [subBillings, setSubBillings] = useState<SubcontractorBilling[]>([
-    {
-      id: 'subb-1',
-      projectId,
-      subcontractorContractId: 'subc-1',
-      subcontractorName: '(주)삼우토건',
-      discipline: '토목',
-      billingRound: 3,
-      targetPeriodStart: '2026-06-01',
-      targetPeriodEnd: '2026-06-30',
-      claimDate: '2026-07-02',
-      reviewDate: '2026-07-05',
-      approvalDate: '2026-07-10',
-      paymentScheduledDate: '2026-07-25',
-      actualPaymentDate: undefined,
-      prevCumulativeAmt: 1530000000,
-      currentClaimAmt: 200000000,
-      fieldReviewedAmt: 180000000,
-      finalApprovedAmt: 180000000,
-      cumulativeApprovedAmt: 1710000000,
-      executionRate: 90.0,
-      advanceDeductionAmt: 18000000,
-      retentionAmt: 9000000,
-      warrantyDeductionAmt: 0,
-      laborCostAmt: 60000000,
-      equipmentCostAmt: 80000000,
-      materialCostAmt: 20000000,
-      otherDeductionsAmt: 0,
-      vatAmt: 0,
-      netPayableAmt: 153000000, // 1.8억 - 1800만 - 900만 = 1.53억
-      actualPaidAmt: 180000000,
-      unpaidAmt: 20000000, // 미지급액
-      paymentType: '현금',
-      taxInvoiceIssued: true,
-      directPaymentStatus: false,
-      status: '지급완료',
-      remarks: '현장 실측 결과 1.8억 사정 완료'
-    },
-    {
-      id: 'subb-2',
-      projectId,
-      subcontractorContractId: 'subc-2',
-      subcontractorName: '(주)한남건설골조',
-      discipline: '건축',
-      billingRound: 3,
-      targetPeriodStart: '2026-06-01',
-      targetPeriodEnd: '2026-06-30',
-      claimDate: '2026-07-03',
-      reviewDate: '2026-07-06',
-      approvalDate: '2026-07-12',
-      paymentScheduledDate: '2026-07-30',
-      actualPaymentDate: undefined,
-      prevCumulativeAmt: 11000000000,
-      currentClaimAmt: 3800000000,
-      fieldReviewedAmt: 3500000000,
-      finalApprovedAmt: 3500000000,
-      cumulativeApprovedAmt: 14500000000,
-      executionRate: 61.7,
-      advanceDeductionAmt: 350000000,
-      retentionAmt: 175000000,
-      warrantyDeductionAmt: 0,
-      laborCostAmt: 1800000000, // 노무비
-      equipmentCostAmt: 700000000,
-      materialCostAmt: 800000000,
-      otherDeductionsAmt: 0,
-      vatAmt: 0,
-      netPayableAmt: 2975000000, // 35억 - 3.5억 - 1.75억 = 29.75억
-      actualPaidAmt: 1000000000,
-      unpaidAmt: 1975000000, // 미지급액 19.75억
-      paymentType: '현금',
-      taxInvoiceIssued: true,
-      directPaymentStatus: true, // 노무비 직불
-      status: '승인',
-      remarks: '노무비 직불건 현장 확인 후 승인'
-    },
-    {
-      id: 'subb-3',
-      projectId,
-      subcontractorContractId: 'subc-3',
-      subcontractorName: '(주)대성전력',
-      discipline: '전기',
-      billingRound: 3,
-      targetPeriodStart: '2026-06-01',
-      targetPeriodEnd: '2026-06-30',
-      claimDate: '2026-07-04',
-      reviewDate: '2026-07-08',
-      approvalDate: undefined,
-      paymentScheduledDate: '2026-07-25',
-      actualPaymentDate: undefined,
-      prevCumulativeAmt: 1000000000,
-      currentClaimAmt: 600000000,
-      fieldReviewedAmt: 500000000,
-      finalApprovedAmt: 500000000,
-      cumulativeApprovedAmt: 1500000000,
-      executionRate: 46.8,
-      advanceDeductionAmt: 50000000,
-      retentionAmt: 25000000,
-      warrantyDeductionAmt: 0,
-      laborCostAmt: 200000000,
-      equipmentCostAmt: 100000000,
-      materialCostAmt: 200000000,
-      otherDeductionsAmt: 0,
-      vatAmt: 0,
-      netPayableAmt: 425000000, // 5억 - 5000만 - 2500만 = 4.25억
-      actualPaidAmt: 0,
-      unpaidAmt: 425000000,
-      paymentType: '현금',
-      taxInvoiceIssued: false,
-      directPaymentStatus: false,
-      status: '검토',
-      remarks: '본사 승인 진행 중'
-    }
-  ]);
+  const [subBillings, setSubBillings] = useState<SubcontractorBilling[]>([]);
 
   // 외주 공종별 기성 내역
-  const [subBillingItems, setSubBillingItems] = useState<SubcontractorBillingItem[]>([
-    {
-      id: 'sbi-1',
-      subcontractorBillingId: 'subb-1',
-      subcontractorContractId: 'subc-1',
-      itemCode: 'SUB-A001',
-      discipline: '토목',
-      itemName: '터파기 하도급 시공',
-      spec: '풍화암 및 토사',
-      unit: 'm3',
-      contractQty: 50000,
-      contractUnitPrice: 38000,
-      contractAmount: 1900000000,
-      prevCumulativeQty: 40000,
-      currentQty: 5000,
-      cumulativeQty: 45000,
-      currentApprovedAmt: 180000000,
-      cumulativeApprovedAmt: 1710000000,
-      remainingContractAmt: 190000000,
-      progressRate: 90,
-      inspectionResult: '합격',
-      reviewerOpinion: '토공사 마무리 및 토사유출 방지 양호'
-    },
-    {
-      id: 'sbi-2',
-      subcontractorBillingId: 'subb-2',
-      subcontractorContractId: 'subc-2',
-      itemCode: 'SUB-B001',
-      discipline: '건축',
-      itemName: '철근 가공 및 타설 하도급',
-      spec: '지상층 골조 전체',
-      unit: '식',
-      contractQty: 1,
-      contractUnitPrice: 23500000000,
-      contractAmount: 23500000000,
-      prevCumulativeQty: 0.468,
-      currentQty: 0.149,
-      cumulativeQty: 0.617,
-      currentApprovedAmt: 3500000000,
-      cumulativeApprovedAmt: 14500000000,
-      remainingContractAmt: 9000000000,
-      progressRate: 61.7,
-      inspectionResult: '합격',
-      reviewerOpinion: '8층 타설 품질 검측 완료'
+  const [subBillingItems, setSubBillingItems] = useState<SubcontractorBillingItem[]>([]);
+
+  // 프로젝트별 기성 & 외주 현황 대시보드 집계 지표 (TAB 0)
+  const projectDashboardMetrics = useMemo(() => {
+    // 1. 도급내역 (Client Contract)
+    const totalClientContractAmt = clientContract.currentAmount || 0;
+    const initialClientContractAmt = clientContract.initialAmount || 0;
+    const changeClientContractAmt = clientContract.changeAmount || 0;
+    const amendmentRound = clientContract.amendmentRound || 0;
+
+    // 누계 기성 청구액
+    const totalClientClaimAmt = clientBillings.reduce((sum, b) => sum + (b.currentClaimAmt || 0), 0);
+    const clientProgressRate = totalClientContractAmt > 0 ? (totalClientClaimAmt / totalClientContractAmt) * 100 : 0;
+
+    // 누계 수금액 및 수금률, 미수금
+    const totalCollectedAmt = clientBillings.reduce((sum, b) => sum + (b.collectedAmt || 0), 0);
+    const collectionRate = totalClientClaimAmt > 0 ? (totalCollectedAmt / totalClientClaimAmt) * 100 : 0;
+    const totalReceivableAmt = clientBillings.reduce((sum, b) => sum + (b.receivableAmt || 0), 0);
+    const remainingClientContractAmt = Math.max(0, totalClientContractAmt - totalClientClaimAmt);
+
+    // 2. 외주 현황 (Subcontractor Status)
+    const totalSubContractCount = subContracts.length;
+    const totalSubContractAmt = subContracts.reduce((sum, c) => sum + (c.currentAmount || 0), 0);
+    const initialSubContractAmt = subContracts.reduce((sum, c) => sum + (c.initialAmount || 0), 0);
+    const subToClientRatio = totalClientContractAmt > 0 ? (totalSubContractAmt / totalClientContractAmt) * 100 : 0;
+
+    // 외주 기성 청구 총액 & 누계 외주 기성 승인액
+    const totalSubClaimAmt = subBillings.reduce((sum, b) => sum + (b.subClaimAmt || b.finalApprovedAmt || 0), 0);
+    const totalSubApprovedAmt = subBillings.reduce((sum, b) => sum + (b.finalApprovedAmt || 0), 0);
+    const subExecutionRate = totalSubContractAmt > 0 ? (totalSubApprovedAmt / totalSubContractAmt) * 100 : 0;
+
+    // 누계 외주 지급액 및 미지급액
+    const totalSubPaidAmt = subBillings
+      .filter(b => b.actualPaymentDate || b.status === '지급완료')
+      .reduce((sum, b) => sum + (b.finalApprovedAmt - (b.advanceDeductionAmt || 0) - (b.retentionAmt || 0)), 0);
+    const totalSubUnpaidAmt = subBillings
+      .filter(b => !b.actualPaymentDate && b.status !== '지급완료')
+      .reduce((sum, b) => sum + (b.finalApprovedAmt - (b.advanceDeductionAmt || 0) - (b.retentionAmt || 0)), 0);
+    const remainingSubContractAmt = Math.max(0, totalSubContractAmt - totalSubApprovedAmt);
+
+    // 공종별 외주 계약 집계
+    const disciplineSubStats = subContracts.reduce((acc, sc) => {
+      const disc = sc.discipline || '기타';
+      if (!acc[disc]) {
+        acc[disc] = { count: 0, amount: 0, approvedAmt: 0 };
+      }
+      acc[disc].count += 1;
+      acc[disc].amount += (sc.currentAmount || 0);
+      return acc;
+    }, {} as Record<string, { count: number; amount: number; approvedAmt: number }>);
+
+    subBillings.forEach(sb => {
+      const disc = sb.discipline || '기타';
+      if (disciplineSubStats[disc]) {
+        disciplineSubStats[disc].approvedAmt += (sb.finalApprovedAmt || 0);
+      }
+    });
+
+    return {
+      totalClientContractAmt,
+      initialClientContractAmt,
+      changeClientContractAmt,
+      amendmentRound,
+      totalClientClaimAmt,
+      clientProgressRate,
+      totalCollectedAmt,
+      collectionRate,
+      totalReceivableAmt,
+      remainingClientContractAmt,
+      totalSubContractCount,
+      totalSubContractAmt,
+      initialSubContractAmt,
+      subToClientRatio,
+      totalSubClaimAmt,
+      totalSubApprovedAmt,
+      subExecutionRate,
+      totalSubPaidAmt,
+      totalSubUnpaidAmt,
+      remainingSubContractAmt,
+      disciplineSubStats
+    };
+  }, [clientContract, clientBillings, subContracts, subBillings]);
+
+  // 대시보드 연도 선택 상태
+  const [dashboardYear, setDashboardYear] = useState('2026년');
+
+  // 최초 계약한 년도 ~ 차수 변경된 공사기간 완료달이 포함된 년도까지 자동 반영
+  const availableYears = useMemo(() => {
+    const startStr = clientContract.constructionStartDate || clientContract.contractDate || '2025-01-01';
+    let startYear = parseInt(startStr.split('-')[0], 10) || 2025;
+
+    const lastHistoryItem = clientContract.history && clientContract.history.length > 0
+      ? clientContract.history[clientContract.history.length - 1]
+      : null;
+    const endStr = lastHistoryItem?.constructionEndDate || clientContract.constructionEndDate || '2027-12-31';
+    let endYear = parseInt(endStr.split('-')[0], 10) || 2027;
+
+    if (clientContract.history && clientContract.history.length > 0) {
+      clientContract.history.forEach(h => {
+        if (h.constructionStartDate) {
+          const sy = parseInt(h.constructionStartDate.split('-')[0], 10);
+          if (!isNaN(sy) && sy < startYear) startYear = sy;
+        }
+        if (h.constructionEndDate) {
+          const ey = parseInt(h.constructionEndDate.split('-')[0], 10);
+          if (!isNaN(ey) && ey > endYear) endYear = ey;
+        }
+      });
     }
-  ]);
+
+    if (startYear > endYear) {
+      const tmp = startYear;
+      startYear = endYear;
+      endYear = tmp;
+    }
+
+    const yearsSet = new Set<number>();
+    for (let y = startYear; y <= endYear; y++) {
+      yearsSet.add(y);
+    }
+
+    clientBillings.forEach(b => {
+      const dateStr = b.claimDate || b.targetPeriodStart || b.referenceDate || '';
+      if (dateStr && dateStr.length >= 4) {
+        const y = parseInt(dateStr.substring(0, 4), 10);
+        if (!isNaN(y)) yearsSet.add(y);
+      }
+    });
+
+    subBillings.forEach(sb => {
+      const dateStr = sb.billingMonth || sb.targetPeriodStart || sb.claimDate || '';
+      if (dateStr && dateStr.length >= 4) {
+        const y = parseInt(dateStr.substring(0, 4), 10);
+        if (!isNaN(y)) yearsSet.add(y);
+      }
+    });
+
+    return Array.from(yearsSet).sort((a, b) => b - a).map(y => `${y}년`);
+  }, [clientContract, clientBillings, subBillings]);
+
+  useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(dashboardYear)) {
+      setDashboardYear(availableYears[0]);
+    }
+  }, [availableYears, dashboardYear]);
+
+  // 억 원 단위 포맷터
+  const formatToEok = (amount: number) => {
+    if (!amount || amount === 0) return '0 원';
+    const eok = amount / 100000000;
+    if (Math.abs(eok) >= 0.1) {
+      const formatted = eok % 1 === 0 ? eok.toFixed(0) : eok.toFixed(1);
+      return `${formatted} 억원`;
+    }
+    return formatKRW(amount);
+  };
+
+  // 월별 누계 도급현황 추이 차트 데이터 (1월~12월)
+  const monthlyClientChartData = useMemo(() => {
+    const totalContractEok = projectDashboardMetrics.totalClientContractAmt / 100000000;
+    const targetYearStr = dashboardYear.replace('년', '').trim();
+    const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+
+    return months.map((m, idx) => {
+      const monthNum = idx + 1;
+      const billingsTillMonth = clientBillings.filter(b => {
+        const dateStr = b.claimDate || b.targetPeriodStart || '';
+        if (dateStr && targetYearStr && !dateStr.startsWith(targetYearStr)) return false;
+        const bMonth = dateStr ? parseInt(dateStr.split('-')[1], 10) : 0;
+        return bMonth > 0 && bMonth <= monthNum;
+      });
+
+      const collectedEok = billingsTillMonth.reduce((s, b) => s + (b.collectedAmt || 0), 0) / 100000000;
+      const receivableEok = billingsTillMonth.reduce((s, b) => s + (b.receivableAmt || 0), 0) / 100000000;
+      const claimedEok = billingsTillMonth.reduce((s, b) => s + (b.currentClaimAmt || 0), 0) / 100000000;
+
+      const remainingEok = Math.max(0, totalContractEok - claimedEok);
+
+      return {
+        month: m,
+        수금완료액: parseFloat(collectedEok.toFixed(1)),
+        미수금: parseFloat(receivableEok.toFixed(1)),
+        도급잔액: parseFloat(remainingEok.toFixed(1))
+      };
+    });
+  }, [clientBillings, projectDashboardMetrics.totalClientContractAmt, dashboardYear]);
+
+  // 월별 누계 외주현황 추이 차트 데이터 (1월~12월)
+  const monthlySubChartData = useMemo(() => {
+    const totalSubEok = projectDashboardMetrics.totalSubContractAmt / 100000000;
+    const targetYearStr = dashboardYear.replace('년', '').trim();
+    const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+
+    return months.map((m, idx) => {
+      const monthNum = idx + 1;
+      const subTillMonth = subBillings.filter(b => {
+        const dateStr = b.billingMonth || b.targetPeriodStart || b.claimDate || '';
+        if (dateStr && targetYearStr && !dateStr.startsWith(targetYearStr)) return false;
+        const bMonth = dateStr ? parseInt(dateStr.split('-')[1], 10) : 0;
+        return bMonth > 0 && bMonth <= monthNum;
+      });
+
+      const approvedEok = subTillMonth
+        .filter(b => b.status === '지급완료' || b.status === '승인')
+        .reduce((s, b) => s + (b.finalApprovedAmt || 0), 0) / 100000000;
+
+      const pendingEok = subTillMonth
+        .filter(b => b.status === '검토' || b.status === '검토중' || b.status === '청구')
+        .reduce((s, b) => s + (b.finalApprovedAmt || b.currentClaimAmt || b.subClaimAmt || 0), 0) / 100000000;
+
+      const remainingEok = Math.max(0, totalSubEok - approvedEok - pendingEok);
+
+      return {
+        month: m,
+        외주승인총액: parseFloat(approvedEok.toFixed(1)),
+        승인대기총액: parseFloat(pendingEok.toFixed(1)),
+        외주잔액: parseFloat(remainingEok.toFixed(1))
+      };
+    });
+  }, [subBillings, projectDashboardMetrics.totalSubContractAmt, dashboardYear]);
 
   // 5. 실행예산 및 원가관리 데이터 (Site Execution Budget)
   const [executionBudgets, setExecutionBudgets] = useState<SiteExecutionBudget[]>([
@@ -768,11 +871,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     }
   ]);
 
-  // Audit Logs & Comments
-  const [auditLogs, setAuditLogs] = useState<BillingAuditLog[]>([
-    { id: 'al-1', projectId, timestamp: '2026-07-15 14:30', user: '홍길동 (공무팀장)', action: '발주처 3차 기성 승인', module: '발주처 기성', details: '승인금액 90억원, 수금예정일 2026-07-31' },
-    { id: 'al-2', projectId, timestamp: '2026-07-12 11:15', user: '김현장 (소장)', action: '외주기성 (주)한남건설골조 승인', module: '외주 기성', details: '승인금액 35억원 (노무비 직불 18억 포함)' }
-  ]);
+
 
   // Modals state
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
@@ -907,13 +1006,13 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
   // Initial Contract Form State
   const [initialContractForm, setInitialContractForm] = useState({
-    contractDate: '2025-01-15',
-    constructionStartDate: '2025-02-01',
-    constructionEndDate: '2027-12-31',
-    initialAmount: 10000000000,
-    advancePayment: 1000000000,
-    retentionMoney: 675000000,
-    performanceBond: 1350000000
+    contractDate: clientContract.contractDate || '',
+    constructionStartDate: clientContract.constructionStartDate || '',
+    constructionEndDate: clientContract.constructionEndDate || '',
+    initialAmount: clientContract.initialAmount || 0,
+    advancePayment: clientContract.advancePayment || 0,
+    retentionMoney: clientContract.retentionMoney || 0,
+    performanceBond: clientContract.performanceBond || 0
   });
 
   const handleResetToDefault = () => {
@@ -923,11 +1022,12 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
   // Load stored data if present
   React.useEffect(() => {
+    const isSample = projectId === 'pjt-1' || projectId === 'p-1';
+
     supabaseService.getBillingData(projectId).then(parsed => {
       try {
-        if (parsed && Object.keys(parsed).length > 0) {
-        
-          // Migration check: If stored data contains the legacy 45B/48.5B KRW setup, or legacy 120B billing claims, or legacy VAT amounts (>0), or corrupted high billing collection amounts, clear it to apply the new 13.5B KRW zero-VAT schema
+        if (parsed && Object.keys(parsed).length > 0 && parsed.clientContract) {
+          // Migration check for legacy amounts
           const hasLegacyAmount = parsed.clientContract && 
             (parsed.clientContract.initialAmount === 45000000000 || 
              parsed.clientContract.currentAmount === 48500000000);
@@ -937,7 +1037,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
             const net = Number(b.netClaimAmt || 0);
             const coll = Number(b.collectedAmt || 0);
             const vat = Number(b.vatAmt || 0);
-            return claim > 5000000000 || coll > 5000000000 || vat > 0; // If any claim or collection is > 5B KRW or vat is > 0, trigger migration to the new schema
+            return claim > 5000000000 || coll > 5000000000 || vat > 0;
           });
 
           if (hasLegacyAmount || hasLegacyBillings) {
@@ -946,13 +1046,67 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
             return;
           }
 
+          // Check if mock data is incorrectly stored in a non-sample project
+          const containsMockData = !isSample && (
+            parsed.clientContract.id === 'cc-01' ||
+            parsed.clientContract.initialAmount === 10000000000 ||
+            (Array.isArray(parsed.subContracts) && parsed.subContracts.some((s: any) => s.id === 'subc-1' || (s.contractorName && s.contractorName.includes('삼우토건'))))
+          );
+
+          if (containsMockData) {
+            console.log('Clearing mock data from non-sample project:', projectId);
+            const emptyContract = getEmptyClientContract(projectId);
+            setClientContract(emptyContract);
+            setClientBillings([]);
+            setSubContracts([]);
+            setSubBillings([]);
+            setClientBillingItems([]);
+            setSubBillingItems([]);
+            setExecutionBudgets([]);
+
+            const cleanDataToSave = {
+              clientContract: emptyContract,
+              clientBillings: [],
+              subContracts: [],
+              subBillings: [],
+              clientBillingItems: [],
+              subBillingItems: [],
+              executionBudgets: []
+            };
+            localStorage.setItem(`cp_billing_data_${projectId}`, JSON.stringify(cleanDataToSave));
+            supabaseService.saveBillingData(projectId, cleanDataToSave);
+            return;
+          }
+
           if (parsed.clientContract) setClientContract(parsed.clientContract);
           if (parsed.clientBillings) setClientBillings(parsed.clientBillings);
           if (parsed.subContracts) setSubContracts(parsed.subContracts);
-          if (parsed.subBillings) setSubBillings(parsed.subBillings);
+          if (parsed.subBillings) {
+            const filteredSubBillings = Array.isArray(parsed.subBillings)
+              ? parsed.subBillings.filter((sb: any) => sb && sb.id !== 'subb-1' && sb.id !== 'subb-2' && sb.id !== 'subb-3')
+              : [];
+            setSubBillings(filteredSubBillings);
+          }
           if (parsed.clientBillingItems) setClientBillingItems(parsed.clientBillingItems);
-          if (parsed.subBillingItems) setSubBillingItems(parsed.subBillingItems);
+          if (parsed.subBillingItems) {
+            const filteredSubBillingItems = Array.isArray(parsed.subBillingItems)
+              ? parsed.subBillingItems.filter((sbi: any) => sbi && sbi.subcontractorBillingId !== 'subb-1' && sbi.subcontractorBillingId !== 'subb-2' && sbi.subcontractorBillingId !== 'subb-3')
+              : [];
+            setSubBillingItems(filteredSubBillingItems);
+          }
           if (parsed.executionBudgets) setExecutionBudgets(parsed.executionBudgets);
+        } else {
+          // No stored data found: if non-sample project, enforce clean empty state
+          if (!isSample) {
+            const emptyContract = getEmptyClientContract(projectId);
+            setClientContract(emptyContract);
+            setClientBillings([]);
+            setSubContracts([]);
+            setSubBillings([]);
+            setClientBillingItems([]);
+            setSubBillingItems([]);
+            setExecutionBudgets([]);
+          }
         }
       } catch (e) {
         console.error('Failed to parse saved billing data:', e);
@@ -1000,8 +1154,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     contactPhone: '',
     discipline: '건축',
     contractDate: new Date().toISOString().split('T')[0],
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: '2027-03-31',
+    startDate: '',
+    endDate: '',
     initialAmount: 0,
     amendedAmount: 0,
     currentAmount: 0,
@@ -1013,7 +1167,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     paymentDueDate: new Date().toISOString().split('T')[0],
     laborCostType: '직접노무비',
     directPaymentStatus: false,
-    bondExpirationDate: '2027-04-30',
+    bondExpirationDate: '',
     status: '계약체결'
   });
 
@@ -1025,12 +1179,12 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     createdDate: new Date().toISOString().split('T')[0],
     billingExpectedDate: '2026-08-15',
     collectionExpectedDate: '2026-08-31',
-    currentClaimAmt: 5000000000,
-    advanceDeductionAmt: 500000000,
-    retentionAmt: 250000000,
+    currentClaimAmt: 0,
+    advanceDeductionAmt: 0,
+    retentionAmt: 0,
     otherDeductionsAmt: 0,
     vatAmt: 0,
-    netClaimAmt: 4250000000,
+    netClaimAmt: 0,
     status: '임시저장',
     remarks: ''
   });
@@ -1070,6 +1224,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       amendmentRound: newRound,
       currentAmount: newCurrentAmount,
       amendedAmount: newCurrentAmount,
+      constructionStartDate: amendmentForm.constructionStartDate || clientContract.constructionStartDate,
+      constructionEndDate: amendmentForm.constructionEndDate || clientContract.constructionEndDate,
       changeAmount: changeAmt,
       changeReason: amendmentForm.reason || '설계 변경 반영',
       designChangeAmount: (clientContract.designChangeAmount || 0) + Number(amendmentForm.designChangeAmount || 0),
@@ -1127,9 +1283,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   // Save Initial Contract Handler (최초 계약 정보 수정)
   const handleSaveInitialContract = (e: React.FormEvent) => {
     e.preventDefault();
-    const newContractDate = initialContractForm.contractDate || '2025-01-15';
-    const newConstructionStartDate = initialContractForm.constructionStartDate || '2025-02-01';
-    const newConstructionEndDate = initialContractForm.constructionEndDate || '2027-12-31';
+    const newContractDate = initialContractForm.contractDate || new Date().toISOString().split('T')[0];
+    const newConstructionStartDate = initialContractForm.constructionStartDate || '';
+    const newConstructionEndDate = initialContractForm.constructionEndDate || '';
     const newInitial = Number(initialContractForm.initialAmount || 0);
     const newAdvance = Number(initialContractForm.advancePayment || 0);
     const newRetention = Number(initialContractForm.retentionMoney || 0);
@@ -1232,6 +1388,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       amendmentRound: maxRound,
       currentAmount: finalAmount,
       amendedAmount: finalAmount,
+      constructionStartDate: lastItem ? (lastItem.constructionStartDate || clientContract.constructionStartDate) : clientContract.constructionStartDate,
+      constructionEndDate: lastItem ? (lastItem.constructionEndDate || clientContract.constructionEndDate) : clientContract.constructionEndDate,
       changeAmount: lastItem ? lastItem.changeAmount : 0,
       changeReason: lastItem ? lastItem.reason : '최초 계약 상태',
       contractBalance: finalAmount - cumulativeClientCollectedAmt,
@@ -1284,6 +1442,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       amendmentRound: maxRound,
       currentAmount: finalAmount,
       amendedAmount: finalAmount,
+      constructionStartDate: lastItem ? (lastItem.constructionStartDate || clientContract.constructionStartDate) : clientContract.constructionStartDate,
+      constructionEndDate: lastItem ? (lastItem.constructionEndDate || clientContract.constructionEndDate) : clientContract.constructionEndDate,
       changeAmount: lastItem ? lastItem.changeAmount : 0,
       changeReason: lastItem ? lastItem.reason : '최초 계약 상태',
       contractBalance: finalAmount - cumulativeClientCollectedAmt,
@@ -1626,8 +1786,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
             contactPhone: newSubContract.contactPhone || '010-0000-0000',
             discipline: newSubContract.discipline || '건축',
             contractDate: newSubContract.contractDate || new Date().toISOString().split('T')[0],
-            startDate: newSubContract.startDate || new Date().toISOString().split('T')[0],
-            endDate: newSubContract.endDate || '2027-03-31',
+            startDate: newSubContract.startDate || '',
+            endDate: newSubContract.endDate || '',
             initialAmount: sc.initialAmount || curAmt,
             amendedAmount: curAmt,
             currentAmount: curAmt,
@@ -1639,7 +1799,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
             paymentDueDate: newSubContract.paymentDueDate || new Date().toISOString().split('T')[0],
             laborCostType: newSubContract.laborCostType || '직접노무비',
             directPaymentStatus: !!newSubContract.directPaymentStatus,
-            bondExpirationDate: newSubContract.bondExpirationDate || '2027-04-30',
+            bondExpirationDate: newSubContract.bondExpirationDate || '',
             status: newSubContract.status || sc.status
           };
         }
@@ -1656,8 +1816,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         contactPhone: newSubContract.contactPhone || '010-0000-0000',
         discipline: newSubContract.discipline || '건축',
         contractDate: newSubContract.contractDate || new Date().toISOString().split('T')[0],
-        startDate: newSubContract.startDate || new Date().toISOString().split('T')[0],
-        endDate: newSubContract.endDate || '2027-03-31',
+        startDate: newSubContract.startDate || '',
+        endDate: newSubContract.endDate || '',
         initialAmount: curAmt,
         amendedAmount: curAmt,
         currentAmount: curAmt,
@@ -1669,7 +1829,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         paymentDueDate: newSubContract.paymentDueDate || new Date().toISOString().split('T')[0],
         laborCostType: newSubContract.laborCostType || '직접노무비',
         directPaymentStatus: !!newSubContract.directPaymentStatus,
-        bondExpirationDate: newSubContract.bondExpirationDate || '2027-04-30',
+        bondExpirationDate: newSubContract.bondExpirationDate || '',
         status: '계약체결',
         attachments: []
       };
@@ -1894,7 +2054,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
     // 5. Bond Expiration Warning
     subContracts.forEach(sc => {
+      if (!sc.bondExpirationDate) return;
       const expDate = new Date(sc.bondExpirationDate);
+      if (isNaN(expDate.getTime())) return;
       const today = new Date();
       const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
       if (diffDays <= 60 && diffDays > 0) {
@@ -1990,10 +2152,10 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       {/* Main Module Tabs (Sticky Header) */}
       <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md pt-2 pb-3 mb-6 border-b border-slate-200/80 -mx-4 md:-mx-6 px-4 md:px-6 flex items-center overflow-x-auto scrollbar-hide">
         {[
-          { id: 'client-contract', label: '1. 발주처 계약관리', icon: Building },
-          { id: 'sub-contract', label: '2. 외주계약 관리', icon: Briefcase },
-          { id: 'sub-billing', label: '3. 외주기성 관리', icon: DollarSign },
-          { id: 'closing', label: '4. 월마감 & 감사로그', icon: Lock },
+          { id: 'dashboard', label: '프로젝트 대시보드', icon: LayoutDashboard },
+          { id: 'client-contract', label: '발주처 계약관리', icon: Building },
+          { id: 'sub-billing', label: '외주기성 관리', icon: DollarSign },
+          { id: 'sub-contract', label: '외주계약 관리', icon: Briefcase },
           { id: 'consolidated-dashboard', label: '전사 대시보드', icon: PieChartIcon }
         ].reduce((acc, tab, idx) => {
           if (idx > 0) {
@@ -2011,8 +2173,20 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     onGoToConsolidatedDashboard();
                   } else {
                     localStorage.setItem('cp_project_list_tab', 'billing');
-                    window.dispatchEvent(new CustomEvent('change-project-list-tab', { detail: 'billing' }));
-                    window.dispatchEvent(new CustomEvent('go-to-project-list', { detail: 'billing' }));
+                    try {
+                      window.dispatchEvent(new window.CustomEvent('change-project-list-tab', { detail: 'billing' }));
+                    } catch (e) {
+                      const ev = document.createEvent('CustomEvent');
+                      ev.initCustomEvent('change-project-list-tab', true, true, 'billing');
+                      window.dispatchEvent(ev);
+                    }
+                    try {
+                      window.dispatchEvent(new window.CustomEvent('go-to-project-list', { detail: 'billing' }));
+                    } catch (e) {
+                      const ev = document.createEvent('CustomEvent');
+                      ev.initCustomEvent('go-to-project-list', true, true, 'billing');
+                      window.dispatchEvent(ev);
+                    }
                   }
                 } else {
                   setActiveTab(tab.id as any);
@@ -2034,29 +2208,431 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         }, [] as React.ReactNode[])}
       </div>
 
-      {/* Monthly Closed Warning Banner if locked */}
-      {isCurrentMonthClosed && !isAdminUnlocked && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between text-amber-900 text-xs">
-          <div className="flex items-center gap-3">
-            <Lock className="text-amber-600 flex-shrink-0" size={20} />
-            <div>
-              <p className="font-bold">{selectedMonth}월 마감 처리가 완료되었습니다.</p>
-              <p className="text-amber-700">일반 사용자는 데이터를 수정할 수 없으며, 조회만 가능합니다.</p>
+
+
+      {/* ---------------------------------------------------- */}
+      {/* 0. 프로젝트 기성&외주 대시보드 (TAB 0) */}
+      {/* ---------------------------------------------------- */}
+      {activeTab === 'dashboard' && (
+        <div className="space-y-6">
+          {/* 2컬럼 메인 그리드 (좌측 도급내역 카드 / 우측 외주현황 카드) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* ======================================================== */}
+            {/* [좌측] 도급내역 카드 */}
+            {/* ======================================================== */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6 space-y-6">
+              
+              {/* [좌측 카드 상단] 2컬럼: 좌(총액/작은조건) + 우(3줄 프로그레스 지표) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 pb-5 border-b border-slate-100">
+                {/* 좌: 발주처 도급 총액 + 조건 */}
+                <div className="md:col-span-5 flex flex-col justify-between space-y-3">
+                  <div>
+                    <span className="text-xs font-bold text-slate-400 block mb-1">발주처 도급 총액</span>
+                    <div className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">
+                      {formatToEok(projectDashboardMetrics.totalClientContractAmt)}
+                    </div>
+                  </div>
+
+                  {/* 도급계약 상태 및 최종 차수 공사기간 정보 */}
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 font-bold rounded-lg text-[11px] border border-blue-100">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                      {clientContract.status || '진행중'} ({clientContract.amendmentRound || (clientContract.history?.length || 0)}차 변경)
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      기간: {(clientContract.history && clientContract.history.length > 0 ? clientContract.history[clientContract.history.length - 1].constructionStartDate : null) || clientContract.constructionStartDate || '2025-02-01'} ~ {(clientContract.history && clientContract.history.length > 0 ? clientContract.history[clientContract.history.length - 1].constructionEndDate : null) || clientContract.constructionEndDate || '2027-12-31'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 우: 기성총액 / 미수금총액 / 잔액총액(미수금 포함) 프로그레스 바 */}
+                <div className="md:col-span-7 space-y-3 flex flex-col justify-center">
+                  {/* 기성 총액 */}
+                  <div>
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="font-bold text-slate-600">기성 총액</span>
+                      <div className="flex items-center gap-1">
+                        <span className="font-black text-blue-600">{formatToEok(projectDashboardMetrics.totalClientClaimAmt)}</span>
+                        <span className="text-[10px] text-slate-400">({projectDashboardMetrics.clientProgressRate.toFixed(1)}%)</span>
+                      </div>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-600 rounded-full"
+                        style={{ width: `${Math.min(projectDashboardMetrics.clientProgressRate, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 미수금 총액 */}
+                  <div>
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="font-bold text-slate-600">미수금 총액</span>
+                      <div className="flex items-center gap-1">
+                        <span className="font-black text-sky-500">{formatToEok(projectDashboardMetrics.totalReceivableAmt)}</span>
+                        <span className="text-[10px] text-slate-400">
+                          ({projectDashboardMetrics.totalClientClaimAmt > 0 ? ((projectDashboardMetrics.totalReceivableAmt / projectDashboardMetrics.totalClientClaimAmt) * 100).toFixed(1) : '0.0'}%)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-sky-400 rounded-full"
+                        style={{
+                          width: `${Math.min(
+                            projectDashboardMetrics.totalClientClaimAmt > 0
+                              ? (projectDashboardMetrics.totalReceivableAmt / projectDashboardMetrics.totalClientClaimAmt) * 100
+                              : 0,
+                            100
+                          )}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 잔액 총액 (미수금 포함) */}
+                  <div>
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="font-bold text-slate-600">잔액 총액 (미수금 포함)</span>
+                      <div className="flex items-center gap-1">
+                        <span className="font-black text-slate-800">{formatToEok(projectDashboardMetrics.remainingClientContractAmt)}</span>
+                        <span className="text-[10px] text-slate-400">
+                          ({((projectDashboardMetrics.remainingClientContractAmt / (projectDashboardMetrics.totalClientContractAmt || 1)) * 100).toFixed(1)}%)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-slate-300 rounded-full"
+                        style={{
+                          width: `${Math.min(
+                            (projectDashboardMetrics.remainingClientContractAmt / (projectDashboardMetrics.totalClientContractAmt || 1)) * 100,
+                            100
+                          )}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* [좌측 카드 중단] 월별 누계 도급현황 추이 (억원) 그래프 */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-xs font-bold text-slate-700">월별 누계 도급현황 추이 (억원)</h4>
+                  <select
+                    value={dashboardYear}
+                    onChange={(e) => setDashboardYear(e.target.value)}
+                    className="text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 cursor-pointer"
+                  >
+                    {availableYears.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="h-52 w-full pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={monthlyClientChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                      <Tooltip formatter={(value: any) => [`${value} 억원`, '']} />
+                      <Bar dataKey="수금완료액" stackId="a" fill="#2563eb" barSize={16} />
+                      <Bar dataKey="미수금" stackId="a" fill="#38bdf8" barSize={16} />
+                      <Bar dataKey="도급잔액" stackId="a" fill="#cbd5e1" radius={[3, 3, 0, 0]} barSize={16} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* 범례 */}
+                <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500 pt-1">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block"></span>
+                    수금완료액
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span>
+                    미수금
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block"></span>
+                    도급잔액
+                  </span>
+                </div>
+              </div>
+
+              {/* [좌측 카드 하단] 최근 발주처 기성 이력 (유지) */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <FileText size={14} className="text-slate-500" />
+                    최근 발주처 기성 이력
+                  </h4>
+                  <button
+                    onClick={() => setActiveTab('client-contract')}
+                    className="text-[11px] text-blue-600 hover:underline font-bold flex items-center gap-0.5 cursor-pointer"
+                  >
+                    상세보기 <ChevronRight size={12} />
+                  </button>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="p-2 text-center">차수</th>
+                        <th className="p-2">청구년월</th>
+                        <th className="p-2 text-right">청구금액</th>
+                        <th className="p-2 text-right">수금금액</th>
+                        <th className="p-2 text-center">상태</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {clientBillings.slice(-3).map(b => (
+                        <tr key={b.id} className="hover:bg-slate-50/80">
+                          <td className="p-2 text-center font-bold text-slate-700">{b.billingRound}차</td>
+                          <td className="p-2 text-slate-600">{b.billingExpectedDate?.slice(0, 7)}</td>
+                          <td className="p-2 text-right font-semibold text-slate-800">{formatKRW(b.currentClaimAmt)}</td>
+                          <td className="p-2 text-right font-semibold text-emerald-700">{formatKRW(b.collectedAmt || 0)}</td>
+                          <td className="p-2 text-center">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              b.status === '완료' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {b.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
+
+
+            {/* ======================================================== */}
+            {/* [우측] 외주 현황 카드 */}
+            {/* ======================================================== */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6 space-y-6">
+              
+              {/* [우측 카드 상단] 2컬럼: 좌(총액/업체수) + 우(3줄 프로그레스 지표) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 pb-5 border-b border-slate-100">
+                {/* 좌: 외주 계약 총액 + 업체 수 */}
+                <div className="md:col-span-5 flex flex-col justify-between space-y-3">
+                  <div>
+                    <span className="text-xs font-bold text-slate-400 block mb-1">외주 계약 총액</span>
+                    <div className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">
+                      {formatToEok(projectDashboardMetrics.totalSubContractAmt)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold rounded-lg text-[11px] inline-block">
+                      {projectDashboardMetrics.totalSubContractCount}업체 계약중
+                    </span>
+                  </div>
+                </div>
+
+                {/* 우: 외주 기성 청구 총액 / 외주 승인 총액 / 외주 기성 잔액(미지급 포함) 프로그레스 바 */}
+                <div className="md:col-span-7 space-y-3 flex flex-col justify-center">
+                  {/* 외주 기성 청구 총액 */}
+                  <div>
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="font-bold text-slate-600">외주 기성 청구 총액</span>
+                      <div className="flex items-center gap-1">
+                        <span className="font-black text-amber-500">{formatToEok(projectDashboardMetrics.totalSubClaimAmt)}</span>
+                        <span className="text-[10px] text-slate-400">
+                          ({((projectDashboardMetrics.totalSubClaimAmt / (projectDashboardMetrics.totalSubContractAmt || 1)) * 100).toFixed(1)}%)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-amber-400 rounded-full"
+                        style={{
+                          width: `${Math.min(
+                            (projectDashboardMetrics.totalSubClaimAmt / (projectDashboardMetrics.totalSubContractAmt || 1)) * 100,
+                            100
+                          )}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 외주 승인 총액 */}
+                  <div>
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="font-bold text-slate-600">외주 승인 총액</span>
+                      <div className="flex items-center gap-1">
+                        <span className="font-black text-amber-600">{formatToEok(projectDashboardMetrics.totalSubApprovedAmt)}</span>
+                        <span className="text-[10px] text-slate-400">({projectDashboardMetrics.subExecutionRate.toFixed(1)}%)</span>
+                      </div>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-amber-500 rounded-full"
+                        style={{ width: `${Math.min(projectDashboardMetrics.subExecutionRate, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 외주 기성 잔액 (미지급 포함) */}
+                  <div>
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="font-bold text-slate-600">외주 기성 잔액 (미지급 포함)</span>
+                      <div className="flex items-center gap-1">
+                        <span className="font-black text-slate-800">{formatToEok(projectDashboardMetrics.remainingSubContractAmt)}</span>
+                        <span className="text-[10px] text-slate-400">
+                          ({((projectDashboardMetrics.remainingSubContractAmt / (projectDashboardMetrics.totalSubContractAmt || 1)) * 100).toFixed(1)}%)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-slate-300 rounded-full"
+                        style={{
+                          width: `${Math.min(
+                            (projectDashboardMetrics.remainingSubContractAmt / (projectDashboardMetrics.totalSubContractAmt || 1)) * 100,
+                            100
+                          )}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* [우측 카드 중단] 월별 누계 외주현황 추이 (억원) 그래프 */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-xs font-bold text-slate-700">월별 누계 외주현황 추이 (억원)</h4>
+                  <select
+                    value={dashboardYear}
+                    onChange={(e) => setDashboardYear(e.target.value)}
+                    className="text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 cursor-pointer"
+                  >
+                    {availableYears.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="h-52 w-full pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={monthlySubChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                      <Tooltip formatter={(value: any) => [`${value} 억원`, '']} />
+                      <Bar dataKey="외주승인총액" stackId="b" fill="#d97706" barSize={16} />
+                      <Bar dataKey="승인대기총액" stackId="b" fill="#f59e0b" barSize={16} />
+                      <Bar dataKey="외주잔액" stackId="b" fill="#cbd5e1" radius={[3, 3, 0, 0]} barSize={16} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* 범례 */}
+                <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500 pt-1">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-600 inline-block"></span>
+                    외주승인 총액
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
+                    승인대기 총액
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block"></span>
+                    외주잔액
+                  </span>
+                </div>
+              </div>
+
+              {/* [우측 카드 하단] 그래프 밑에 '하도급 외주계약 업체 목록'과 '공종별 외주 분포'를 좌우 배치 */}
+              <div className="pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                  {/* 좌: 하도급 외주계약 업체 목록 */}
+                  <div className="space-y-2 flex flex-col">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Users size={14} className="text-slate-500" />
+                        하도급 외주계약 업체 목록
+                      </h4>
+                      <button
+                        onClick={() => setActiveTab('sub-contract')}
+                        className="text-[11px] text-purple-600 hover:underline font-bold flex items-center gap-0.5 cursor-pointer"
+                      >
+                        상세보기 <ChevronRight size={12} />
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 flex-1">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                          <tr>
+                            <th className="p-2">업체명</th>
+                            <th className="p-2">공종</th>
+                            <th className="p-2 text-right">계약금액</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {subContracts.map(sc => (
+                            <tr key={sc.id} className="hover:bg-slate-50/80">
+                              <td className="p-2 font-bold text-slate-800">{sc.contractorName}</td>
+                              <td className="p-2 text-slate-600">{sc.discipline}</td>
+                              <td className="p-2 text-right font-semibold text-slate-900">{formatKRW(sc.currentAmount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* 우: 공종별 외주 분포 */}
+                  <div className="space-y-2 flex flex-col">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <PieChartIcon size={14} className="text-slate-500" />
+                        공종별 외주 분포
+                      </h4>
+                    </div>
+                    <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200/80 flex-1 min-h-[120px] overflow-y-auto">
+                      {Object.entries(projectDashboardMetrics.disciplineSubStats).map(([disc, statObj]) => {
+                        const stat = statObj as { count: number; amount: number; approvedAmt: number };
+                        const ratio = projectDashboardMetrics.totalSubContractAmt > 0
+                          ? (stat.amount / projectDashboardMetrics.totalSubContractAmt) * 100
+                          : 0;
+                        return (
+                          <div key={disc} className="space-y-1">
+                            <div className="flex justify-between text-[10px]">
+                              <span className="font-semibold text-slate-700">{disc} ({stat.count}건)</span>
+                              <span className="text-slate-600 font-bold">
+                                {formatKRW(stat.amount)} <span className="text-slate-400 font-normal">({ratio.toFixed(1)}%)</span>
+                              </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-purple-600 rounded-full"
+                                style={{ width: `${Math.min(ratio, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
           </div>
-          <button
-            onClick={() => setShowUnlockModal(true)}
-            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-sm transition-all"
-          >
-            마감 해제 요청 / 관리자 권한
-          </button>
         </div>
       )}
 
       {/* ---------------------------------------------------- */}
-
-      {/* ---------------------------------------------------- */}
-      {/* 2. 발주처 계약관리 (TAB 2) */}
+      {/* 1. 발주처 계약관리 (TAB 1) */}
       {/* ---------------------------------------------------- */}
       {activeTab === 'client-contract' && (
         <div className="space-y-6">
@@ -2070,46 +2646,24 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <button
                   onClick={() => {
                     setInitialContractForm({
-                      contractDate: clientContract.contractDate || '2025-01-15',
-                      constructionStartDate: clientContract.constructionStartDate || '2025-02-01',
-                      constructionEndDate: clientContract.constructionEndDate || '2027-12-31',
-                      initialAmount: clientContract.initialAmount,
-                      advancePayment: clientContract.advancePayment,
-                      retentionMoney: clientContract.retentionMoney,
-                      performanceBond: clientContract.performanceBond
+                      contractDate: clientContract.contractDate || new Date().toISOString().split('T')[0],
+                      constructionStartDate: clientContract.constructionStartDate || '',
+                      constructionEndDate: clientContract.constructionEndDate || '',
+                      initialAmount: clientContract.initialAmount || 0,
+                      advancePayment: clientContract.advancePayment || 0,
+                      retentionMoney: clientContract.retentionMoney || 0,
+                      performanceBond: clientContract.performanceBond || 0
                     });
                     setIsInitialContractModalOpen(true);
                   }}
-                  disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                  className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-800 rounded-xl text-xs font-bold transition-all border border-slate-300"
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                    !hasInitialContract
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
+                  }`}
                 >
-                  <Edit size={15} />
-                  최초 계약 정보 수정
-                </button>
-                <button
-                  onClick={() => {
-                    const lastHistory = clientContract.history && clientContract.history.length > 0
-                      ? clientContract.history[clientContract.history.length - 1]
-                      : null;
-                    setAmendmentForm({
-                      date: new Date().toISOString().split('T')[0],
-                      constructionStartDate: lastHistory?.constructionStartDate || clientContract.constructionStartDate || '2025-02-01',
-                      constructionEndDate: lastHistory?.constructionEndDate || clientContract.constructionEndDate || '2027-12-31',
-                      changeAmount: 0,
-                      designChangeAmount: 0,
-                      priceFluctuationAmount: 0,
-                      extraWorkAmount: 0,
-                      reason: '',
-                      approvedBy: '발주처 관리자',
-                      attachment: ''
-                    });
-                    setIsContractModalOpen(true);
-                  }}
-                  disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-                >
-                  <Plus size={16} />
-                  계약 변경 등록 (차수 추가)
+                  {!hasInitialContract ? <Plus size={15} /> : <Edit size={15} />}
+                  {!hasInitialContract ? '최초 계약 등록' : '최초 계약 수정'}
                 </button>
               </div>
             </div>
@@ -2159,18 +2713,58 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
             {/* Amendment History */}
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-slate-900">차수별 계약 변경 이력</h3>
-              {(clientContract.history?.length || 0) > 0 && (
+              <div className="flex items-center gap-2">
+                {(currentUser?.userRole === '골드' || currentUser?.role === 'admin') && (clientContract.history?.length || 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllAmendmentHistory}
+                    disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                    className="px-2.5 py-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-all flex items-center gap-1 disabled:opacity-50"
+                    title="모든 계약 변경 이력을 삭제하고 초기 계약금액 상태로 리셋합니다"
+                  >
+                    <Trash2 size={13} />
+                    이력 초기화
+                  </button>
+                )}
                 <button
-                  type="button"
-                  onClick={handleDeleteAllAmendmentHistory}
-                  disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                  className="px-2.5 py-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-all flex items-center gap-1 disabled:opacity-50"
-                  title="모든 계약 변경 이력을 삭제하고 초기 계약금액 상태로 리셋합니다"
+                  onClick={() => {
+                    if (!hasInitialContract) {
+                      alert('최초 계약 정보를 먼저 등록해 주세요.');
+                      setInitialContractForm({
+                        contractDate: clientContract.contractDate || new Date().toISOString().split('T')[0],
+                        constructionStartDate: clientContract.constructionStartDate || '',
+                        constructionEndDate: clientContract.constructionEndDate || '',
+                        initialAmount: clientContract.initialAmount || 0,
+                        advancePayment: clientContract.advancePayment || 0,
+                        retentionMoney: clientContract.retentionMoney || 0,
+                        performanceBond: clientContract.performanceBond || 0
+                      });
+                      setIsInitialContractModalOpen(true);
+                      return;
+                    }
+                    const lastHistory = clientContract.history && clientContract.history.length > 0
+                      ? clientContract.history[clientContract.history.length - 1]
+                      : null;
+                    setAmendmentForm({
+                      date: new Date().toISOString().split('T')[0],
+                      constructionStartDate: lastHistory?.constructionStartDate || clientContract.constructionStartDate || '',
+                      constructionEndDate: lastHistory?.constructionEndDate || clientContract.constructionEndDate || '',
+                      changeAmount: 0,
+                      designChangeAmount: 0,
+                      priceFluctuationAmount: 0,
+                      extraWorkAmount: 0,
+                      reason: '',
+                      approvedBy: '발주처 관리자',
+                      attachment: ''
+                    });
+                    setIsContractModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
                 >
-                  <Trash2 size={13} />
-                  변경 이력 전체 삭제 (초기화)
+                  <Plus size={15} />
+                  차수 추가
                 </button>
-              )}
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
@@ -2186,93 +2780,128 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {/* 최초 계약 이력 행 */}
-                  <tr className="hover:bg-blue-50/40 bg-blue-50/20 font-medium border-b border-slate-200">
-                    <td className="p-3 font-bold text-blue-900">
-                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[11px]">최초</span>
-                    </td>
-                    <td className="p-3 font-semibold text-slate-800">
-                      <div className="text-slate-900">계약: {clientContract.contractDate || '2025-01-15'}</div>
-                      <div className="text-slate-500 text-[10px]">공사: {clientContract.constructionStartDate || '2025-02-01'} ~ {clientContract.constructionEndDate || '2027-12-31'}</div>
-                    </td>
-                    <td className="p-3 text-right text-slate-400 font-semibold">-</td>
-                    <td className="p-3 text-right font-bold text-slate-900">{formatKRW(clientContract.initialAmount)}</td>
-                    <td className="p-3 text-slate-600">최초 도급 계약 체결</td>
-                    <td className="p-3 text-slate-600">발주처</td>
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setInitialContractForm({
-                            initialDate: clientContract.initialDate || '2025-01-15',
-                            initialEndDate: clientContract.initialEndDate || '2027-12-31',
-                            initialAmount: clientContract.initialAmount,
-                            advancePayment: clientContract.advancePayment,
-                            retentionMoney: clientContract.retentionMoney,
-                            performanceBond: clientContract.performanceBond
-                          });
-                          setIsInitialContractModalOpen(true);
-                        }}
-                        disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                        className="p-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
-                        title="최초 계약 정보 수정"
-                      >
-                        <Edit size={14} />
-                      </button>
-                    </td>
-                  </tr>
-
-                  {clientContract.history && clientContract.history.length > 0 && (
-                    clientContract.history.map((h, index) => {
-                      const isLastItem = index === clientContract.history.length - 1;
-                      return (
-                      <tr key={h.id} className="hover:bg-slate-50">
-                        <td className="p-3 font-bold">{h.round}차 변경</td>
-                        <td className="p-3">
-                          <div className="text-slate-900">계약: {h.contractDate}</div>
-                          <div className="text-slate-500 text-[10px]">공사: {h.constructionStartDate || '2025-02-01'} ~ {h.constructionEndDate || '2027-12-31'}</div>
+                  {!hasInitialContract ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center bg-slate-50/50 rounded-b-lg">
+                        <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
+                          <FileText size={24} className="text-slate-400" />
+                          <p className="font-bold text-sm text-slate-700">등록된 최초 계약 정보가 없습니다.</p>
+                          <p className="text-xs text-slate-500 max-w-md">
+                            상단의 '<span className="font-bold text-blue-600">최초 계약 등록</span>' 버튼을 클릭하여 계약 일자, 공사 기간 및 최초 도급 계약금액을 등록해 주세요.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInitialContractForm({
+                                contractDate: clientContract.contractDate || new Date().toISOString().split('T')[0],
+                                constructionStartDate: clientContract.constructionStartDate || '',
+                                constructionEndDate: clientContract.constructionEndDate || '',
+                                initialAmount: clientContract.initialAmount || 0,
+                                advancePayment: clientContract.advancePayment || 0,
+                                retentionMoney: clientContract.retentionMoney || 0,
+                                performanceBond: clientContract.performanceBond || 0
+                              });
+                              setIsInitialContractModalOpen(true);
+                            }}
+                            className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                          >
+                            <Plus size={14} />
+                            최초 계약 정보 등록하기
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    <>
+                      {/* 최초 계약 이력 행 */}
+                      <tr className="hover:bg-blue-50/40 bg-blue-50/20 font-medium border-b border-slate-200">
+                        <td className="p-3 font-bold text-blue-900">
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[11px]">최초</span>
                         </td>
-                        <td className={`p-3 text-right font-bold ${h.changeAmount >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
-                          {h.changeAmount > 0 ? `+${formatKRW(h.changeAmount)}` : formatKRW(h.changeAmount)}
+                        <td className="p-3 font-semibold text-slate-800">
+                          <div className="text-slate-900">계약: {clientContract.contractDate || '-'}</div>
+                          <div className="text-slate-500 text-[10px]">공사: {clientContract.constructionStartDate || '-'} ~ {clientContract.constructionEndDate || '-'}</div>
                         </td>
-                        <td className="p-3 text-right font-bold">{formatKRW(h.contractAmountAfter)}</td>
-                        <td className="p-3">{h.reason}</td>
-                        <td className="p-3">{h.approvedBy}</td>
+                        <td className="p-3 text-right text-slate-400 font-semibold">-</td>
+                        <td className="p-3 text-right font-bold text-slate-900">{formatKRW(clientContract.initialAmount)}</td>
+                        <td className="p-3 text-slate-600">최초 도급 계약 체결</td>
+                        <td className="p-3 text-slate-600">발주처</td>
                         <td className="p-3 text-center">
-                          {isLastItem && (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingHistoryItem({
-                                    ...h,
-                                    contractDate: (h as any).date || h.contractDate,
-                                    constructionStartDate: h.constructionStartDate || '2025-02-01',
-                                    constructionEndDate: h.constructionEndDate || (h as any).endDate || '2027-12-31'
-                                  });
-                                  setIsEditHistoryModalOpen(true);
-                                }}
-                                disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                                className="p-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
-                                title="수정"
-                              >
-                                <Edit size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteHistoryItem(h.id)}
-                                disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                                className="p-1 text-slate-500 hover:text-rose-600 transition-colors disabled:opacity-50"
-                                title="삭제"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInitialContractForm({
+                                contractDate: clientContract.contractDate || new Date().toISOString().split('T')[0],
+                                constructionStartDate: clientContract.constructionStartDate || '',
+                                constructionEndDate: clientContract.constructionEndDate || '',
+                                initialAmount: clientContract.initialAmount,
+                                advancePayment: clientContract.advancePayment,
+                                retentionMoney: clientContract.retentionMoney,
+                                performanceBond: clientContract.performanceBond
+                              });
+                              setIsInitialContractModalOpen(true);
+                            }}
+                            className="p-1 text-slate-500 hover:text-blue-600 transition-colors"
+                            title="최초 계약 정보 수정"
+                          >
+                            <Edit size={14} />
+                          </button>
                         </td>
                       </tr>
-                      );
-                    })
+
+                      {clientContract.history && clientContract.history.length > 0 && (
+                        clientContract.history.map((h, index) => {
+                          const isLastItem = index === clientContract.history.length - 1;
+                          return (
+                          <tr key={h.id} className="hover:bg-slate-50">
+                            <td className="p-3 font-bold">{h.round}차 변경</td>
+                            <td className="p-3">
+                              <div className="text-slate-900">계약: {h.contractDate}</div>
+                              <div className="text-slate-500 text-[10px]">공사: {h.constructionStartDate || '-'} ~ {h.constructionEndDate || '-'}</div>
+                            </td>
+                            <td className={`p-3 text-right font-bold ${h.changeAmount >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+                              {h.changeAmount > 0 ? `+${formatKRW(h.changeAmount)}` : formatKRW(h.changeAmount)}
+                            </td>
+                            <td className="p-3 text-right font-bold">{formatKRW(h.contractAmountAfter)}</td>
+                            <td className="p-3">{h.reason}</td>
+                            <td className="p-3">{h.approvedBy}</td>
+                            <td className="p-3 text-center">
+                              {isLastItem && (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingHistoryItem({
+                                        ...h,
+                                        contractDate: (h as any).date || h.contractDate,
+                                        constructionStartDate: h.constructionStartDate || '',
+                                        constructionEndDate: h.constructionEndDate || (h as any).endDate || ''
+                                      });
+                                      setIsEditHistoryModalOpen(true);
+                                    }}
+                                    disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                                    className="p-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
+                                    title="수정"
+                                  >
+                                    <Edit size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteHistoryItem(h.id)}
+                                    disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                                    className="p-1 text-slate-500 hover:text-rose-600 transition-colors disabled:opacity-50"
+                                    title="삭제"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                          );
+                        })
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>
@@ -2288,10 +2917,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
               </div>
               <button
                 onClick={() => {
-                  const defaultClaim = 1000000000;
-                  const advRatio = clientContract.currentAmount > 0 ? (clientContract.advancePayment / clientContract.currentAmount) : 0.1;
-                  const adv = Math.round(defaultClaim * advRatio);
-                  const ret = Math.round(defaultClaim * 0.05);
+                  const defaultClaim = 0;
+                  const adv = 0;
+                  const ret = 0;
                   setNewClientBilling({
                     billingRound: clientBillings.length + 1,
                     targetPeriodStart: '2026-07-01',
@@ -2305,7 +2933,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     retentionAmt: ret,
                     otherDeductionsAmt: 0,
                     vatAmt: 0,
-                    netClaimAmt: defaultClaim - adv - ret,
+                    netClaimAmt: 0,
                     status: '임시저장',
                     remarks: ''
                   });
@@ -2315,7 +2943,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
               >
                 <Plus size={16} />
-                신규 기성 청구 등록
+                청구 등록
               </button>
             </div>
 
@@ -2440,8 +3068,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     contactPhone: '',
                     discipline: disciplinesList[0] || '건축',
                     contractDate: new Date().toISOString().split('T')[0],
-                    startDate: new Date().toISOString().split('T')[0],
-                    endDate: '2027-03-31',
+                    startDate: '',
+                    endDate: '',
                     initialAmount: 0,
                     amendedAmount: 0,
                     currentAmount: 0,
@@ -2453,7 +3081,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     paymentDueDate: new Date().toISOString().split('T')[0],
                     laborCostType: '직접노무비',
                     directPaymentStatus: false,
-                    bondExpirationDate: '2027-04-30',
+                    bondExpirationDate: '',
                     status: '계약체결'
                   });
                   setIsSubContractModalOpen(true);
@@ -2485,7 +3113,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">계약 기간:</span>
-                      <span className="font-semibold text-slate-700">{sc.startDate} ~ {sc.endDate}</span>
+                      <span className="font-semibold text-slate-700">
+                        {(sc.startDate || sc.endDate) ? `${sc.startDate || '-'} ~ ${sc.endDate || '-'}` : '-'}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">선급금 / 유보율:</span>
@@ -2499,7 +3129,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     </div>
                     <div className="flex justify-between text-[11px]">
                       <span className="text-slate-500">보증서 유효기간:</span>
-                      <span className="font-bold text-slate-700">{sc.bondExpirationDate}</span>
+                      <span className="font-bold text-slate-700">{sc.bondExpirationDate || '-'}</span>
                     </div>
                   </div>
 
@@ -2550,24 +3180,24 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
             {/* 외주업체 전체 합계 요약 보드 */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
               <div className="bg-white p-4 rounded-xl border border-slate-200/80">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">총 계약 금액</div>
-                <div className="text-sm font-extrabold text-slate-800">{formatKRW(overallSubContractorTotals.totalContract)}</div>
+                <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">총 계약 금액</div>
+                <div className="text-xl font-extrabold text-slate-800">{formatKRW(overallSubContractorTotals.totalContract)}</div>
               </div>
               <div className="bg-white p-4 rounded-xl border border-slate-200/80">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">총 청구 금액</div>
-                <div className="text-sm font-extrabold text-slate-700">{formatKRW(overallSubContractorTotals.totalClaim)}</div>
+                <div className="text-xs uppercase tracking-wider mb-1">총 청구 금액</div>
+                <div className="text-xl font-extrabold text-slate-700">{formatKRW(overallSubContractorTotals.totalClaim)}</div>
               </div>
               <div className="bg-white p-4 rounded-xl border border-slate-200">
-                <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">총 최종 승인액</div>
-                <div className="text-sm font-extrabold text-emerald-700">{formatKRW(overallSubContractorTotals.totalApproved)}</div>
+                <div className="text-xs uppercase tracking-wider mb-1">총 최종 승인액</div>
+                <div className="text-xl font-extrabold text-emerald-700">{formatKRW(overallSubContractorTotals.totalApproved)}</div>
               </div>
               <div className="bg-white p-4 rounded-xl border border-slate-200">
-                <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">실지급 완료액</div>
-                <div className="text-sm font-extrabold text-blue-700">{formatKRW(overallSubContractorTotals.totalPaid)}</div>
+                <div className="text-xs uppercase tracking-wider mb-1">실지급 완료액</div>
+                <div className="text-xl font-extrabold text-blue-700">{formatKRW(overallSubContractorTotals.totalPaid)}</div>
               </div>
               <div className="bg-white p-4 rounded-xl border border-slate-200">
-                <div className="text-[10px] font-bold text-rose-600 uppercase tracking-wider mb-1">잔여 미지급액</div>
-                <div className="text-sm font-extrabold text-rose-700">{formatKRW(overallSubContractorTotals.totalUnpaid)}</div>
+                <div className="text-xs uppercase tracking-wider mb-1">잔여 미지급액</div>
+                <div className="text-xl font-extrabold text-rose-700">{formatKRW(overallSubContractorTotals.totalUnpaid)}</div>
               </div>
             </div>
 
@@ -2605,7 +3235,10 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                         <td className="p-3">
                           <div className="flex items-center gap-2">
                             <div className={`w-1 h-6 rounded ${isSelected ? 'bg-indigo-600' : 'bg-transparent'}`} />
-                            <span className="font-bold text-slate-900">{sc.contractorName}</span>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900">{sc.contractorName}</span>
+                              <span className="text-[10px] text-slate-500">{(sc.startDate || sc.endDate) ? `${sc.startDate || '-'} ~ ${sc.endDate || '-'}` : '-'}</span>
+                            </div>
                           </div>
                         </td>
                         <td className="p-3">
@@ -2755,63 +3388,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       {/* ---------------------------------------------------- */}
 
       {/* ---------------------------------------------------- */}
-      {/* 8. 월마감 & 감사로그 (TAB 8) */}
-      {/* ---------------------------------------------------- */}
-      {activeTab === 'closing' && (
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-lg">
-            <h2 className="text-lg font-bold text-slate-900 mb-2">월별 기성/외주 데이터 마감 관리 (Monthly Closing)</h2>
-            <p className="text-xs text-slate-500 mb-6">월 마감 처리 시 데이터 수정이 잠기며, 권한 승인 시에만 해제됩니다.</p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-              {closings.map(c => (
-                <div key={c.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-sm">{c.yearMonth}월</h3>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      {c.isClosed ? `마감일: ${c.closedAt} (${c.closedBy})` : '미마감 상태'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleToggleClosing(c.yearMonth)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      c.isClosed ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                    }`}
-                  >
-                    {c.isClosed ? '마감 해제' : '월 마감 실행'}
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <h3 className="text-sm font-bold text-slate-900 mb-3">시스템 변경 및 승인 감사 로그 (Audit History)</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold border-y border-slate-200">
-                    <th className="p-3">일시</th>
-                    <th className="p-3">작업자</th>
-                    <th className="p-3">구분 모듈</th>
-                    <th className="p-3">수행 작업</th>
-                    <th className="p-3">상세 내역</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {auditLogs.map(log => (
-                    <tr key={log.id} className="hover:bg-slate-50">
-                      <td className="p-3 text-slate-500">{log.timestamp}</td>
-                      <td className="p-3 font-bold">{log.user}</td>
-                      <td className="p-3"><span className="px-2 py-0.5 bg-slate-100 rounded text-[10px]">{log.module}</span></td>
-                      <td className="p-3 font-semibold text-blue-600">{log.action}</td>
-                      <td className="p-3 text-slate-600">{log.details}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 발주처 최초 계약 정보 수정 모달 */}
       {isInitialContractModalOpen && (
@@ -3033,13 +3610,12 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   </label>
                   <input
                     type="number"
-                    required
                     placeholder="0"
-                    value={editingHistoryItem.changeAmount}
+                    value={editingHistoryItem.changeAmount !== undefined && editingHistoryItem.changeAmount !== null ? editingHistoryItem.changeAmount : 0}
                     onChange={e =>
                       setEditingHistoryItem({
                         ...editingHistoryItem,
-                        changeAmount: Number(e.target.value)
+                        changeAmount: e.target.value === '' ? 0 : Number(e.target.value)
                       })
                     }
                     className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
@@ -3176,14 +3752,13 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    계약 변경 증감액 (원) <span className="text-rose-500">*</span>
+                    계약 변경 증감액 (원) <span className="text-slate-400 font-normal text-[11px]">(증감 없으면 0원)</span>
                   </label>
                   <input
                     type="number"
-                    required
-                    placeholder="예: 20억 또는 -5억"
-                    value={amendmentForm.changeAmount || ''}
-                    onChange={e => setAmendmentForm({ ...amendmentForm, changeAmount: Number(e.target.value) })}
+                    placeholder="0"
+                    value={amendmentForm.changeAmount !== undefined && amendmentForm.changeAmount !== null ? amendmentForm.changeAmount : 0}
+                    onChange={e => setAmendmentForm({ ...amendmentForm, changeAmount: e.target.value === '' ? 0 : Number(e.target.value) })}
                     className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                   <span className="text-[11px] text-slate-500 mt-0.5 block">
@@ -3363,18 +3938,42 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   <input
                     type="number"
                     value={newClientBilling.advanceDeductionAmt || ''}
-                    onChange={e => setNewClientBilling({ ...newClientBilling, advanceDeductionAmt: Number(e.target.value) })}
+                    onChange={e => {
+                      const adv = Number(e.target.value);
+                      const claim = Number(newClientBilling.currentClaimAmt || 0);
+                      const ret = Number(newClientBilling.retentionAmt || 0);
+                      setNewClientBilling({
+                        ...newClientBilling,
+                        advanceDeductionAmt: adv,
+                        netClaimAmt: claim - adv - ret
+                      });
+                    }}
                     className="w-full p-2 border rounded-lg"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(newClientBilling.advanceDeductionAmt || 0))}
+                  </span>
                 </div>
                 <div>
                   <label className="block font-bold text-slate-600 mb-1">유보금 공제액</label>
                   <input
                     type="number"
                     value={newClientBilling.retentionAmt || ''}
-                    onChange={e => setNewClientBilling({ ...newClientBilling, retentionAmt: Number(e.target.value) })}
+                    onChange={e => {
+                      const ret = Number(e.target.value);
+                      const claim = Number(newClientBilling.currentClaimAmt || 0);
+                      const adv = Number(newClientBilling.advanceDeductionAmt || 0);
+                      setNewClientBilling({
+                        ...newClientBilling,
+                        retentionAmt: ret,
+                        netClaimAmt: claim - adv - ret
+                      });
+                    }}
                     className="w-full p-2 border rounded-lg"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(newClientBilling.retentionAmt || 0))}
+                  </span>
                 </div>
               </div>
 
@@ -3762,13 +4361,21 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     계약 금액 (원) <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    placeholder="예: 2500000000"
-                    value={newSubContract.currentAmount || ''}
-                    onChange={e => setNewSubContract({ ...newSubContract, currentAmount: Number(e.target.value) })}
-                    className="w-full p-2.5 border rounded-xl font-bold"
+                    placeholder="0"
+                    value={newSubContract.currentAmount ? Number(newSubContract.currentAmount).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const numVal = rawVal === '' ? 0 : Number(rawVal);
+                      setNewSubContract({ ...newSubContract, currentAmount: numVal });
+                    }}
+                    className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(newSubContract.currentAmount || 0))}
+                  </span>
                 </div>
               </div>
 
@@ -3776,12 +4383,20 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">선급금 (원)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="0"
-                    value={newSubContract.advancePayment || ''}
-                    onChange={e => setNewSubContract({ ...newSubContract, advancePayment: Number(e.target.value) })}
-                    className="w-full p-2.5 border rounded-xl font-bold"
+                    value={newSubContract.advancePayment ? Number(newSubContract.advancePayment).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const numVal = rawVal === '' ? 0 : Number(rawVal);
+                      setNewSubContract({ ...newSubContract, advancePayment: numVal });
+                    }}
+                    className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(newSubContract.advancePayment || 0))}
+                  </span>
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">보증서 유효기간</label>
@@ -4095,35 +4710,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         </div>
       )}
 
-      {/* Admin Unlock Modal */}
-      {showUnlockModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl">
-            <h3 className="text-base font-bold text-slate-900 mb-2">월 마감 잠금 해제 요청 (관리자 권한)</h3>
-            <p className="text-xs text-slate-500 mb-4">마감 해제 사유를 사유서로 입력하십시오.</p>
-            <textarea
-              value={unlockReason}
-              onChange={e => setUnlockReason(e.target.value)}
-              placeholder="마감 해제 사유 입력..."
-              className="w-full p-3 border rounded-xl text-xs mb-4 h-24 focus:ring-2 focus:ring-blue-500"
-            />
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowUnlockModal(false)} className="px-4 py-2 border rounded-xl text-xs font-bold">
-                취소
-              </button>
-              <button
-                onClick={() => {
-                  setIsAdminUnlocked(true);
-                  setShowUnlockModal(false);
-                }}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold"
-              >
-                잠금 해제 승인
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* 커스텀 삭제 확인/알림 모달 (window.confirm / alert 대체) */}
       {confirmModal.isOpen && (
