@@ -218,12 +218,27 @@ export default function App() {
     localStorage.setItem('cp_ai_diagnosis_tab', aiDiagnosisTab);
   }, [aiDiagnosisTab]);
 
+  const safeDispatchEvent = (name: string, detail?: any) => {
+    try {
+      const ev = new window.CustomEvent(name, { detail });
+      window.dispatchEvent(ev);
+    } catch (err) {
+      try {
+        const ev = document.createEvent('CustomEvent');
+        ev.initCustomEvent(name, true, true, detail);
+        window.dispatchEvent(ev);
+      } catch (e) {
+        console.error('Error dispatching custom event:', e);
+      }
+    }
+  };
+
   useEffect(() => {
     const handleGoToProjectList = (e: CustomEvent) => {
       const tab = e.detail || 'billing';
       localStorage.setItem('cp_project_list_tab', tab);
       setViewMode('projects');
-      window.dispatchEvent(new CustomEvent('change-project-list-tab', { detail: tab }));
+      safeDispatchEvent('change-project-list-tab', tab);
     };
     window.addEventListener('go-to-project-list' as any, handleGoToProjectList);
     return () => {
@@ -234,7 +249,13 @@ export default function App() {
   const handleGoToConsolidatedDashboard = () => {
     localStorage.setItem('cp_project_list_tab', 'billing');
     setViewMode('projects');
-    window.dispatchEvent(new CustomEvent('change-project-list-tab', { detail: 'billing' }));
+    safeDispatchEvent('change-project-list-tab', 'billing');
+  };
+
+  const handleNavToProjectList = () => {
+    localStorage.setItem('cp_project_list_tab', 'projects');
+    setViewMode('projects');
+    safeDispatchEvent('change-project-list-tab', 'projects');
   };
   // --- 화면 상태 자동 저장 로직 끝 ---
 
@@ -429,7 +450,7 @@ export default function App() {
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     localStorage.setItem('cp_current_user', JSON.stringify(user));
-    setViewMode('projects');
+    handleNavToProjectList();
   };
 
   const handleLogout = () => {
@@ -454,22 +475,76 @@ export default function App() {
       ...projectData,
       id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       createdAt: new Date().toLocaleDateString(),
-      settings: INITIAL_SETTINGS
+      settings: INITIAL_SETTINGS,
+      user_id: currentUser?.id || undefined
     };
 
-    const updatedProjects = [...projects, newProject];
-    setProjects(updatedProjects);
-    localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
+    let savedProject = newProject;
 
     if (isSupabaseConfigured) {
       try {
         console.log('Saving new project to Supabase:', newProject.id);
-        await supabaseService.saveProject(newProject);
-        console.log('Project saved to Supabase successfully');
-      } catch (error) {
+        const result = await supabaseService.saveProject(newProject);
+        if (result && result.id) {
+          savedProject = { ...newProject, ...result };
+        }
+        console.log('Project saved to Supabase successfully:', savedProject);
+      } catch (error: any) {
         console.error('Error saving project to Supabase:', error);
-        alert('Supabase 저장 중 오류가 발생했습니다. 다른 사용자가 이 프로젝트를 보지 못할 수 있습니다.');
+        let errMsg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+        if (error?.code === '42501' || errMsg.includes('row-level security')) {
+          errMsg = 'Supabase RLS(Row-Level Security) 권한 설정으로 인해 등록이 차단되었습니다. projects 테이블에 INSERT/UPSERT 정책을 추가하거나 RLS를 해제해주세요.';
+        } else if (error?.code === '42P01') {
+          errMsg = 'Supabase에 projects 테이블이 생성되어 있지 않습니다. SQL Editor에서 projects 테이블을 생성해주세요.';
+        }
+        alert(`Supabase 저장 중 오류가 발생했습니다.\n\n[오류 원인]\n${errMsg}`);
       }
+    }
+
+    const updatedProjects = [...projects, savedProject];
+    setProjects(updatedProjects);
+    localStorage.setItem('cp_projects', JSON.stringify(updatedProjects));
+
+    // Initialize clean empty billing and subcontract data for the new project
+    const cleanBillingData = {
+      clientContract: {
+        id: `cc-${savedProject.id}`,
+        projectId: savedProject.id,
+        contractDate: savedProject.startDate ? savedProject.startDate.replace(/\./g, '-').trim() : new Date().toISOString().split('T')[0],
+        constructionStartDate: savedProject.startDate ? savedProject.startDate.replace(/\./g, '-').trim() : '',
+        constructionEndDate: savedProject.endDate ? savedProject.endDate.replace(/\./g, '-').trim() : '',
+        initialAmount: 0,
+        amendedAmount: 0,
+        currentAmount: 0,
+        amendmentRound: 0,
+        changeAmount: 0,
+        changeReason: '',
+        advancePayment: 0,
+        retentionMoney: 0,
+        performanceBond: 0,
+        designChangeAmount: 0,
+        priceFluctuationAmount: 0,
+        extraWorkAmount: 0,
+        contractBalance: 0,
+        status: '준비',
+        attachments: [],
+        history: []
+      },
+      clientBillings: [],
+      subContracts: [],
+      subBillings: [],
+      clientBillingItems: [],
+      subBillingItems: [],
+      executionBudgets: []
+    };
+
+    try {
+      localStorage.setItem(`cp_billing_data_${savedProject.id}`, JSON.stringify(cleanBillingData));
+      if (isSupabaseConfigured) {
+        await supabaseService.saveBillingData(savedProject.id, cleanBillingData);
+      }
+    } catch (e) {
+      console.error('Error initializing clean billing data for new project:', e);
     }
   };
 
@@ -573,7 +648,7 @@ export default function App() {
 
     setProjectToDeleteId(null);
     setIsConfirmModalOpen(false);
-    setViewMode('projects');
+    handleNavToProjectList();
   };
 
   const handleDeleteProjects = async (ids: string[]) => {
@@ -592,7 +667,7 @@ export default function App() {
       }
     }
 
-    setViewMode('projects');
+    handleNavToProjectList();
   };
 
   const handleSelectProject = (id: string, initialMenu: MainMenu = 'dashboard') => {
@@ -1192,7 +1267,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
   ) : null;
 
   if (viewMode === 'user-management') return (
-    <UserManagement onBack={() => setViewMode('projects')} />
+    <UserManagement onBack={handleNavToProjectList} />
   );
 
   return (
@@ -1439,7 +1514,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
 
             <div className="p-4 border-t border-gray-100 space-y-1">
               <button
-                onClick={() => checkUnsavedChanges(() => setViewMode('projects'))}
+                onClick={() => checkUnsavedChanges(handleNavToProjectList)}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-all text-sm font-medium"
               >
                 <ChevronLeft size={18} className="text-gray-400" />
@@ -1503,7 +1578,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                   <h1 className="text-base font-bold tracking-tight text-gray-900 truncate max-w-[150px]">{currentProject?.name}</h1>
                 </div>
                 <button
-                  onClick={() => setViewMode('projects')}
+                  onClick={handleNavToProjectList}
                   className="text-gray-500 p-2 rounded-lg hover:bg-gray-50"
                 >
                   <ChevronLeft size={20} />
@@ -1824,6 +1899,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       <BillingAndSubcontractorView
                         projectId={currentProjectId || ''}
                         settings={settings}
+                        currentUser={currentUser}
                         onGoToConsolidatedDashboard={handleGoToConsolidatedDashboard}
                       />
                     </motion.div>
