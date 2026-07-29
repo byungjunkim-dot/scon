@@ -657,21 +657,21 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
 
   // Global Aggregated KPIs
   const totalStats = useMemo(() => {
-    const totalContract = projectSummaries.reduce((sum, p) => sum + p.clientContractAmt, 0);
-    const totalBilling = projectSummaries.reduce((sum, p) => sum + p.cumulativeBilling, 0);
-    const totalCollected = projectSummaries.reduce((sum, p) => sum + p.collectedAmt, 0);
-    const totalReceivable = projectSummaries.reduce((sum, p) => sum + p.receivableAmt, 0);
-    const totalSubContract = projectSummaries.reduce((sum, p) => sum + p.subContractAmt, 0);
-    const totalSubExecuted = projectSummaries.reduce((sum, p) => sum + p.subExecutedAmt, 0);
-    const totalSubClaimed = projectSummaries.reduce((sum, p) => sum + (p.subClaimedAmt || 0), 0);
-    const totalProfit = projectSummaries.reduce((sum, p) => sum + p.expectedProfit, 0);
-    const totalSubContractorsCount = projectSummaries.reduce((sum, p) => sum + (p.subContractorsCount || 0), 0);
+    const totalContract = filteredProjects.reduce((sum, p) => sum + p.clientContractAmt, 0);
+    const totalBilling = filteredProjects.reduce((sum, p) => sum + p.cumulativeBilling, 0);
+    const totalCollected = filteredProjects.reduce((sum, p) => sum + p.collectedAmt, 0);
+    const totalReceivable = filteredProjects.reduce((sum, p) => sum + p.receivableAmt, 0);
+    const totalSubContract = filteredProjects.reduce((sum, p) => sum + p.subContractAmt, 0);
+    const totalSubExecuted = filteredProjects.reduce((sum, p) => sum + p.subExecutedAmt, 0);
+    const totalSubClaimed = filteredProjects.reduce((sum, p) => sum + (p.subClaimedAmt || 0), 0);
+    const totalProfit = filteredProjects.reduce((sum, p) => sum + p.expectedProfit, 0);
+    const totalSubContractorsCount = filteredProjects.reduce((sum, p) => sum + (p.subContractorsCount || 0), 0);
 
     const avgBillingRate = totalContract > 0 ? (totalBilling / totalContract) * 100 : 0;
     const avgSubRate = totalSubContract > 0 ? (totalSubExecuted / totalSubContract) * 100 : 0;
     const avgCollectionRate = totalBilling > 0 ? (totalCollected / totalBilling) * 100 : 0;
     const subRatioToContract = totalContract > 0 ? (totalSubContract / totalContract) * 100 : 0;
-    const riskProjectsCount = projectSummaries.filter(p => p.isOverBudgetRisk).length;
+    const riskProjectsCount = filteredProjects.filter(p => p.isOverBudgetRisk).length;
 
     return {
       totalContract,
@@ -687,11 +687,11 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
       avgCollectionRate,
       subRatioToContract,
       riskProjectsCount,
-      totalProjectsCount: projectSummaries.length,
-      activeProjectsCount: projectSummaries.filter(p => p.status === '진행').length,
+      totalProjectsCount: filteredProjects.length,
+      activeProjectsCount: filteredProjects.filter(p => p.status === '진행').length,
       totalSubContractorsCount
     };
-  }, [projectSummaries]);
+  }, [filteredProjects]);
 
   // Chart Dataset 1: Project Comparison (Top 8 projects by contract)
   const chartProjectData = useMemo(() => {

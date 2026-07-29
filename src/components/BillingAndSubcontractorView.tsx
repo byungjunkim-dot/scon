@@ -1173,6 +1173,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
   const [newClientBilling, setNewClientBilling] = useState<Partial<ClientBilling>>({
     billingRound: clientBillings.length + 1,
+    claimDate: new Date().toISOString().split('T')[0],
     targetPeriodStart: '2026-07-01',
     targetPeriodEnd: '2026-07-31',
     referenceDate: '2026-07-31',
@@ -1194,6 +1195,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     billingRound: 1,
     targetPeriodStart: '2026-07-01',
     targetPeriodEnd: '2026-07-31',
+    claimDate: new Date().toISOString().split('T')[0],
     currentClaimAmt: 0,
     fieldReviewedAmt: 0,
     finalApprovedAmt: 0,
@@ -1606,7 +1608,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       targetPeriodEnd: newClientBilling.targetPeriodEnd || '2026-07-31',
       referenceDate: newClientBilling.targetPeriodEnd || '2026-07-31',
       createdDate: new Date().toISOString().split('T')[0],
-      submittedDate: new Date().toISOString().split('T')[0],
+      submittedDate: newClientBilling.claimDate || new Date().toISOString().split('T')[0],
       billingExpectedDate: newClientBilling.billingExpectedDate || '2026-08-15',
       collectionExpectedDate: newClientBilling.collectionExpectedDate || '2026-08-31',
       prevCumulativeAmt: prevCum,
@@ -1912,7 +1914,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
       billingRound: newSubBilling.billingRound || 1,
       targetPeriodStart: newSubBilling.targetPeriodStart,
       targetPeriodEnd: newSubBilling.targetPeriodEnd,
-      claimDate: new Date().toISOString().split('T')[0],
+      claimDate: newSubBilling.claimDate || new Date().toISOString().split('T')[0],
       paymentScheduledDate: '2026-08-25',
       prevCumulativeAmt: prevCum,
       currentClaimAmt: claimAmt,
@@ -2229,7 +2231,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <div className="md:col-span-5 flex flex-col justify-between space-y-3">
                   <div>
                     <span className="text-xs font-bold text-slate-400 block mb-1">발주처 도급 총액</span>
-                    <div className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">
+                    <div className="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
                       {formatToEok(projectDashboardMetrics.totalClientContractAmt)}
                     </div>
                   </div>
@@ -2257,7 +2259,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                         <span className="text-[10px] text-slate-400">({projectDashboardMetrics.clientProgressRate.toFixed(1)}%)</span>
                       </div>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-blue-600 rounded-full"
                         style={{ width: `${Math.min(projectDashboardMetrics.clientProgressRate, 100)}%` }}
@@ -2276,7 +2278,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                         </span>
                       </div>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-sky-400 rounded-full"
                         style={{
@@ -2302,7 +2304,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                         </span>
                       </div>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-slate-300 rounded-full"
                         style={{
@@ -2423,7 +2425,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <div className="md:col-span-5 flex flex-col justify-between space-y-3">
                   <div>
                     <span className="text-xs font-bold text-slate-400 block mb-1">외주 계약 총액</span>
-                    <div className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">
+                    <div className="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
                       {formatToEok(projectDashboardMetrics.totalSubContractAmt)}
                     </div>
                   </div>
@@ -2448,7 +2450,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                         </span>
                       </div>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-amber-400 rounded-full"
                         style={{
@@ -2470,7 +2472,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                         <span className="text-[10px] text-slate-400">({projectDashboardMetrics.subExecutionRate.toFixed(1)}%)</span>
                       </div>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-amber-500 rounded-full"
                         style={{ width: `${Math.min(projectDashboardMetrics.subExecutionRate, 100)}%` }}
@@ -2489,7 +2491,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                         </span>
                       </div>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-slate-300 rounded-full"
                         style={{
@@ -2789,25 +2791,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                           <p className="text-xs text-slate-500 max-w-md">
                             상단의 '<span className="font-bold text-blue-600">최초 계약 등록</span>' 버튼을 클릭하여 계약 일자, 공사 기간 및 최초 도급 계약금액을 등록해 주세요.
                           </p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setInitialContractForm({
-                                contractDate: clientContract.contractDate || new Date().toISOString().split('T')[0],
-                                constructionStartDate: clientContract.constructionStartDate || '',
-                                constructionEndDate: clientContract.constructionEndDate || '',
-                                initialAmount: clientContract.initialAmount || 0,
-                                advancePayment: clientContract.advancePayment || 0,
-                                retentionMoney: clientContract.retentionMoney || 0,
-                                performanceBond: clientContract.performanceBond || 0
-                              });
-                              setIsInitialContractModalOpen(true);
-                            }}
-                            className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
-                          >
-                            <Plus size={14} />
-                            최초 계약 정보 등록하기
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -3167,14 +3150,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <h2 className="text-lg font-bold text-slate-900">외주업체 기성 집행 관리</h2>
                 <p className="text-xs text-slate-500 mt-1">현장 대리인의 기성 사정 및 본사 최종 승인, 하도급 직불 현황</p>
               </div>
-              <button
-                onClick={() => setIsSubBillingModalOpen(true)}
-                disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-              >
-                <Plus size={16} />
-                외주 기성 청구 접수
-              </button>
             </div>
 
             {/* 외주업체 전체 합계 요약 보드 */}
@@ -3295,6 +3270,14 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <p className="text-xs text-slate-500">외주업체별로 차수별 기성 청구금액, 최종 승인액 및 지급 내역을 조회합니다.</p>
               </div>
 
+              <button
+                onClick={() => setIsSubBillingModalOpen(true)}
+                disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+              >
+                <Plus size={16} />
+                외주 기성 청구 접수
+              </button>
             </div>
 
             {selectedSubHistoryName === 'all' ? (
@@ -3460,11 +3443,16 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     최초 계약금액 (원) <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    placeholder="예: 45000000000"
-                    value={initialContractForm.initialAmount || ''}
-                    onChange={e => setInitialContractForm({ ...initialContractForm, initialAmount: Number(e.target.value) })}
+                    placeholder="0"
+                    value={initialContractForm.initialAmount ? Number(initialContractForm.initialAmount).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const numVal = rawVal === '' ? 0 : Number(rawVal);
+                      setInitialContractForm({ ...initialContractForm, initialAmount: numVal });
+                    }}
                     className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                   <span className="text-[11px] text-slate-500 mt-0.5 block">
@@ -3695,7 +3683,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <X size={20} />
               </button>
             </div>
-
             <form onSubmit={handleSaveContractAmendment} className="space-y-4 text-xs">
               <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-center justify-between">
                 <div>
@@ -3711,7 +3698,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   </div>
                 </div>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
@@ -3725,7 +3711,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
-
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     변경 공사 시작일
@@ -3737,7 +3722,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
-
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     변경 공사 완료일
@@ -3749,16 +3733,20 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
-
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     계약 변경 증감액 (원) <span className="text-slate-400 font-normal text-[11px]">(증감 없으면 0원)</span>
                   </label>
                   <input
-                    type="number"
-                    placeholder="0"
-                    value={amendmentForm.changeAmount !== undefined && amendmentForm.changeAmount !== null ? amendmentForm.changeAmount : 0}
-                    onChange={e => setAmendmentForm({ ...amendmentForm, changeAmount: e.target.value === '' ? 0 : Number(e.target.value) })}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="예: 1,500,000,000"
+                    value={amendmentForm.changeAmount !== undefined && amendmentForm.changeAmount !== null && amendmentForm.changeAmount !== 0 ? Number(amendmentForm.changeAmount).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9-]/g, '');
+                      const numVal = rawVal === '' || rawVal === '-' ? 0 : Number(rawVal);
+                      setAmendmentForm({ ...amendmentForm, changeAmount: numVal });
+                    }}
                     className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                   <span className="text-[11px] text-slate-500 mt-0.5 block">
@@ -3766,40 +3754,53 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   </span>
                 </div>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <div>
                   <label className="block font-bold text-slate-600 mb-1">설계 변경 금액 (원)</label>
                   <input
-                    type="number"
-                    placeholder="0"
-                    value={amendmentForm.designChangeAmount || ''}
-                    onChange={e => setAmendmentForm({ ...amendmentForm, designChangeAmount: Number(e.target.value) })}
-                    className="w-full p-2 border rounded-lg"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="예: 500,000,000"
+                    value={amendmentForm.designChangeAmount ? Number(amendmentForm.designChangeAmount).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const numVal = rawVal === '' ? 0 : Number(rawVal);
+                      setAmendmentForm({ ...amendmentForm, designChangeAmount: numVal });
+                    }}
+                    className="w-full p-2 border rounded-lg font-bold"
                   />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-600 mb-1">물가 변동 금액 (원)</label>
                   <input
-                    type="number"
-                    placeholder="0"
-                    value={amendmentForm.priceFluctuationAmount || ''}
-                    onChange={e => setAmendmentForm({ ...amendmentForm, priceFluctuationAmount: Number(e.target.value) })}
-                    className="w-full p-2 border rounded-lg"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="예: 300,000,000"
+                    value={amendmentForm.priceFluctuationAmount ? Number(amendmentForm.priceFluctuationAmount).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const numVal = rawVal === '' ? 0 : Number(rawVal);
+                      setAmendmentForm({ ...amendmentForm, priceFluctuationAmount: numVal });
+                    }}
+                    className="w-full p-2 border rounded-lg font-bold"
                   />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-600 mb-1">기타 공사 금액 (원)</label>
                   <input
-                    type="number"
-                    placeholder="0"
-                    value={amendmentForm.extraWorkAmount || ''}
-                    onChange={e => setAmendmentForm({ ...amendmentForm, extraWorkAmount: Number(e.target.value) })}
-                    className="w-full p-2 border rounded-lg"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="예: 200,000,000"
+                    value={amendmentForm.extraWorkAmount ? Number(amendmentForm.extraWorkAmount).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const numVal = rawVal === '' ? 0 : Number(rawVal);
+                      setAmendmentForm({ ...amendmentForm, extraWorkAmount: numVal });
+                    }}
+                    className="w-full p-2 border rounded-lg font-bold"
                   />
                 </div>
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
                   변경 사유 및 내용 <span className="text-rose-500">*</span>
@@ -3813,7 +3814,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   className="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">승인자 / 관리자</label>
@@ -3824,7 +3824,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     className="w-full p-2.5 border rounded-xl"
                   />
                 </div>
-
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">첨부 문서파일명</label>
                   <input
@@ -3836,7 +3835,6 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   />
                 </div>
               </div>
-
               <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
                 <button
                   type="button"
@@ -3851,6 +3849,174 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 >
                   <Check size={16} />
                   계약 변경 저장 (차수 추가)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isClientBillingModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-xl rounded-2xl p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-blue-600 font-bold">
+                <FileText size={20} />
+                <h3 className="text-base font-black text-slate-900">
+                  신규 발주처 기성 청구 등록 ({clientBillings.length + 1}차)
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsClientBillingModalOpen(false)}
+                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveClientBilling} className="space-y-4 text-xs">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">청구일 <span className="text-rose-500">*</span></label>
+                  <input
+                    type="date"
+                    required
+                    value={newClientBilling.claimDate || new Date().toISOString().split('T')[0]}
+                    onChange={e => setNewClientBilling({ ...newClientBilling, claimDate: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">기성 대상 시작일</label>
+                  <input
+                    type="date"
+                    required
+                    value={newClientBilling.targetPeriodStart}
+                    onChange={e => setNewClientBilling({ ...newClientBilling, targetPeriodStart: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">기성 대상 종료일</label>
+                  <input
+                    type="date"
+                    required
+                    value={newClientBilling.targetPeriodEnd}
+                    onChange={e => setNewClientBilling({ ...newClientBilling, targetPeriodEnd: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  금회 기성 청구액 (공급가액, 원) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  required
+                  placeholder="0"
+                  value={newClientBilling.currentClaimAmt ? String(newClientBilling.currentClaimAmt).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                  onChange={e => {
+                    const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                    const val = rawVal === '' ? 0 : Number(rawVal);
+                    const advRatio = clientContract.currentAmount > 0 ? (clientContract.advancePayment / clientContract.currentAmount) : 0.1;
+                    const adv = Math.round(val * advRatio);
+                    const vat = 0;
+                    setNewClientBilling({
+                      ...newClientBilling,
+                      currentClaimAmt: val,
+                      advanceDeductionAmt: adv,
+                      vatAmt: vat,
+                      netClaimAmt: val - adv - (Number(newClientBilling.retentionAmt) || 0)
+                    });
+                  }}
+                  className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <span className="text-[11px] text-slate-500 mt-0.5 block">
+                  입력값: {formatKRW(Number(newClientBilling.currentClaimAmt || 0))}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">선급금 정산 공제액</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={newClientBilling.advanceDeductionAmt ? String(newClientBilling.advanceDeductionAmt).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const adv = rawVal === '' ? 0 : Number(rawVal);
+                      const claim = Number(newClientBilling.currentClaimAmt || 0);
+                      const ret = Number(newClientBilling.retentionAmt || 0);
+                      setNewClientBilling({
+                        ...newClientBilling,
+                        advanceDeductionAmt: adv,
+                        netClaimAmt: claim - adv - ret
+                      });
+                    }}
+                    className="w-full p-2 border rounded-lg font-bold"
+                  />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(newClientBilling.advanceDeductionAmt || 0))}
+                  </span>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">유보금 공제액 (수기 입력)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={newClientBilling.retentionAmt ? String(newClientBilling.retentionAmt).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const ret = rawVal === '' ? 0 : Number(rawVal);
+                      const claim = Number(newClientBilling.currentClaimAmt || 0);
+                      const adv = Number(newClientBilling.advanceDeductionAmt || 0);
+                      setNewClientBilling({
+                        ...newClientBilling,
+                        retentionAmt: ret,
+                        netClaimAmt: claim - adv - ret
+                      });
+                    }}
+                    className="w-full p-2 border rounded-lg font-bold"
+                  />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(newClientBilling.retentionAmt || 0))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-center justify-between">
+                <span className="text-blue-700 font-semibold">청구 순수 수령액 (계수 확인)</span>
+                <span className="text-base font-black text-blue-900">{formatKRW(newClientBilling.netClaimAmt || 0)}</span>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">비고 / 첨부파일명</label>
+                <input
+                  type="text"
+                  placeholder="예: 청구서_및_내역서.pdf"
+                  value={newClientBilling.attachment || ''}
+                  onChange={e => setNewClientBilling({ ...newClientBilling, attachment: e.target.value })}
+                  className="w-full p-2.5 border rounded-xl"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsClientBillingModalOpen(false)}
+                  className="px-4 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <Check size={16} />
+                  기성 청구 등록
                 </button>
               </div>
             </form>
@@ -3878,7 +4044,17 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
             </div>
 
             <form onSubmit={handleSaveClientBilling} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">청구일 <span className="text-rose-500">*</span></label>
+                  <input
+                    type="date"
+                    required
+                    value={newClientBilling.claimDate || new Date().toISOString().split('T')[0]}
+                    onChange={e => setNewClientBilling({ ...newClientBilling, claimDate: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl"
+                  />
+                </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">기성 대상 시작일</label>
                   <input
@@ -4492,35 +4668,59 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 </select>
               </div>
 
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">청구일</label>
+                <input
+                  type="date"
+                  value={newSubBilling.claimDate || new Date().toISOString().split('T')[0]}
+                  onChange={e => setNewSubBilling({ ...newSubBilling, claimDate: e.target.value })}
+                  className="w-full p-2.5 border rounded-xl font-bold text-slate-800"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     업체 청구 금액 (원) <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    placeholder="예: 500000000"
-                    value={newSubBilling.currentClaimAmt || ''}
+                    placeholder="0"
+                    value={newSubBilling.currentClaimAmt ? Number(newSubBilling.currentClaimAmt).toLocaleString('ko-KR') : ''}
                     onChange={e => {
-                      const val = Number(e.target.value);
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const val = rawVal === '' ? 0 : Number(rawVal);
                       setNewSubBilling({
                         ...newSubBilling,
                         currentClaimAmt: val,
                         finalApprovedAmt: val
                       });
                     }}
-                    className="w-full p-2.5 border rounded-xl font-bold"
+                    className="w-full p-2.5 border rounded-xl font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(newSubBilling.currentClaimAmt || 0))}
+                  </span>
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">최종 승인액 (원)</label>
                   <input
-                    type="number"
-                    value={newSubBilling.finalApprovedAmt || ''}
-                    onChange={e => setNewSubBilling({ ...newSubBilling, finalApprovedAmt: Number(e.target.value) })}
-                    className="w-full p-2.5 border rounded-xl font-bold text-emerald-700"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={newSubBilling.finalApprovedAmt ? Number(newSubBilling.finalApprovedAmt).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const val = rawVal === '' ? 0 : Number(rawVal);
+                      setNewSubBilling({ ...newSubBilling, finalApprovedAmt: val });
+                    }}
+                    className="w-full p-2.5 border rounded-xl font-bold text-emerald-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(newSubBilling.finalApprovedAmt || 0))}
+                  </span>
                 </div>
               </div>
 

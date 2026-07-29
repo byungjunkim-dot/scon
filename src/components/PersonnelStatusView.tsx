@@ -90,29 +90,13 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
   const [selectedWorkTypeFilter, setSelectedWorkTypeFilter] = useState<string>('all');
   const [selectedJobTitleFilter, setSelectedJobTitleFilter] = useState<string>('all');
 
-  // Gantt chart status filter (진행 / 완료 / 홀딩 / 전체)
-  const [ganttStatusFilter, setGanttStatusFilter] = useState<string>('진행');
-
   // Year selection for the monthly allocation trend chart
   const [selectedChartYear, setSelectedChartYear] = useState<number>(2026);
 
   // Filter projects for Gantt chart based on status filter and selectedStatuses
   const ganttProjects = React.useMemo(() => {
-    return projects.filter(p => {
-      if (!matchesStatus(p)) return false;
-      if (ganttStatusFilter === '전체') return true;
-      const rawStatus = String(p.status || '진행').trim().toLowerCase();
-      let normalizedStatus = '진행';
-      if (rawStatus.includes('준비') || rawStatus.includes('계획') || rawStatus.includes('예정') || rawStatus.includes('대기')) {
-        normalizedStatus = '준비';
-      } else if (rawStatus.includes('완료') || rawStatus.includes('준공')) {
-        normalizedStatus = '완료';
-      } else if (rawStatus.includes('홀딩') || rawStatus.includes('보류') || rawStatus.includes('중단')) {
-        normalizedStatus = '홀딩';
-      }
-      return normalizedStatus === ganttStatusFilter;
-    });
-  }, [projects, selectedStatuses, ganttStatusFilter]);
+    return projects.filter(p => matchesStatus(p));
+  }, [projects, selectedStatuses]);
 
   // Filter allocations for gantt projects
   const ganttAllocations = React.useMemo(() => {
@@ -120,9 +104,6 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
   }, [allocations, ganttProjects]);
 
   // Reset project filter when gantt status filter changes
-  useEffect(() => {
-    setSelectedProjectFilter('all');
-  }, [ganttStatusFilter]);
 
   // Input states for adding new worker (keyed by project ID for simplicity)
   const [newWorkerNames, setNewWorkerNames] = useState<Record<string, string>>({});
@@ -686,7 +667,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
   const todayLeftPercent = ((todayTime - timelineStart) / totalDuration) * 100;
 
   const activeFilterCount = activeGanttTab === 'project'
-    ? (ganttStatusFilter !== '진행' ? 1 : 0) + (selectedProjectFilter !== 'all' ? 1 : 0) + (selectedWorkTypeFilter !== 'all' ? 1 : 0) + (selectedJobTitleFilter !== 'all' ? 1 : 0)
+    ? (selectedProjectFilter !== 'all' ? 1 : 0) + (selectedWorkTypeFilter !== 'all' ? 1 : 0) + (selectedJobTitleFilter !== 'all' ? 1 : 0)
     : (workerStatusFilter !== '전체' ? 1 : 0) + (workerProjectFilter !== 'all' ? 1 : 0) + (workerWorkTypeFilter !== 'all' ? 1 : 0) + (workerJobTitleFilter !== 'all' ? 1 : 0) + (workerSearchQuery !== '' ? 1 : 0);
 
   if (loading) {
@@ -856,7 +837,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-md font-bold text-gray-800">직종별 인원 투입 현황</h3>
+                <h3 className="text-md font-bold text-gray-800">직종별 인원 투입 현황(이번달)</h3>
               </div>
             </div>
 
@@ -1122,21 +1103,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
           <div className={`${showMobileFilters ? 'flex' : 'hidden'} md:flex flex-wrap items-center gap-2.5 w-full lg:w-auto`}>
             {activeGanttTab === 'project' ? (
               <>
-                {/* Status Filter */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold text-gray-400">진행상황 필터</span>
-                  <select
-                    value={ganttStatusFilter}
-                    onChange={(e) => setGanttStatusFilter(e.target.value)}
-                    className="px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer"
-                  >
-                    <option value="전체">전체 프로젝트</option>
-                    <option value="준비">준비중</option>
-                    <option value="진행">진행중</option>
-                    <option value="완료">완료됨</option>
-                    <option value="홀딩">홀딩됨</option>
-                  </select>
-                </div>
+                {/* Status Filter was removed */}
 
                 {/* Project Filter */}
                 <div className="flex flex-col gap-1">

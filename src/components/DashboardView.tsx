@@ -747,7 +747,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   {/* 좌: 발주처 도급 총액 */}
                   <div className="space-y-2.5">
                     <div>
-                      <span className="text-[11px] font-bold text-gray-400 block mb-0.5">도급 총액</span>
+                      <span className="text-sm text-gray-500 block mb-0.5">도급 총액</span>
                       <div className="text-xl font-black text-gray-900 tracking-tight">
                         {formatSummaryEok(financialSummary.clientTotal)}
                       </div>
@@ -793,7 +793,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                           <div className="space-y-1.5 text-[11px]">
                             <div className="flex justify-between items-center">
                               <span className="flex items-center gap-1.5 font-semibold text-gray-600">
-                                <span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />
+                                <span className="w-1 h-1 rounded-full bg-blue-600 inline-block" />
                                 기성
                               </span>
                               <span className="font-bold text-blue-600">{formatSummaryEok(financialSummary.clientClaim)}</span>
@@ -801,7 +801,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
                             <div className="flex justify-between items-center">
                               <span className="flex items-center gap-1.5 font-semibold text-gray-600">
-                                <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />
+                                <span className="w-1 h-1 rounded-full bg-sky-400 inline-block" />
                                 미수금
                               </span>
                               <span className="font-bold text-sky-500">{formatSummaryEok(financialSummary.clientReceivable)}</span>
@@ -809,7 +809,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
                             <div className="flex justify-between items-center">
                               <span className="flex items-center gap-1.5 font-semibold text-gray-600">
-                                <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />
+                                <span className="w-1 h-1 rounded-full bg-slate-300 inline-block" />
                                 잔액
                               </span>
                               <span className="font-bold text-gray-800">{formatSummaryEok(financialSummary.clientRemaining)}</span>
@@ -823,7 +823,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   {/* 우: 외주 계약 총액 */}
                   <div className="space-y-2.5">
                     <div>
-                      <span className="text-[11px] font-bold text-gray-400 block mb-0.5">외주 총액</span>
+                      <span className="text-sm text-gray-500 block mb-0.5">외주 총액</span>
                       <div className="text-xl font-black text-gray-900 tracking-tight">
                         {formatSummaryEok(financialSummary.subTotal)}
                       </div>
@@ -865,7 +865,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                           <div className="space-y-1.5 text-[11px]">
                             <div className="flex justify-between items-center">
                               <span className="flex items-center gap-1.5 font-semibold text-gray-600">
-                                <span className="w-2 h-2 rounded-full bg-amber-300 inline-block" />
+                                <span className="w-1 h-1 rounded-full bg-amber-300 inline-block" />
                                 청구
                               </span>
                               <span className="font-bold text-amber-500">{formatSummaryEok(financialSummary.subClaim)}</span>
@@ -873,7 +873,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
                             <div className="flex justify-between items-center">
                               <span className="flex items-center gap-1.5 font-semibold text-gray-600">
-                                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                                <span className="w-1 h-1 rounded-full bg-amber-500 inline-block" />
                                 승인
                               </span>
                               <span className="font-bold text-amber-600">{formatSummaryEok(financialSummary.subApproved)}</span>
@@ -881,7 +881,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
                             <div className="flex justify-between items-center">
                               <span className="flex items-center gap-1.5 font-semibold text-gray-600">
-                                <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />
+                                <span className="w-1 h-1 rounded-full bg-slate-300 inline-block" />
                                 잔액
                               </span>
                               <span className="font-bold text-gray-800">{formatSummaryEok(financialSummary.subRemaining)}</span>
@@ -913,7 +913,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                         className={imageAspect === 'portrait' ? "max-h-[415px] w-auto object-contain mx-auto rounded-lg shadow-sm" : "w-full h-full object-cover rounded-lg shadow-sm"} 
                       />
                     ) : (
-                      <div className="flex flex-col items-center justify-center text-gray-300 bg-gray-50 w-full h-full rounded-lg">
+                      <div className="flex flex-col items-center justify-center text-gray-400 bg-gray-50 w-full h-full rounded-lg">
                         <Building2 size={48} className="mb-2 opacity-50" />
                         <span className="text-sm font-medium">대표이미지 없음</span>
                       </div>
@@ -959,8 +959,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
             {/* 전체 공정률 */}
             <div className="col-span-2 md:col-span-1 bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col relative">
               <div className="flex justify-between items-center mb-2">
-                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                  <TrendingUp className="text-emerald-600" size={16} />
+                <h2 className="text-sm font-bold text-gray-900">
                   전체 공정률
                 </h2>
               </div>
@@ -1026,22 +1025,22 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full bg-blue-500 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.direct / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
-                  <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.direct}</div>
-                  <div className="text-[10px] text-gray-400 mt-0">직영</div>
+                  <div className="text-[11px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.direct}</div>
+                  <div className="text-[11px] text-gray-400 mt-0">직영</div>
                 </div>
                 <div className="flex flex-col items-center flex-1 h-full">
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full bg-yellow-400 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.outsourced / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
-                  <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.outsourced}</div>
-                  <div className="text-[10px] text-gray-400 mt-0">외주</div>
+                  <div className="text-[11px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.outsourced}</div>
+                  <div className="text-[11px] text-gray-400 mt-0">외주</div>
                 </div>
                 <div className="flex flex-col items-center flex-1 h-full">
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full bg-green-400 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.other / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
                   </div>
-                  <div className="text-[10px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.other}</div>
-                  <div className="text-[10px] text-gray-400 mt-0">기타</div>
+                  <div className="text-[11px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.other}</div>
+                  <div className="text-[11px] text-gray-400 mt-0">기타</div>
                 </div>
               </div>
             </div>
@@ -1056,29 +1055,30 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 mb-1">
-                      <CloudSun size={32} className="text-yellow-400" />
-                      <div className="text-xs text-gray-600">{weatherData?.status || todayReport?.weather?.status || '날씨 정보 없음'}</div>
-                    </div>
-                    <div className="flex items-baseline gap-1 mb-1">
-                      <span className="text-2xl font-bold text-blue-600">
-                        {(weatherData?.temperature || todayReport?.weather?.temperature || '0').replace(/[^0-9.-]/g, '')}
-                      </span>
-                      <span className="text-sm font-medium text-blue-600">°C</span>
-                    </div>
-                    
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                        <span className="flex items-center gap-0.5">
-                          <span className="text-red-500 font-bold">↑</span> {weatherData?.maxTemp || todayReport?.weather?.maxTemp || '-'}
-                        </span>
-                        <span className="flex items-center gap-0.5">
-                          <span className="text-blue-500 font-bold">↓</span> {weatherData?.minTemp || todayReport?.weather?.minTemp || '-'}
-                        </span>
+                    <div className="flex w-full justify-center items-center gap-x-8">
+                      <div className="flex flex-col items-center gap-1">
+                        <CloudSun size={32} className="text-yellow-400" />
+                        <div className="text-sm text-gray-600">{weatherData?.status || todayReport?.weather?.status || '날씨 정보 없음'}</div>
                       </div>
-                      <div className="text-[9px] text-gray-400 flex gap-2">
-                        <span>강수 {weatherData?.precipitation || todayReport?.weather?.precipitation || '0mm'}</span>
-                        <span>풍속 {weatherData?.windSpeed || todayReport?.weather?.windSpeed || '0m/s'}</span>
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-bold text-blue-600">
+                            {(weatherData?.temperature || todayReport?.weather?.temperature || '0').replace(/[^0-9.-]/g, '')}
+                          </span>
+                          <span className="text-sm font-medium text-blue-600">°C</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                          <span className="flex items-center gap-0.5">
+                            <span className="text-red-500 font-bold">↑</span> {weatherData?.maxTemp || todayReport?.weather?.maxTemp || '-'}
+                          </span>
+                          <span className="flex items-center gap-0.5">
+                            <span className="text-blue-500 font-bold">↓</span> {weatherData?.minTemp || todayReport?.weather?.minTemp || '-'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-400 flex items-center gap-2">
+                          <span>강수 {weatherData?.precipitation || todayReport?.weather?.precipitation || '0mm'}</span>
+                          <span>풍속 {weatherData?.windSpeed || todayReport?.weather?.windSpeed || '0m/s'}</span>
+                        </div>
                       </div>
                     </div>
                   </>
@@ -1190,9 +1190,9 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
         </div>
         <div className="grid grid-cols-2 md:grid-cols-12 lg:grid-cols-12 gap-2 md:gap-3">
           
-          {/* 오늘 할 일 */}
+          {/* 오늘 작업 내용 */}
           <div className="col-span-2 md:col-span-12 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-sm font-bold text-gray-900 mb-4">오늘 할 일</h2>
+            <h2 className="text-sm font-bold text-gray-900 mb-4">오늘 작업 내용</h2>
             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
               {(todayReport?.todayTasks || []).map((task, idx) => (
                 <div key={task.id || idx} className="flex items-center py-2 border-b border-gray-100 last:border-0 gap-3 md:gap-4">
@@ -1236,25 +1236,25 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
 
           {/* 투입 인력 */}
-          <div className="col-span-1 md:col-span-6 lg:col-span-2 bg-gray-50 rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="col-span-1 md:col-span-6 lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-sm font-bold text-gray-900 mb-4">투입 인력</h2>
-            <div className="mb-4 p-3 bg-white rounded-lg border border-gray-100 flex justify-between items-center">
-              <span className="text-xs font-medium text-gray-500">합계</span>
+            <div className="mb-4 p-3 bg-white rounded-lg flex justify-between items-center">
+              <span className="text-sm font-medium text-gray-500">합계</span>
               <span className="text-lg font-black text-blue-600">
                 {(todayReport?.personnel?.direct || 0) + (todayReport?.personnel?.outsourced || 0) + (todayReport?.personnel?.other || 0)}
                 <span className="text-xs font-bold text-gray-400 ml-1">명</span>
               </span>
             </div>
             <div className="space-y-3">
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex justify-between items-center text-[11px]">
                 <span className="text-gray-600">직영</span>
                 <span className="text-blue-600 font-bold">{todayReport?.personnel?.direct || 0} <span className="text-gray-500 font-normal text-xs">명</span></span>
               </div>
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex justify-between items-center text-[11px]">
                 <span className="text-gray-600">외주</span>
                 <span className="text-blue-600 font-bold">{todayReport?.personnel?.outsourced || 0} <span className="text-gray-500 font-normal text-xs">명</span></span>
               </div>
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex justify-between items-center text-[11px]">
                 <span className="text-gray-600">기타</span>
                 <span className="text-blue-600 font-bold">{todayReport?.personnel?.other || 0} <span className="text-gray-500 font-normal text-xs">명</span></span>
               </div>
@@ -1262,7 +1262,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           </div>
 
           {/* 장비 투입 */}
-          <div className="col-span-1 md:col-span-6 lg:col-span-2 bg-gray-50 rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="col-span-1 md:col-span-6 lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-sm font-bold text-gray-900 mb-4">장비 투입</h2>
             <div className="space-y-1 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
               {(todayReport?.equipment || []).map((eq, idx) => (
@@ -1277,7 +1277,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                 </div>
               ))}
               {(!todayReport?.equipment || todayReport.equipment.length === 0) && (
-                <div className="text-center py-4 text-gray-400 text-xs bg-white/50 rounded border border-dashed border-gray-200">투입 장비 없음</div>
+                <div className="text-center py-4 text-gray-400 text-xs bg-gray-50/50 rounded">투입 장비 없음</div>
               )}
             </div>
           </div>
@@ -1299,7 +1299,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                 </div>
               ))}
               {(!todayReport?.issues || todayReport.issues.length === 0) && (
-                <div className="text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded border border-dashed border-gray-200">
+                <div className="text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded">
                   등록된 특기사항이 없습니다.
                 </div>
               )}
@@ -1330,7 +1330,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   </div>
                 ))}
                 {(!todayReport?.photos || todayReport.photos.length === 0) && (
-                  <div className="col-span-full text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded border border-dashed border-gray-200">
+                  <div className="col-span-full text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded">
                     등록된 현장사진이 없습니다.
                   </div>
                 )}
@@ -1338,9 +1338,9 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
             </div>
           </div>
 
-          {/* 내일 할 일 */}
+          {/* 내일 작업 내용 */}
           <div className="col-span-2 md:col-span-12 lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-sm font-bold text-gray-900 mb-4">내일 할 일</h2>
+            <h2 className="text-sm font-bold text-gray-900 mb-4">내일 작업 내용</h2>
             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
               {(todayReport?.tomorrowTasks || []).map((task, idx) => (
                 <div key={task.id || idx} className="flex items-center py-2 border-b border-gray-100 last:border-0 gap-3 md:gap-4">

@@ -49,7 +49,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ project, sch
   }, [schedules]);
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-8">
+    <div className="h-full overflow-y-auto bg-[#f7f7f5] p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
         {/* Header */}
