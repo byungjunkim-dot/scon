@@ -263,11 +263,25 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
       fetchBillingData();
 
       const fetchSchedules = async () => {
-        try {
-          const data = await supabaseService.getSchedules(project.id);
-          setSchedules(data || []);
-        } catch (error) {
-          console.error('Error fetching schedules:', error);
+        const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
+          (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+        if (isSupabaseConfigured) {
+          try {
+            const data = await supabaseService.getSchedules(project.id);
+            if (data && data.length > 0) {
+              setSchedules(data);
+              localStorage.setItem(`schedules_${project.id}`, JSON.stringify(data));
+            } else {
+              const localSchedules = localStorage.getItem(`schedules_${project.id}`);
+              if (localSchedules) setSchedules(JSON.parse(localSchedules));
+            }
+          } catch (error) {
+            console.warn('Schedules fetch from Supabase failed, using local storage:', error);
+            const localSchedules = localStorage.getItem(`schedules_${project.id}`);
+            if (localSchedules) setSchedules(JSON.parse(localSchedules));
+          }
+        } else {
           const localSchedules = localStorage.getItem(`schedules_${project.id}`);
           if (localSchedules) setSchedules(JSON.parse(localSchedules));
         }
@@ -288,7 +302,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           try {
             reports = await supabaseService.getDailyReports(project.id);
           } catch (e) {
-            console.warn('Daily Reports fetch failed, trying local storage');
+            console.warn('Daily Reports fetch failed, trying local storage', e);
             const saved = localStorage.getItem(`cp_daily_reports_${project.id}`);
             if (saved) reports = JSON.parse(saved);
           }
@@ -296,7 +310,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           try {
             inspections = await supabaseService.getInspectionRequests(project.id);
           } catch (e) {
-            console.warn('Inspection Requests fetch failed');
+            console.warn('Inspection Requests fetch failed', e);
             const saved = localStorage.getItem(`cp_inspection_requests_${project.id}`);
             if (saved) inspections = JSON.parse(saved);
           }
@@ -304,7 +318,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           try {
             materialApprovals = await supabaseService.getMaterialApprovals(project.id);
           } catch (e) {
-            console.warn('Material Approvals fetch failed');
+            console.warn('Material Approvals fetch failed', e);
             const saved = localStorage.getItem(`cp_material_approvals_${project.id}`);
             if (saved) materialApprovals = JSON.parse(saved);
           }
@@ -312,7 +326,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           try {
             concretePlans = await supabaseService.getConcretePlans(project.id);
           } catch (e) {
-            console.warn('Concrete Plans fetch failed');
+            console.warn('Concrete Plans fetch failed', e);
             const saved = localStorage.getItem(`cp_concrete_plans_${project.id}`);
             if (saved) concretePlans = JSON.parse(saved);
           }
@@ -385,7 +399,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
             setWeatherData(data);
           }
         } catch (error) {
-          console.error('날씨 조회 실패:', error);
+          console.warn('날씨 조회 예외 발생:', error);
         } finally {
           setIsWeatherLoading(false);
         }
@@ -771,7 +785,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
                       return (
                         <div className="space-y-2.5">
-                          <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
+                          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden flex">
                             <div
                               className="bg-blue-600 h-full transition-all duration-300"
                               style={{ width: `${collectedPct}%` }}
@@ -843,7 +857,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
                       return (
                         <div className="space-y-2.5">
-                          <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
+                          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden flex">
                             <div
                               className="bg-amber-500 h-full transition-all duration-300"
                               style={{ width: `${approvedPct}%` }}
@@ -1055,12 +1069,12 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   </div>
                 ) : (
                   <>
-                    <div className="flex w-full justify-center items-center gap-x-8">
+                    <div className="flex w-full justify-center items-center gap-x-2">
                       <div className="flex flex-col items-center gap-1">
                         <CloudSun size={32} className="text-yellow-400" />
                         <div className="text-sm text-gray-600">{weatherData?.status || todayReport?.weather?.status || '날씨 정보 없음'}</div>
                       </div>
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex flex-col items-center gap-1">
                         <div className="flex items-baseline gap-1">
                           <span className="text-2xl font-bold text-blue-600">
                             {(weatherData?.temperature || todayReport?.weather?.temperature || '0').replace(/[^0-9.-]/g, '')}
