@@ -1405,7 +1405,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               </button>
               <button
                 onClick={() => checkUnsavedChanges(() => setMainMenu('billing'))}
-                className={`w-full hidden xl:flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'billing' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'billing' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
               >
                 <DollarSign size={18} className={mainMenu === 'billing' ? 'text-blue-600' : 'text-gray-400'} />
                 <span>기성&외주</span>
@@ -1634,6 +1634,13 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                 >
                   <Sparkles size={16} className={`${mainMenu === 'ai-diagnosis' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>AI 진단</span>
+                </button>
+                <button
+                  onClick={() => setMainMenu('billing')}
+                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'billing' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                >
+                  <DollarSign size={16} className={`${mainMenu === 'billing' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span>기성&외주</span>
                 </button>
               </div>
 
