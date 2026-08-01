@@ -2676,7 +2676,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <div className="p-4 bg-white rounded-xl border border-slate-200">
                 <span className="text-xs text-slate-500 font-medium">
                   현재 계약금액 {clientContract.amendmentRound > 0 ? `(차수: ${clientContract.amendmentRound}차 변경)` : '(최초 계약)'}
