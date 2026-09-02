@@ -18,6 +18,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, t
     category: '',
     subCategory: '',
     taskName: '',
+    contractor: '',
     location: '',
     dongBlock: [],
     floor: [],
@@ -37,6 +38,7 @@ useEffect(() => {
   if (task) {
     setFormData({
       ...task,
+      contractor: task.contractor || '',
       dongBlock: toArray(task.dongBlock as string | string[]),
       floor: toArray(task.floor as string | string[]),
       zone: toArray(task.zone as string | string[])
@@ -47,6 +49,7 @@ useEffect(() => {
       category: '',
       subCategory: '',
       taskName: '',
+      contractor: '',
       location: '',
       dongBlock: [],
       floor: [],
@@ -64,7 +67,7 @@ useEffect(() => {
   const { name, value } = e.target;
 
   if (name === 'category') {
-    setFormData(prev => ({ ...prev, category: value, subCategory: '' }));
+    setFormData(prev => ({ ...prev, category: value, subCategory: '', contractor: '' }));
   } else {
     setFormData(prev => ({ ...prev, [name]: value }));
   }
@@ -124,6 +127,16 @@ const handleMultiSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
             <input type="text" name="taskName" value={formData.taskName} onChange={handleChange} className="w-full border rounded p-2 text-sm" required />
           </div>
 
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-600">업체</label>
+            <select name="contractor" value={formData.contractor || ''} onChange={handleChange} className="w-full border rounded p-2 text-sm" disabled={!formData.category}>
+              <option value="">선택</option>
+              {formData.category && (settings.contractors[formData.category] || []).map(cont => (
+                <option key={cont} value={cont}>{cont}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="grid grid-cols-3 gap-4">
   <div className="space-y-1">
     <label className="text-xs font-bold text-gray-600">동/블록</label>
@@ -175,22 +188,6 @@ const handleMultiSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
             <label className="text-xs font-bold text-gray-600">작업량</label>
             <input type="text" name="amount" value={formData.amount} onChange={handleChange} className="w-full border rounded p-2 text-sm" />
           </div>
-
-          {type === 'today' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-600">상태</label>
-                <select name="status" value={formData.status || '진행'} onChange={handleChange} className="w-full border rounded p-2 text-sm">
-                  <option value="진행">진행</option>
-                  <option value="연기">연기</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-600">사유</label>
-                <input type="text" name="reason" value={formData.reason || ''} onChange={handleChange} className="w-full border rounded p-2 text-sm" disabled={formData.status !== '연기'} />
-              </div>
-            </div>
-          )}
 
           <div className="pt-4 flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">취소</button>

@@ -18,6 +18,7 @@ import {
 import { Project, User } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { isSupabaseConfigured as hasSupabase } from '../lib/supabase';
+import { safeJsonParse } from '../utils/safeJson';
 import QuickMemoModal, {
   QuickMemo,
   QuickMemoCategory,
@@ -298,7 +299,7 @@ export function QuickMemoView({
      */
     const key = getLocalStorageKey(project.id);
     const saved = localStorage.getItem(key);
-    const localMemos: QuickMemo[] = saved ? JSON.parse(saved) : [];
+    const localMemos: QuickMemo[] = safeJsonParse(saved, []);
 
     let serverMemos: QuickMemo[] = [];
 
@@ -364,13 +365,8 @@ serverMemos.forEach((serverMemo) => {
     setMemos(mergedMemos);
   } catch (error) {
     console.error('Quick memo load failed:', error);
-
-    try {
-      const saved = localStorage.getItem(getLocalStorageKey(project.id));
-      setMemos(saved ? JSON.parse(saved) : []);
-    } catch {
-      setMemos([]);
-    }
+    const saved = localStorage.getItem(getLocalStorageKey(project.id));
+    setMemos(safeJsonParse(saved, []));
   } finally {
     setLoading(false);
   }
@@ -391,7 +387,7 @@ serverMemos.forEach((serverMemo) => {
     } else {
       const key = getLocalStorageKey(project.id);
       const saved = localStorage.getItem(key);
-      const list: QuickMemo[] = saved ? JSON.parse(saved) : [];
+      const list: QuickMemo[] = safeJsonParse(saved, []);
 
       const index = list.findIndex((item) => item.id === memo.id);
 
@@ -428,7 +424,7 @@ serverMemos.forEach((serverMemo) => {
     previousLocalValue = localStorage.getItem(key);
 
     const saved = localStorage.getItem(key);
-    const list: QuickMemo[] = saved ? JSON.parse(saved) : [];
+    const list: QuickMemo[] = safeJsonParse(saved, []);
 
     const nextList = list.filter((item) => item.id !== memoId);
     localStorage.setItem(key, JSON.stringify(nextList));
@@ -509,7 +505,7 @@ serverMemos.forEach((serverMemo) => {
     try {
       const key = getLocalStorageKey(project.id);
       const saved = localStorage.getItem(key);
-      const list: QuickMemo[] = saved ? JSON.parse(saved) : [];
+      const list: QuickMemo[] = safeJsonParse(saved, []);
 
       const exists = list.some((item) => item.id === memo.id);
 

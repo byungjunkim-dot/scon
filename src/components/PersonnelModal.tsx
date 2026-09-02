@@ -16,9 +16,45 @@ export const PersonnelModal: React.FC<PersonnelModalProps> = ({ isOpen, onClose,
 
   useEffect(() => {
     if (isOpen) {
-      setPersonnelList(initialPersonnel.length > 0 ? initialPersonnel : [
-        { id: Date.now().toString(), discipline: '', direct: 0, outsourced: 0, other: 0 }
-      ]);
+      if (!initialPersonnel || initialPersonnel.length === 0) {
+        const baseTime = Date.now();
+        setPersonnelList([
+          { id: `${baseTime}-0`, discipline: '공통관리', contractor: '', direct: 0, outsourced: 0, other: 0, workTime: '주간' },
+          { id: `${baseTime}-1`, discipline: '', contractor: '', direct: 0, outsourced: 0, other: 0, workTime: '주간' },
+          { id: `${baseTime}-2`, discipline: '', contractor: '', direct: 0, outsourced: 0, other: 0, workTime: '주간' },
+          { id: `${baseTime}-3`, discipline: '', contractor: '', direct: 0, outsourced: 0, other: 0, workTime: '주간' }
+        ]);
+      } else {
+        const baseTime = Date.now();
+        // Check if '공통관리' exists in initialPersonnel
+        const commonMgmt = initialPersonnel.find(p => p.discipline === '공통관리');
+        const others = initialPersonnel.filter(p => p.discipline !== '공통관리');
+        
+        const combined: DailyPersonnel[] = [
+          commonMgmt || { id: `${baseTime}-cm`, discipline: '공통관리', contractor: '', direct: 0, outsourced: 0, other: 0, workTime: '주간' },
+          ...others
+        ];
+
+        // Map existing elements to make sure workTime is '주간' if not set
+        const mapped = combined.map(p => ({
+          ...p,
+          workTime: p.workTime || '주간'
+        }));
+
+        // Pad with empty rows up to at least 4 rows total
+        while (mapped.length < 4) {
+          mapped.push({
+            id: `${baseTime}-pad-${mapped.length}`,
+            discipline: '',
+            contractor: '',
+            direct: 0,
+            outsourced: 0,
+            other: 0,
+            workTime: '주간'
+          });
+        }
+        setPersonnelList(mapped);
+      }
     }
   }, [isOpen, initialPersonnel]);
 
@@ -27,12 +63,25 @@ export const PersonnelModal: React.FC<PersonnelModalProps> = ({ isOpen, onClose,
   const handleAddRow = () => {
     setPersonnelList([
       ...personnelList,
-      { id: Date.now().toString(), discipline: '', direct: 0, outsourced: 0, other: 0 }
+      { id: Date.now().toString() + Math.random().toString(36).substring(2, 5), discipline: '', contractor: '', direct: 0, outsourced: 0, other: 0, workTime: '주간' }
     ]);
   };
 
   const handleRemoveRow = (id: string) => {
     setPersonnelList(personnelList.filter(p => p.id !== id));
+  };
+
+  const handleDisciplineChange = (id: string, newDiscipline: string) => {
+    setPersonnelList(personnelList.map(p => {
+      if (p.id !== id) return p;
+      const availableContractors = (settings?.contractors && settings.contractors[newDiscipline]) || [];
+      const contractorStillValid = Boolean(p.contractor && availableContractors.includes(p.contractor));
+      return {
+        ...p,
+        discipline: newDiscipline,
+        contractor: contractorStillValid ? p.contractor : ''
+      };
+    }));
   };
 
   const handleChange = (id: string, field: keyof DailyPersonnel, value: string | number) => {
@@ -42,8 +91,15 @@ export const PersonnelModal: React.FC<PersonnelModalProps> = ({ isOpen, onClose,
   };
 
   const handleSave = () => {
-    // Filter out empty rows
-    const validPersonnel = personnelList.filter(p => p.discipline.trim() !== '' || p.direct > 0 || p.outsourced > 0 || p.other > 0);
+    // Filter out rows that have no worker counts and no contractor
+    const validPersonnel = personnelList.filter(p => 
+      p.discipline.trim() !== '' && (
+        Number(p.direct) > 0 || 
+        Number(p.outsourced) > 0 || 
+        Number(p.other) > 0 || 
+        Boolean(p.contractor && p.contractor.trim() !== '')
+      )
+    );
     onSave(validPersonnel);
   };
 
@@ -59,10 +115,13 @@ export const PersonnelModal: React.FC<PersonnelModalProps> = ({ isOpen, onClose,
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white rounded-xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]"
+          className="bg-white rounded-xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
         >
           <div className="flex items-center justify-between p-4 md:p-6 border-b border-gray-100 bg-gray-50">
-            <h2 className="text-lg font-bold text-gray-900">출력 인원 현황 입력</h2>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">출력 인원 현황 입력</h2>
+              <p className="text-xs text-gray-500 mt-0.5">공종별 투입 인원 및 업체를 입력합니다.</p>
+            </div>
             <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
               <X size={20} />
             </button>
@@ -74,7 +133,7 @@ export const PersonnelModal: React.FC<PersonnelModalProps> = ({ isOpen, onClose,
                 onClick={handleAddRow}
                 className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-bold"
               >
-                <Plus size={16} /> 공종 추가
+                <Plus size={16} /> 공종/업체 추가
               </button>
             </div>
 
@@ -82,74 +141,113 @@ export const PersonnelModal: React.FC<PersonnelModalProps> = ({ isOpen, onClose,
               <table className="w-full border-collapse border border-gray-200 text-sm">
                 <thead className="bg-gray-100 text-gray-800">
                   <tr>
-                    <th className="border border-gray-200 px-3 py-2 text-center w-40">공종</th>
-                    <th className="border border-gray-200 px-3 py-2 text-center w-24">직영</th>
-                    <th className="border border-gray-200 px-3 py-2 text-center w-24">외주</th>
+                    <th className="border border-gray-200 px-3 py-2 text-center w-36">공종</th>
+                    <th className="border border-gray-200 px-3 py-2 text-center w-48">업체</th>
+                    <th className="border border-gray-200 px-3 py-2 text-center w-24">관리자</th>
+                    <th className="border border-gray-200 px-3 py-2 text-center w-24">작업자</th>
                     <th className="border border-gray-200 px-3 py-2 text-center w-24">기타</th>
+                    <th className="border border-gray-200 px-3 py-2 text-center w-28">작업시간</th>
                     <th className="border border-gray-200 px-3 py-2 text-center w-24">계</th>
                     <th className="border border-gray-200 px-3 py-2 text-center w-12"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {personnelList.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="border border-gray-200 px-2 py-1">
-                        <select
-                          value={p.discipline}
-                          onChange={(e) => handleChange(p.id, 'discipline', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
-                        >
-                          <option value="">공종 선택</option>
-                          {settings?.categories?.map(c => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="border border-gray-200 px-2 py-1">
-                        <input 
-                          type="number" 
-                          min="0"
-                          value={p.direct} 
-                          onChange={(e) => handleChange(p.id, 'direct', Number(e.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-right"
-                        />
-                      </td>
-                      <td className="border border-gray-200 px-2 py-1">
-                        <input 
-                          type="number" 
-                          min="0"
-                          value={p.outsourced} 
-                          onChange={(e) => handleChange(p.id, 'outsourced', Number(e.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-right"
-                        />
-                      </td>
-                      <td className="border border-gray-200 px-2 py-1">
-                        <input 
-                          type="number" 
-                          min="0"
-                          value={p.other} 
-                          onChange={(e) => handleChange(p.id, 'other', Number(e.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-right"
-                        />
-                      </td>
-                      <td className="border border-gray-200 px-2 py-1 text-center font-bold bg-gray-50 text-gray-700">
-                        {(Number(p.direct) || 0) + (Number(p.outsourced) || 0) + (Number(p.other) || 0)}
-                      </td>
-                      <td className="border border-gray-200 px-2 py-1 text-center">
-                        <button 
-                          onClick={() => handleRemoveRow(p.id)}
-                          className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {personnelList.map((p) => {
+                    const availableContractors = p.discipline && settings?.contractors ? (settings.contractors[p.discipline] || []) : [];
+                    return (
+                      <tr key={p.id} className="hover:bg-gray-50">
+                        <td className="border border-gray-200 px-2 py-1">
+                          <select
+                            value={p.discipline}
+                            onChange={(e) => handleDisciplineChange(p.id, e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                          >
+                            <option value="">공종 선택</option>
+                            {settings?.categories?.map(c => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="border border-gray-200 px-2 py-1">
+                          <select
+                            value={p.contractor || ''}
+                            onChange={(e) => handleChange(p.id, 'contractor', e.target.value)}
+                            disabled={!p.discipline}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white disabled:bg-gray-100 disabled:text-gray-400"
+                          >
+                            <option value="">{p.discipline ? (availableContractors.length > 0 ? '업체 선택' : '등록된 업체 없음') : '공종 먼저 선택'}</option>
+                            {availableContractors.map(c => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                            {p.contractor && !availableContractors.includes(p.contractor) && (
+                              <option value={p.contractor}>{p.contractor} (기존/미등록)</option>
+                            )}
+                          </select>
+                        </td>
+                        <td className="border border-gray-200 px-2 py-1">
+                          <input 
+                            type="number" 
+                            min="0"
+                            value={p.direct === 0 ? '' : p.direct} 
+                            placeholder="0"
+                            onChange={(e) => handleChange(p.id, 'direct', e.target.value === '' ? 0 : Number(e.target.value))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-right"
+                          />
+                        </td>
+                        <td className="border border-gray-200 px-2 py-1">
+                          <input 
+                            type="number" 
+                            min="0"
+                            value={p.outsourced === 0 ? '' : p.outsourced} 
+                            placeholder="0"
+                            onChange={(e) => handleChange(p.id, 'outsourced', e.target.value === '' ? 0 : Number(e.target.value))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-right"
+                          />
+                        </td>
+                        <td className="border border-gray-200 px-2 py-1">
+                          <input 
+                            type="number" 
+                            min="0"
+                            value={p.other === 0 ? '' : p.other} 
+                            placeholder="0"
+                            onChange={(e) => handleChange(p.id, 'other', e.target.value === '' ? 0 : Number(e.target.value))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-right"
+                          />
+                        </td>
+                        <td className="border border-gray-200 px-2 py-1">
+                          <select
+                            value={p.workTime || '주간'}
+                            onChange={(e) => handleChange(p.id, 'workTime', e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                          >
+                            <option value="주간">주간</option>
+                            <option value="연장">연장</option>
+                            <option value="야간">야간</option>
+                            <option value="철야">철야</option>
+                            <option value="조출">조출</option>
+                          </select>
+                        </td>
+                        <td className="border border-gray-200 px-2 py-1 text-center font-bold bg-gray-50 text-gray-700">
+                          {(Number(p.direct) || 0) + (Number(p.outsourced) || 0) + (Number(p.other) || 0)}
+                        </td>
+                        <td className="border border-gray-200 px-2 py-1 text-center">
+                          <button 
+                            onClick={() => handleRemoveRow(p.id)}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors"
+                            title="행 삭제"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   <tr className="bg-blue-50 font-bold">
-                    <td className="border border-gray-200 px-3 py-2 text-center text-blue-900">총계</td>
+                    <td colSpan={2} className="border border-gray-200 px-3 py-2 text-center text-blue-900">총계</td>
                     <td className="border border-gray-200 px-3 py-2 text-right text-blue-700">{totalDirect}</td>
                     <td className="border border-gray-200 px-3 py-2 text-right text-blue-700">{totalOutsourced}</td>
                     <td className="border border-gray-200 px-3 py-2 text-right text-blue-700">{totalOther}</td>
+                    <td className="border border-gray-200 px-3 py-2"></td>
                     <td className="border border-gray-200 px-3 py-2 text-center text-blue-900">{totalSum}</td>
                     <td className="border border-gray-200 px-3 py-2"></td>
                   </tr>

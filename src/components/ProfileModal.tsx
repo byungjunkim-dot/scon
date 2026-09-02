@@ -5,6 +5,7 @@ import { CATEGORIES } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabaseService } from '../services/supabaseService';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -62,11 +63,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         await supabaseService.saveUser(updatedUser);
       } else {
         const savedUsersStr = localStorage.getItem('cp_users');
-        if (savedUsersStr) {
-          const users: User[] = JSON.parse(savedUsersStr);
-          const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
-          localStorage.setItem('cp_users', JSON.stringify(updatedUsers));
-        }
+        const users: User[] = safeJsonParse(savedUsersStr, []);
+        const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
+        localStorage.setItem('cp_users', JSON.stringify(updatedUsers));
       }
 
       onUpdateUser(updatedUser);
@@ -98,11 +97,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         await supabaseService.saveUser(updatedUser);
       } else {
         const savedUsersStr = localStorage.getItem('cp_users');
-        if (savedUsersStr) {
-          const users: User[] = JSON.parse(savedUsersStr);
-          const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
-          localStorage.setItem('cp_users', JSON.stringify(updatedUsers));
-        }
+        const users: User[] = safeJsonParse(savedUsersStr, []);
+        const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
+        localStorage.setItem('cp_users', JSON.stringify(updatedUsers));
       }
 
       onUpdateUser(updatedUser);

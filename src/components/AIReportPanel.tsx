@@ -4,6 +4,7 @@ import { supabaseService, type AiReportType } from '../services/supabaseService'
 import * as htmlToImage from 'html-to-image';
 import jsPDF from 'jspdf';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import { safeJsonParse } from '../utils/safeJson';
 
 type AIReportPanelProps = {
   projectId?: string | null;
@@ -105,26 +106,26 @@ export function AIReportPanel({ projectId }: AIReportPanelProps) {
 
   const [question, setQuestion] = useState<string>(() => {
     const saved = sessionStorage.getItem(`ai_report_${storageKey}_question`);
-    return saved ? JSON.parse(saved) : '';
+    return safeJsonParse(saved, '');
   });
 
   const [reportType, setReportType] = useState<AiReportType>(() => {
     const saved = sessionStorage.getItem(`ai_report_${storageKey}_reportType`);
-    return saved ? JSON.parse(saved) : 'custom';
+    return safeJsonParse(saved, 'custom');
   });
 
   const [loading, setLoading] = useState(false);
 
   const [result, setResult] = useState<any>(() => {
     const saved = sessionStorage.getItem(`ai_report_${storageKey}_result`);
-    return saved ? JSON.parse(saved) : null;
+    return safeJsonParse(saved, null);
   });
 
   const [error, setError] = useState('');
 
   const [debugInfo, setDebugInfo] = useState<any>(() => {
     const saved = sessionStorage.getItem(`ai_report_${storageKey}_debug`);
-    return saved ? JSON.parse(saved) : null;
+    return safeJsonParse(saved, null);
   });
 
   const [isExporting, setIsExporting] = useState(false);

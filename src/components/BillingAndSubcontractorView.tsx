@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabaseService } from '../services/supabaseService';
+import { safeJsonParse } from '../utils/safeJson';
 import {
   BarChart,
   Bar,
@@ -105,16 +106,10 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     if (settings?.categories && settings.categories.length > 0) {
       return settings.categories;
     }
-    try {
-      const saved = localStorage.getItem('cp_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.categories && parsed.categories.length > 0) {
-          return parsed.categories;
-        }
-      }
-    } catch (e) {
-      console.error(e);
+    const saved = localStorage.getItem('cp_settings');
+    const parsed = safeJsonParse<any>(saved, null);
+    if (parsed && Array.isArray(parsed.categories) && parsed.categories.length > 0) {
+      return parsed.categories;
     }
     return ['공통관리', '토목', '건축', '전기', '기계'];
   }, [settings]);
@@ -2839,8 +2834,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                       </tr>
 
                       {clientContract.history && clientContract.history.length > 0 && (
-                        clientContract.history.map((h, index) => {
-                          const isLastItem = index === clientContract.history.length - 1;
+                        clientContract.history.map((h) => {
                           return (
                           <tr key={h.id} className="hover:bg-slate-50">
                             <td className="p-3 font-bold">{h.round}차 변경</td>
@@ -2855,36 +2849,34 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                             <td className="p-3">{h.reason}</td>
                             <td className="p-3">{h.approvedBy}</td>
                             <td className="p-3 text-center">
-                              {isLastItem && (
-                                <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingHistoryItem({
-                                        ...h,
-                                        contractDate: (h as any).date || h.contractDate,
-                                        constructionStartDate: h.constructionStartDate || '',
-                                        constructionEndDate: h.constructionEndDate || (h as any).endDate || ''
-                                      });
-                                      setIsEditHistoryModalOpen(true);
-                                    }}
-                                    disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                                    className="p-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
-                                    title="수정"
-                                  >
-                                    <Edit size={14} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteHistoryItem(h.id)}
-                                    disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                                    className="p-1 text-slate-500 hover:text-rose-600 transition-colors disabled:opacity-50"
-                                    title="삭제"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              )}
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingHistoryItem({
+                                      ...h,
+                                      contractDate: (h as any).date || h.contractDate,
+                                      constructionStartDate: h.constructionStartDate || '',
+                                      constructionEndDate: h.constructionEndDate || (h as any).endDate || ''
+                                    });
+                                    setIsEditHistoryModalOpen(true);
+                                  }}
+                                  disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                                  className="p-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
+                                  title="수정"
+                                >
+                                  <Edit size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteHistoryItem(h.id)}
+                                  disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                                  className="p-1 text-slate-500 hover:text-rose-600 transition-colors disabled:opacity-50"
+                                  title="삭제"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                           );
@@ -2962,8 +2954,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                       </td>
                     </tr>
                   ) : (
-                    clientBillings.map((b, index) => {
-                      const isLastItem = index === clientBillings.length - 1;
+                    clientBillings.map((b) => {
                       return (
                       <tr key={b.id} className="hover:bg-slate-50">
                         <td className="p-3 font-bold text-blue-600">{b.billingRound}차</td>
@@ -2999,31 +2990,29 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                           </span>
                         </td>
                         <td className="p-3 text-center">
-                          {isLastItem && (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingClientBilling({ ...b });
-                                  setIsEditClientBillingModalOpen(true);
-                                }}
-                                disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                                className="p-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
-                                title="수정"
-                              >
-                                <Edit size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteClientBilling(b.id)}
-                                disabled={isCurrentMonthClosed && !isAdminUnlocked}
-                                className="p-1 text-slate-500 hover:text-rose-600 transition-colors disabled:opacity-50"
-                                title="삭제"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingClientBilling({ ...b });
+                                setIsEditClientBillingModalOpen(true);
+                              }}
+                              disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                              className="p-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-50"
+                              title="수정"
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteClientBilling(b.id)}
+                              disabled={isCurrentMonthClosed && !isAdminUnlocked}
+                              className="p-1 text-slate-500 hover:text-rose-600 transition-colors disabled:opacity-50"
+                              title="삭제"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       );

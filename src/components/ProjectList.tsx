@@ -6,6 +6,7 @@ import { compressImage } from '../utils/image';
 import { PersonnelStatusView } from './PersonnelStatusView';
 import { BillingAndSubcontractorView } from './BillingAndSubcontractorView';
 import { ConsolidatedBillingDashboard } from './ConsolidatedBillingDashboard';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface ProjectListProps {
   projects: Project[];
@@ -79,12 +80,8 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (!currentUser) return [];
-    try {
-      const saved = localStorage.getItem(`cp_favorites_${currentUser.id}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
+    const saved = localStorage.getItem(`cp_favorites_${currentUser.id}`);
+    return safeJsonParse(saved, []);
   });
 
   useEffect(() => {
@@ -92,12 +89,8 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
       setFavorites([]);
       return;
     }
-    try {
-      const saved = localStorage.getItem(`cp_favorites_${currentUser.id}`);
-      setFavorites(saved ? JSON.parse(saved) : []);
-    } catch (e) {
-      setFavorites([]);
-    }
+    const saved = localStorage.getItem(`cp_favorites_${currentUser.id}`);
+    setFavorites(safeJsonParse(saved, []));
   }, [currentUser]);
 
   const toggleFavorite = (e: React.MouseEvent, projectId: string) => {

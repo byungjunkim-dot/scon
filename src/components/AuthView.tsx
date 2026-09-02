@@ -5,6 +5,7 @@ import { User } from '../types';
 import { CATEGORIES } from '../constants';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { supabaseService } from '../services/supabaseService';
+import { safeJsonParse } from '../utils/safeJson';
 
 const LogoIcon = ({ size = 32, className = "" }: { size?: number, className?: string }) => (
   <svg 
@@ -140,7 +141,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
 
     // Fallback to localStorage if Supabase is not configured
     const savedUsersStr = localStorage.getItem('cp_users');
-    const users: User[] = savedUsersStr ? JSON.parse(savedUsersStr) : [];
+    const users: User[] = safeJsonParse(savedUsersStr, []);
 
     if (isLogin) {
       const user = users.find(u => u.email === formData.email && u.password === formData.password);

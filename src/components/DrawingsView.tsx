@@ -5,6 +5,7 @@ import { Project, Drawing, User } from '../types';
 import { compressImage } from '../utils/image';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { supabaseService } from '../services/supabaseService';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface DrawingsViewProps {
   project: Project | null;
@@ -40,7 +41,7 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
       if (!project) return;
       
       const saved = localStorage.getItem(storageKey);
-      if (saved) setDrawings(JSON.parse(saved));
+      setDrawings(safeJsonParse(saved, []));
 
       if (isSupabaseConfigured) {
         try {

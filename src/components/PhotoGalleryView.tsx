@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Project, DailyPhoto } from '../types';
 import { supabaseService } from '../services/supabaseService';
+import { safeJsonParse } from '../utils/safeJson';
 import { 
   format, 
   startOfMonth, 
@@ -36,12 +37,8 @@ interface GalleryPhoto extends DailyPhoto {
 }
 
 const getLocalQuickMemos = (projectId: string) => {
-  try {
-    const saved = localStorage.getItem(`cp_quick_memos_${projectId}`);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
+  const saved = localStorage.getItem(`cp_quick_memos_${projectId}`);
+  return safeJsonParse(saved, []);
 };
 
 export function PhotoGalleryView({ project }: PhotoGalleryViewProps) {

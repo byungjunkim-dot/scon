@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { User as UserIcon, Trash2, Mail, Phone, Briefcase, Code, Key, Search, Filter, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { User } from '../types';
 import { supabaseService } from '../services/supabaseService';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface UserManagementProps {
   onBack: () => void;
@@ -49,10 +50,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
 
     const loadFromLocalStorage = () => {
       const savedUsersStr = localStorage.getItem('cp_users');
-      if (savedUsersStr) {
-        const parsed = JSON.parse(savedUsersStr);
-        setUsers(parsed.map((u: any) => ({ ...u, userRole: mapRole(u.userRole) })));
-      }
+      const parsed: any[] = safeJsonParse(savedUsersStr, []);
+      setUsers(parsed.map((u: any) => ({ ...u, userRole: mapRole(u.userRole) })));
     };
 
     loadUsers();

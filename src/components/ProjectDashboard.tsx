@@ -13,6 +13,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Project, ScheduleItem, DailyReport } from '../types';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface ProjectDashboardProps {
   project: Project;
@@ -31,15 +32,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ project, sch
   // Calculate cumulative personnel from localStorage daily reports
   const cumulativePersonnel = useMemo(() => {
     const savedReports = localStorage.getItem(`cp_daily_reports_${project.id}`);
-    if (!savedReports) return 0;
-    try {
-      const reports: DailyReport[] = JSON.parse(savedReports);
-      return reports.reduce((acc, report) => {
-        return acc + report.personnel.direct + report.personnel.outsourced + report.personnel.other;
-      }, 0);
-    } catch (e) {
-      return 0;
-    }
+    const reports: DailyReport[] = safeJsonParse(savedReports, []);
+    return reports.reduce((acc, report) => {
+      const p = report.personnel || { direct: 0, outsourced: 0, other: 0 };
+      return acc + (Number(p.direct) || 0) + (Number(p.outsourced) || 0) + (Number(p.other) || 0);
+    }, 0);
   }, [project.id]);
 
   // Key milestones (just taking the first 3 tasks or tasks with '마일스톤' in name)

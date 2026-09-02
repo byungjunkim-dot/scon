@@ -15,6 +15,7 @@ import { Project, User } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { isSupabaseConfigured as hasSupabase } from '../lib/supabase';
 import { ConfirmModal } from './ConfirmModal';
+import { safeJsonParse } from '../utils/safeJson';
 
 export type QuickMemoCategory =
   | '안전'
@@ -575,17 +576,30 @@ export function QuickMemoModal({
   };
 
   const handleVoiceInput = () => {
-    const SpeechRecognition =
+    const SpeechRec =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
+    if (!SpeechRec) {
       alert(
         '이 브라우저에서는 음성 인식이 지원되지 않습니다.\n우선 텍스트로 입력해 주세요.\n\n권장 브라우저: Chrome'
       );
       return;
     }
 
-    const recognition = new SpeechRecognition();
+    let recognition: any;
+    try {
+      if ((window as any).webkitSpeechRecognition) {
+        recognition = new (window as any).webkitSpeechRecognition();
+      } else if ((window as any).SpeechRecognition) {
+        recognition = new (window as any).SpeechRecognition();
+      } else {
+        recognition = new SpeechRec();
+      }
+    } catch (err) {
+      console.error('Speech recognition construction failed:', err);
+      alert('음성 인식을 초기화할 수 없습니다. 텍스트로 입력해 주세요.');
+      return;
+    }
 
     recognition.lang = 'ko-KR';
     recognition.continuous = false;
@@ -888,7 +902,7 @@ export function QuickMemoModal({
 
       const key = `cp_quick_memos_${project.id}`;
       const saved = localStorage.getItem(key);
-      const list: QuickMemo[] = saved ? JSON.parse(saved) : [];
+      const list: QuickMemo[] = safeJsonParse(saved, []);
 
       const nextList = [...savedMemos, ...list];
       localStorage.setItem(key, JSON.stringify(nextList));

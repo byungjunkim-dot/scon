@@ -43,6 +43,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import ExcelJS from 'exceljs';
 import { Project, User, ClientContract } from '../types';
+import { safeJsonParse } from '../utils/safeJson';
 import { supabaseService } from '../services/supabaseService';
 
 const normalizeDate = (dateStr: string | undefined | null): string => {
@@ -383,17 +384,13 @@ export const ConsolidatedBillingDashboard: React.FC<ConsolidatedBillingDashboard
         const hasSavedData = Boolean(supabaseData) || Boolean(localStorage.getItem(`cp_billing_data_${p.id}`));
 
         if (!hasSavedData) {
-          try {
-            const saved = localStorage.getItem(`cp_billing_data_${p.id}`);
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              storedClientContract = parsed.clientContract || null;
-              storedClientBillings = parsed.clientBillings || null;
-              storedSubContracts = parsed.subContracts || null;
-              storedSubBillings = parsed.subBillings || null;
-            }
-          } catch (e) {
-            // Fallback
+          const saved = localStorage.getItem(`cp_billing_data_${p.id}`);
+          const parsed: any = safeJsonParse(saved, null);
+          if (parsed) {
+            storedClientContract = parsed.clientContract || null;
+            storedClientBillings = parsed.clientBillings || null;
+            storedSubContracts = parsed.subContracts || null;
+            storedSubBillings = parsed.subBillings || null;
           }
         }
 

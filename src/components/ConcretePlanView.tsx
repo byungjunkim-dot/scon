@@ -6,6 +6,7 @@ import { compressImage } from '../utils/image';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { PhotoModal } from './PhotoModal';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface ConcretePlanViewProps {
   project: Project | null;
@@ -43,7 +44,7 @@ export const ConcretePlanView: React.FC<ConcretePlanViewProps> = ({ project, set
   const handleSave = async () => {
     if (!project) return;
     const savedStr = localStorage.getItem(`cp_concrete_plans_${project.id}`);
-    let items: ConcretePlan[] = savedStr ? JSON.parse(savedStr) : [];
+    let items: ConcretePlan[] = safeJsonParse(savedStr, []);
     const index = items.findIndex(i => i.id === plan.id);
     if (index >= 0) {
       items[index] = plan;

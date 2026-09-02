@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { supabaseService } from '../services/supabaseService';
 import { DailyReport, ScheduleItem } from '../types';
+import { safeJsonParse } from '../utils/safeJson';
 
 type RiskSeverity = 'low' | 'medium' | 'high' | 'critical';
 
@@ -487,10 +488,9 @@ const runAiRiskScan = async (force = false) => {
 
     if (!force) {
       const cached = sessionStorage.getItem(cacheKey);
+      const parsed = safeJsonParse(cached, null);
 
-      if (cached) {
-        const parsed = JSON.parse(cached);
-
+      if (parsed && typeof parsed.savedAt === 'number' && parsed.result) {
         if (Date.now() - parsed.savedAt < AI_RISK_CACHE_TTL_MS) {
           setAiResult(parsed.result);
           return;

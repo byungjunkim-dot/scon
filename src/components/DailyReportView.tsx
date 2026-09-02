@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, Trash2, Download, Upload, Loader2, Save, FileText, Edit2, AlertTriangle, Sparkles } from 'lucide-react';
+import { X, Plus, Trash2, Download, Upload, Loader2, Save, FileText, Edit2, AlertTriangle, Sparkles, FileSpreadsheet } from 'lucide-react';
 import { DailyReport, DailyTask, DailyEquipment, DailyIssue, DailyPhoto, Project, AppSettings, ApprovalRecord, User } from '../types';
 import { compressImage } from '../utils/image';
 import * as htmlToImage from 'html-to-image';
@@ -12,8 +12,10 @@ import { PersonnelModal } from './PersonnelModal';
 import { EquipmentModal } from './EquipmentModal';
 import { UserSelectModal } from './UserSelectModal';
 import { BulkExportModal } from './BulkExportModal';
+import { DailyReportExcelModal } from './DailyReportExcelModal';
 import { fetchWeather } from '../services/weatherService';
 import { supabaseService } from '../services/supabaseService';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface DailyReportViewProps {
   project: Project | null;
@@ -61,6 +63,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isBulkExportModalOpen, setIsBulkExportModalOpen] = useState(false);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [bulkExportReports, setBulkExportReports] = useState<DailyReport[]>([]);
 
   useEffect(() => {
@@ -75,8 +78,8 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
          } catch (err) { console.error(err); }
       } else {
          const savedReportsStr = localStorage.getItem(`cp_daily_reports_${project.id}`);
-         if (savedReportsStr) {
-           const reports: DailyReport[] = JSON.parse(savedReportsStr);
+         const reports: DailyReport[] = safeJsonParse(savedReportsStr, []);
+         if (reports.length > 0) {
            setBulkExportReports(reports.sort((a,b) => b.date.localeCompare(a.date)));
          }
       }
@@ -260,6 +263,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
       if (isSupabaseConfigured) {
         try {
           reports = await supabaseService.getDailyReports(project.id);
+          setBulkExportReports([...reports].sort((a,b) => b.date.localeCompare(a.date)));
           const existingReport = reports.find(r => r.date === report.date);
           if (existingReport) { setReport(existingReport); setLastSavedReport(JSON.stringify(existingReport)); return; }
         } catch (err) { console.error(err); }
@@ -267,8 +271,9 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
 
       if (!isSupabaseConfigured) {
         const savedReports = localStorage.getItem(`cp_daily_reports_${project.id}`);
-        if (savedReports) {
-          reports = JSON.parse(savedReports);
+        reports = safeJsonParse(savedReports, []);
+        if (reports.length > 0) {
+          setBulkExportReports([...reports].sort((a,b) => b.date.localeCompare(a.date)));
           const existingReport = reports.find(r => r.date === report.date);
           if (existingReport) { setReport(existingReport); setLastSavedReport(JSON.stringify(existingReport)); return; }
         }
@@ -325,13 +330,18 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
         await supabaseService.saveDailyReport(report);
         setLastSavedReport(JSON.stringify(report));
         setIsDirty(false); onDirtyChange?.(false);
+        setBulkExportReports(prev => {
+          const next = prev.filter(r => r.id !== report.id && r.date !== report.date);
+          next.push(report);
+          return next.sort((a,b) => b.date.localeCompare(a.date));
+        });
         showStatus('Supabase에 저장되었습니다.');
         return;
       } catch (err) { console.error(err); }
     }
 
     const savedReportsStr = localStorage.getItem(`cp_daily_reports_${project.id}`);
-    let reports: DailyReport[] = savedReportsStr ? JSON.parse(savedReportsStr) : [];
+    let reports: DailyReport[] = safeJsonParse(savedReportsStr, []);
     const saveToLocal = () => {
       const existingIdIndex = reports.findIndex(r => r.id === report.id || r.date === report.date);
       if (existingIdIndex >= 0) reports[existingIdIndex] = report;
@@ -339,6 +349,7 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
       localStorage.setItem(`cp_daily_reports_${project.id}`, JSON.stringify(reports));
       setLastSavedReport(JSON.stringify(report));
       setIsDirty(false); onDirtyChange?.(false);
+      setBulkExportReports([...reports].sort((a,b) => b.date.localeCompare(a.date)));
       showStatus('저장되었습니다.');
     };
 
@@ -403,14 +414,9 @@ const getDailyIssueTypeTextClass = (type: DailyIssue['type']) => {
 };
 
 const getLocalQuickMemosByDate = (projectId: string, date: string) => {
-  try {
-    const saved = localStorage.getItem(`cp_quick_memos_${projectId}`);
-    const list = saved ? JSON.parse(saved) : [];
-
-    return list.filter((memo: any) => memo.date === date);
-  } catch {
-    return [];
-  }
+  const saved = localStorage.getItem(`cp_quick_memos_${projectId}`);
+  const list: any[] = safeJsonParse(saved, []);
+  return list.filter((memo: any) => memo && memo.date === date);
 };
 
 const handleImportQuickMemos = async () => {
@@ -553,12 +559,42 @@ const handleImportQuickMemos = async () => {
   const legacyPersonnel = React.useMemo(() => {
     if (report.personnel.details && report.personnel.details.length > 0) return report.personnel.details;
     if (report.personnel.direct > 0 || report.personnel.outsourced > 0 || report.personnel.other > 0) {
-      return [{ id: 'legacy-data', discipline: '기존 데이터', direct: report.personnel.direct, outsourced: report.personnel.outsourced, other: report.personnel.other }];
+      return [{ id: 'legacy-data', discipline: '기존 데이터', contractor: '', direct: report.personnel.direct, outsourced: report.personnel.outsourced, other: report.personnel.other }];
     }
     return [];
   }, [report.personnel]);
 
   const totalPersonnel = report.personnel.direct + report.personnel.outsourced + report.personnel.other;
+
+  const previousCumulativePersonnel = React.useMemo(() => {
+    if (!bulkExportReports || bulkExportReports.length === 0) return 0;
+    return bulkExportReports
+      .filter(r => r.date < report.date && r.id !== report.id)
+      .reduce((acc, r) => {
+        const direct = Number(r.personnel?.direct) || 0;
+        const outsourced = Number(r.personnel?.outsourced) || 0;
+        const other = Number(r.personnel?.other) || 0;
+        return acc + direct + outsourced + other;
+      }, 0);
+  }, [bulkExportReports, report.date, report.id]);
+
+  const prevCumulativeMap = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!bulkExportReports || bulkExportReports.length === 0) return map;
+    
+    const pastReports = bulkExportReports.filter(r => r.date < report.date && r.id !== report.id);
+    
+    pastReports.forEach(r => {
+      if (r.personnel?.details && Array.isArray(r.personnel.details)) {
+        r.personnel.details.forEach(d => {
+          const key = `${(d.discipline || '').trim()}||${(d.contractor || '').trim()}`;
+          const count = (Number(d.direct) || 0) + (Number(d.outsourced) || 0) + (Number(d.other) || 0);
+          map[key] = (map[key] || 0) + count;
+        });
+      }
+    });
+    return map;
+  }, [bulkExportReports, report.date, report.id]);
 
   return (
     <div className="h-full flex flex-col bg-white relative">
@@ -569,6 +605,16 @@ const handleImportQuickMemos = async () => {
             onClose={() => setIsBulkExportModalOpen(false)} 
             reports={bulkExportReports}
             project={project}
+          />
+        )}
+        {isExcelModalOpen && (
+          <DailyReportExcelModal
+            isOpen={isExcelModalOpen}
+            onClose={() => setIsExcelModalOpen(false)}
+            reports={bulkExportReports}
+            currentReport={report}
+            project={project}
+            settings={settings}
           />
         )}
         {statusMessage && (
@@ -588,6 +634,10 @@ const handleImportQuickMemos = async () => {
             <button onClick={() => setIsBulkExportModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-bold">
               <Download size={16} /> 일괄 다운로드
+            </button>
+            <button onClick={() => setIsExcelModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-bold shadow-xs">
+              <FileSpreadsheet size={16} /> 엑셀 다운로드
             </button>
             <button onClick={handleExportPDF} disabled={isExporting}
               className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-bold">
@@ -841,7 +891,7 @@ const handleImportQuickMemos = async () => {
                     <div className="w-32 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">공종 / 세부공종</div>
                     <div className="flex-1 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">작업내용 / 위치</div>
                     <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-center">작업량</div>
-                    <div className="w-32 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-right">상태 / 관리</div>
+                    <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-right">관리</div>
                   </div>
                 )}
                 {report.todayTasks.map((task, idx) => (
@@ -851,7 +901,14 @@ const handleImportQuickMemos = async () => {
                       <span className="text-[10px] text-gray-500 truncate font-medium">{task.subCategory}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-900 truncate">{task.taskName}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-bold text-gray-900">{task.taskName}</span>
+                        {task.contractor && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold border border-blue-100 shrink-0">
+                            {task.contractor}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-gray-500 mt-0.5 truncate">
                         {[formatMultiValue(task.dongBlock), formatMultiValue(task.floor), formatMultiValue(task.zone)].filter(Boolean).join(' / ')}
                       </p>
@@ -859,8 +916,7 @@ const handleImportQuickMemos = async () => {
                     <div className="shrink-0 w-16 text-center">
                       <span className="text-xs font-bold text-gray-700">{task.amount || '-'}</span>
                     </div>
-                    <div className="shrink-0 w-32 flex items-center justify-end gap-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 whitespace-nowrap">{task.status}</span>
+                    <div className="shrink-0 w-16 flex items-center justify-end">
                       {!isReadOnly && (
                         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
@@ -889,7 +945,7 @@ const handleImportQuickMemos = async () => {
             </div>
 
             {/* Section 2 & 3: Personnel and Equipment */}
-            <div data-pdf-section className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+            <div data-pdf-section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
               {/* 출력 인원 현황 */}
               <div className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex justify-between items-center mb-4">
@@ -905,46 +961,76 @@ const handleImportQuickMemos = async () => {
                   </button>
                 </div>
                 
-                <div className="mb-4 p-1 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center transition-all hover:bg-gray-100">
-                  <span className="text-xs font-semibold text-gray-500">전체 투입 인력</span>
-                  <span className="text-xl font-black text-blue-600">
-                    {totalPersonnel}
-                    <span className="text-xs font-bold text-gray-400 ml-1">명</span>
-                  </span>
+                <div className="mb-4 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center transition-all hover:bg-gray-100">
+                  <span className="text-xs font-semibold text-gray-500">금일 투입 인력</span>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl font-black text-blue-600">
+                      {totalPersonnel}
+                      <span className="text-xs font-bold text-gray-400 ml-1">명</span>
+                    </span>
+                    <span className="text-xs font-medium text-gray-600 bg-gray-200/80 px-2 py-0.5 rounded">
+                      전일누적 <strong className="text-gray-800 font-bold">{previousCumulativePersonnel.toLocaleString()}</strong>명
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-1 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
                   {report.personnel.details && report.personnel.details.length > 0 && (
                     <div className="flex justify-between items-center px-2.5 py-1 border-b border-gray-50 mb-1 opacity-60">
                       <span className="text-[10px] font-bold text-gray-600 uppercase tracking-tighter">공종</span>
-                      <div className="flex gap-4 text-right">
-                        <span className="w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">직영</span>
-                        <span className="w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">외주</span>
-                        <span className="w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">기타</span>
-                        <span className="w-8 text-[10px] font-bold text-blue-500 uppercase tracking-tighter">합계</span>
+                      <div className="flex gap-2.5 sm:gap-3 text-right items-center">
+                        <span className="w-7 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">관리자</span>
+                        <span className="w-7 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">작업자</span>
+                        <span className="w-7 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">기타</span>
+                        <span className="w-7 sm:w-8 text-[10px] font-bold text-blue-500 uppercase tracking-tighter">합계</span>
+                        <span className="w-11 sm:w-12 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">전일누적</span>
                       </div>
                     </div>
                   )}
                   {report.personnel.details && report.personnel.details.length > 0 ? (
-                    report.personnel.details.map((p) => (
-                      <div key={p.id} className="flex justify-between items-center p-1 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 rounded-md transition-colors">
-                        <span className="text-sm font-bold text-gray-700">{p.discipline}</span>
-                        <div className="flex gap-4">
-                          <div className="w-8 flex flex-col items-end">
-                            <span className="text-xs font-bold text-gray-600">{p.direct || 0}</span>
+                    report.personnel.details.map((p) => {
+                      const rowKey = `${(p.discipline || '').trim()}||${(p.contractor || '').trim()}`;
+                      const prevCum = prevCumulativeMap[rowKey] || 0;
+                      return (
+                        <div key={p.id} className="flex justify-between items-center p-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 rounded-md transition-colors gap-2">
+                          <div className="flex items-center gap-1.5 overflow-hidden min-w-0 flex-1 flex-wrap">
+                            <span className="text-sm font-bold text-gray-700 truncate">{p.discipline}</span>
+                            {p.contractor && (
+                              <span 
+                                className="text-[11px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-medium border border-blue-100 shrink-0"
+                                title={p.contractor}
+                              >
+                                {p.contractor.slice(0, 2)}
+                              </span>
+                            )}
+                            {p.workTime && p.workTime !== '주간' && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded font-semibold border border-amber-100 shrink-0">
+                                {p.workTime}
+                              </span>
+                            )}
                           </div>
-                          <div className="w-8 flex flex-col items-end">
-                            <span className="text-xs font-bold text-gray-600">{p.outsourced || 0}</span>
-                          </div>
-                          <div className="w-8 flex flex-col items-end">
-                            <span className="text-xs font-bold text-gray-600">{p.other || 0}</span>
-                          </div>
-                          <div className="w-8 flex flex-col items-end">
-                            <span className="text-xs font-black text-blue-600">{(Number(p.direct) || 0) + (Number(p.outsourced) || 0) + (Number(p.other) || 0)}</span>
+                          <div className="flex gap-2.5 sm:gap-3 shrink-0 items-center">
+                            <div className="w-7 sm:w-8 flex flex-col items-end">
+                              <span className="text-xs font-bold text-gray-600">{p.direct || 0}</span>
+                            </div>
+                            <div className="w-7 sm:w-8 flex flex-col items-end">
+                              <span className="text-xs font-bold text-gray-600">{p.outsourced || 0}</span>
+                            </div>
+                            <div className="w-7 sm:w-8 flex flex-col items-end">
+                              <span className="text-xs font-bold text-gray-600">{p.other || 0}</span>
+                            </div>
+                            <div className="w-7 sm:w-8 flex flex-col items-end">
+                              <span className="text-xs font-black text-blue-600">{(Number(p.direct) || 0) + (Number(p.outsourced) || 0) + (Number(p.other) || 0)}</span>
+                            </div>
+                            <div className="w-11 sm:w-12 flex flex-col items-end">
+                              <span className="text-xs font-medium text-gray-500 bg-gray-100/80 px-1 py-0.5 rounded text-right w-full">
+                                {prevCum.toLocaleString()}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="text-center py-8 text-gray-400 text-xs bg-gray-50/50 rounded-lg border border-dashed border-gray-200">인원 정보가 없습니다.</div>
                   )}
@@ -1171,7 +1257,14 @@ const handleImportQuickMemos = async () => {
                       <span className="text-[10px] text-gray-500 truncate font-medium">{task.subCategory}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-900 truncate">{task.taskName}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-bold text-gray-900">{task.taskName}</span>
+                        {task.contractor && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold border border-blue-100 shrink-0">
+                            {task.contractor}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-gray-500 mt-0.5 truncate">
                         {[formatMultiValue(task.dongBlock), formatMultiValue(task.floor), formatMultiValue(task.zone)].filter(Boolean).join(' / ')}
                       </p>

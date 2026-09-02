@@ -268,8 +268,8 @@ export const BulkExportModal: React.FC<BulkExportModalProps> = ({ isOpen, onClos
                 <div className="p-4 border-r border-gray-300">
                   <div className="font-bold mb-2">인원 현황</div>
                   <ul>
-                    <li>직영: {report.personnel?.direct || 0}명</li>
-                    <li>외주: {report.personnel?.outsourced || 0}명</li>
+                    <li>관리자: {report.personnel?.direct || 0}명</li>
+                    <li>작업자: {report.personnel?.outsourced || 0}명</li>
                     <li>기타: {report.personnel?.other || 0}명</li>
                     <li className="font-bold border-t border-gray-200 mt-2 pt-2">
                       총 인원: {(report.personnel?.direct || 0) + (report.personnel?.outsourced || 0) + (report.personnel?.other || 0)}명

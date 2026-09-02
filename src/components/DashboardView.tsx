@@ -4,6 +4,7 @@ import { Building2, Edit2, Save, X, Upload, Loader2, CloudSun, ChevronLeft, Chev
 import { compressImage } from '../utils/image';
 import { fetchWeather } from '../services/weatherService';
 import { supabaseService } from '../services/supabaseService';
+import { safeJsonParse } from '../utils/safeJson';
 
 import { startOfWeek, addDays, format, isSameDay } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -59,7 +60,12 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   const [allConcretePlans, setAllConcretePlans] = useState<any[]>([]);
   const [displayProgress, setDisplayProgress] = useState<{ planned: number; actual: number }>({ planned: 0, actual: 0 });
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
-  const [cumulativePersonnel, setCumulativePersonnel] = useState({ direct: 0, outsourced: 0, other: 0, total: 0 });
+  const [cumulativePersonnel, setCumulativePersonnel] = useState({
+    direct: { common: 0, other: 0, total: 0 },
+    outsourced: { common: 0, other: 0, total: 0 },
+    other: { common: 0, other: 0, total: 0 },
+    total: 0
+  });
   const [weatherData, setWeatherData] = useState<{
     temperature: string;
     maxTemp?: string;
@@ -125,12 +131,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
     // Load full billing data from localStorage key cp_billing_data_${project.id}
     const fullBillingDataRaw = localStorage.getItem(`cp_billing_data_${project.id}`);
-    let fullBillingData: any = null;
-    if (fullBillingDataRaw) {
-      try {
-        fullBillingData = JSON.parse(fullBillingDataRaw);
-      } catch (e) {}
-    }
+    const fullBillingData: any = safeJsonParse(fullBillingDataRaw, null);
 
     // 1. Client Contract Total
     if (fullBillingData?.clientContract) {
@@ -145,16 +146,14 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
     } else {
       const savedClientContract = localStorage.getItem(`cp_client_contract_${project.id}`);
       if (savedClientContract) {
-        try {
-          const parsed = JSON.parse(savedClientContract);
-          if (parsed && typeof parsed.currentAmount === 'number' && parsed.currentAmount > 0) {
-            clientTotal = parsed.currentAmount;
-          } else if (parsed && typeof parsed.initialAmount === 'number' && parsed.initialAmount > 0) {
-            clientTotal = parsed.initialAmount;
-          } else if (!isSample) {
-            clientTotal = 0;
-          }
-        } catch (e) {}
+        const parsed: any = safeJsonParse(savedClientContract, null);
+        if (parsed && typeof parsed.currentAmount === 'number' && parsed.currentAmount > 0) {
+          clientTotal = parsed.currentAmount;
+        } else if (parsed && typeof parsed.initialAmount === 'number' && parsed.initialAmount > 0) {
+          clientTotal = parsed.initialAmount;
+        } else if (!isSample) {
+          clientTotal = 0;
+        }
       } else if (!isSample) {
         clientTotal = 0;
       }
@@ -172,16 +171,14 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
     } else {
       const savedClientBillings = localStorage.getItem(`cp_client_billings_${project.id}`);
       if (savedClientBillings) {
-        try {
-          const parsed: any[] = JSON.parse(savedClientBillings);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            clientClaim = parsed.reduce((sum, b) => sum + Number(b.currentClaimAmt || 0), 0);
-            clientReceivable = parsed.reduce((sum, b) => sum + Number(b.receivableAmt || 0), 0);
-          } else if (!isSample) {
-            clientClaim = 0;
-            clientReceivable = 0;
-          }
-        } catch (e) {}
+        const parsed: any[] = safeJsonParse(savedClientBillings, []);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          clientClaim = parsed.reduce((sum, b) => sum + Number(b.currentClaimAmt || 0), 0);
+          clientReceivable = parsed.reduce((sum, b) => sum + Number(b.receivableAmt || 0), 0);
+        } else if (!isSample) {
+          clientClaim = 0;
+          clientReceivable = 0;
+        }
       }
     }
 
@@ -197,14 +194,12 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
     } else {
       const savedSubContracts = localStorage.getItem(`cp_sub_contracts_${project.id}`);
       if (savedSubContracts) {
-        try {
-          const parsed: any[] = JSON.parse(savedSubContracts);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            subTotal = parsed.reduce((sum, sc) => sum + Number(sc.currentAmount || 0), 0);
-          } else if (!isSample) {
-            subTotal = 0;
-          }
-        } catch (e) {}
+        const parsed: any[] = safeJsonParse(savedSubContracts, []);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          subTotal = parsed.reduce((sum, sc) => sum + Number(sc.currentAmount || 0), 0);
+        } else if (!isSample) {
+          subTotal = 0;
+        }
       }
     }
 
@@ -216,14 +211,12 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
     } else {
       const savedSubBillings = localStorage.getItem(`cp_sub_billings_${project.id}`);
       if (savedSubBillings) {
-        try {
-          const parsed: any[] = JSON.parse(savedSubBillings);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const validParsed = parsed.filter((sb: any) => sb && sb.id !== 'subb-1' && sb.id !== 'subb-2' && sb.id !== 'subb-3');
-            subClaim = validParsed.reduce((sum, sb) => sum + Number(sb.subClaimAmt || sb.currentClaimAmt || 0), 0);
-            subApproved = validParsed.reduce((sum, sb) => sum + Number(sb.finalApprovedAmt || 0), 0);
-          }
-        } catch (e) {}
+        const parsed: any[] = safeJsonParse(savedSubBillings, []);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const validParsed = parsed.filter((sb: any) => sb && sb.id !== 'subb-1' && sb.id !== 'subb-2' && sb.id !== 'subb-3');
+          subClaim = validParsed.reduce((sum, sb) => sum + Number(sb.subClaimAmt || sb.currentClaimAmt || 0), 0);
+          subApproved = validParsed.reduce((sum, sb) => sum + Number(sb.finalApprovedAmt || 0), 0);
+        }
       }
     }
 
@@ -274,16 +267,16 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
               localStorage.setItem(`schedules_${project.id}`, JSON.stringify(data));
             } else {
               const localSchedules = localStorage.getItem(`schedules_${project.id}`);
-              if (localSchedules) setSchedules(JSON.parse(localSchedules));
+              setSchedules(safeJsonParse(localSchedules, []));
             }
           } catch (error) {
             console.warn('Schedules fetch from Supabase failed, using local storage:', error);
             const localSchedules = localStorage.getItem(`schedules_${project.id}`);
-            if (localSchedules) setSchedules(JSON.parse(localSchedules));
+            setSchedules(safeJsonParse(localSchedules, []));
           }
         } else {
           const localSchedules = localStorage.getItem(`schedules_${project.id}`);
-          if (localSchedules) setSchedules(JSON.parse(localSchedules));
+          setSchedules(safeJsonParse(localSchedules, []));
         }
       };
       fetchSchedules();
@@ -304,7 +297,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           } catch (e) {
             console.warn('Daily Reports fetch failed, trying local storage', e);
             const saved = localStorage.getItem(`cp_daily_reports_${project.id}`);
-            if (saved) reports = JSON.parse(saved);
+            reports = safeJsonParse(saved, []);
           }
 
           try {
@@ -312,7 +305,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           } catch (e) {
             console.warn('Inspection Requests fetch failed', e);
             const saved = localStorage.getItem(`cp_inspection_requests_${project.id}`);
-            if (saved) inspections = JSON.parse(saved);
+            inspections = safeJsonParse(saved, []);
           }
 
           try {
@@ -320,7 +313,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           } catch (e) {
             console.warn('Material Approvals fetch failed', e);
             const saved = localStorage.getItem(`cp_material_approvals_${project.id}`);
-            if (saved) materialApprovals = JSON.parse(saved);
+            materialApprovals = safeJsonParse(saved, []);
           }
 
           try {
@@ -328,21 +321,21 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           } catch (e) {
             console.warn('Concrete Plans fetch failed', e);
             const saved = localStorage.getItem(`cp_concrete_plans_${project.id}`);
-            if (saved) concretePlans = JSON.parse(saved);
+            concretePlans = safeJsonParse(saved, []);
           }
         } else {
           // Non-Supabase mode
           const savedReports = localStorage.getItem(`cp_daily_reports_${project.id}`);
-          if (savedReports) reports = JSON.parse(savedReports);
+          reports = safeJsonParse(savedReports, []);
           
           const savedIns = localStorage.getItem(`cp_inspection_requests_${project.id}`);
-          if (savedIns) inspections = JSON.parse(savedIns);
+          inspections = safeJsonParse(savedIns, []);
           
           const savedMats = localStorage.getItem(`cp_material_approvals_${project.id}`);
-          if (savedMats) materialApprovals = JSON.parse(savedMats);
+          materialApprovals = safeJsonParse(savedMats, []);
           
           const savedCons = localStorage.getItem(`cp_concrete_plans_${project.id}`);
-          if (savedCons) concretePlans = JSON.parse(savedCons);
+          concretePlans = safeJsonParse(savedCons, []);
         }
         
         setAllReports(reports);
@@ -370,18 +363,45 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           setDisplayProgress({ planned: 0, actual: 0 });
         }
 
-        // Cumulative personnel
-        let direct = 0, outsourced = 0, other = 0;
+        // Cumulative personnel (split into common management vs other disciplines)
+        let directCommon = 0, directOther = 0;
+        let outsourcedCommon = 0, outsourcedOther = 0;
+        let otherCommon = 0, otherOther = 0;
+
         reports.forEach(r => {
-          direct += (r.personnel?.direct || 0);
-          outsourced += (r.personnel?.outsourced || 0);
-          other += (r.personnel?.other || 0);
+          if (r.personnel?.details && Array.isArray(r.personnel.details) && r.personnel.details.length > 0) {
+            r.personnel.details.forEach(d => {
+              const isCommon = (d.discipline || '').trim() === '공통관리';
+              const dDirect = Number(d.direct) || 0;
+              const dOutsourced = Number(d.outsourced) || 0;
+              const dOther = Number(d.other) || 0;
+              if (isCommon) {
+                directCommon += dDirect;
+                outsourcedCommon += dOutsourced;
+                otherCommon += dOther;
+              } else {
+                directOther += dDirect;
+                outsourcedOther += dOutsourced;
+                otherOther += dOther;
+              }
+            });
+          } else if (r.personnel) {
+            directOther += Number(r.personnel.direct) || 0;
+            outsourcedOther += Number(r.personnel.outsourced) || 0;
+            otherOther += Number(r.personnel.other) || 0;
+          }
         });
+
+        const directTotal = directCommon + directOther;
+        const outsourcedTotal = outsourcedCommon + outsourcedOther;
+        const otherTotal = otherCommon + otherOther;
+        const grandTotal = directTotal + outsourcedTotal + otherTotal;
+
         setCumulativePersonnel({
-          direct,
-          outsourced,
-          other,
-          total: direct + outsourced + other
+          direct: { common: directCommon, other: directOther, total: directTotal },
+          outsourced: { common: outsourcedCommon, other: outsourcedOther, total: outsourcedTotal },
+          other: { common: otherCommon, other: otherOther, total: otherTotal },
+          total: grandTotal
         });
       };
       
@@ -614,7 +634,16 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
     return Math.ceil(total / 10000) * 10000;
   };
 
-  const manpowerMaxScale = getManpowerMaxScale(cumulativePersonnel.total);
+  const maxIndividualBar = Math.max(
+    cumulativePersonnel.direct.common,
+    cumulativePersonnel.direct.other,
+    cumulativePersonnel.outsourced.common,
+    cumulativePersonnel.outsourced.other,
+    cumulativePersonnel.other.common,
+    cumulativePersonnel.other.other,
+    10
+  );
+  const manpowerMaxScale = getManpowerMaxScale(maxIndividualBar);
 
   const next7DaysStart = format(new Date(), 'yyyy-MM-dd');
   const next7DaysEnd = format(addDays(new Date(), 7), 'yyyy-MM-dd');
@@ -1034,27 +1063,92 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                 <span className="text-2xl font-bold text-blue-600">{cumulativePersonnel.total}</span>
                 <span className="text-sm font-medium text-blue-600">명</span>
               </div>
-              <div className="flex items-end justify-between flex-1 min-h-[80px] mt-0 gap-2">
+              <div className="flex items-end justify-between flex-1 min-h-[85px] mt-0 gap-3">
+                {/* 관리자 */}
                 <div className="flex flex-col items-center flex-1 h-full">
-                  <div className="w-full flex-1 flex items-end">
-                    <div className="w-full bg-blue-500 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.direct / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
+                  <div className="w-full flex-1 flex items-end justify-center gap-1">
+                    {/* 공통관리 (삼우) */}
+                    <div className="flex-1 flex flex-col items-center h-full justify-end">
+                      <div className="text-[10px] font-semibold text-gray-500 mb-0.5">{cumulativePersonnel.direct.common}</div>
+                      <div 
+                        className="w-full bg-blue-500/80 rounded-t-sm transition-all" 
+                        style={{ height: `${manpowerMaxScale > 0 ? (cumulativePersonnel.direct.common / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}
+                        title={`관리자(삼우): ${cumulativePersonnel.direct.common}명`}
+                      ></div>
+                    </div>
+                    {/* 기타공종 (외주) */}
+                    <div className="flex-1 flex flex-col items-center h-full justify-end">
+                      <div className="text-[10px] font-bold text-gray-700 mb-0.5">{cumulativePersonnel.direct.other}</div>
+                      <div 
+                        className="w-full bg-blue-600 rounded-t-sm transition-all" 
+                        style={{ height: `${manpowerMaxScale > 0 ? (cumulativePersonnel.direct.other / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}
+                        title={`관리자(외주): ${cumulativePersonnel.direct.other}명`}
+                      ></div>
+                    </div>
                   </div>
-                  <div className="text-[11px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.direct}</div>
-                  <div className="text-[11px] text-gray-400 mt-0">직영</div>
+                  <div className="w-full flex justify-around text-[9px] text-gray-400 mt-0.5 border-t border-gray-100 pt-0.5">
+                    <span>삼우</span>
+                    <span>외주</span>
+                  </div>
+                  <div className="text-[11px] font-bold text-gray-700 mt-0.5">관리자</div>
                 </div>
+
+                {/* 작업자 */}
                 <div className="flex flex-col items-center flex-1 h-full">
-                  <div className="w-full flex-1 flex items-end">
-                    <div className="w-full bg-yellow-400 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.outsourced / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
+                  <div className="w-full flex-1 flex items-end justify-center gap-1">
+                    {/* 공통관리 (삼우) */}
+                    <div className="flex-1 flex flex-col items-center h-full justify-end">
+                      <div className="text-[10px] font-semibold text-gray-500 mb-0.5">{cumulativePersonnel.outsourced.common}</div>
+                      <div 
+                        className="w-full bg-yellow-400/80 rounded-t-sm transition-all" 
+                        style={{ height: `${manpowerMaxScale > 0 ? (cumulativePersonnel.outsourced.common / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}
+                        title={`작업자(삼우): ${cumulativePersonnel.outsourced.common}명`}
+                      ></div>
+                    </div>
+                    {/* 기타공종 (외주) */}
+                    <div className="flex-1 flex flex-col items-center h-full justify-end">
+                      <div className="text-[10px] font-bold text-gray-700 mb-0.5">{cumulativePersonnel.outsourced.other}</div>
+                      <div 
+                        className="w-full bg-yellow-500 rounded-t-sm transition-all" 
+                        style={{ height: `${manpowerMaxScale > 0 ? (cumulativePersonnel.outsourced.other / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}
+                        title={`작업자(외주): ${cumulativePersonnel.outsourced.other}명`}
+                      ></div>
+                    </div>
                   </div>
-                  <div className="text-[11px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.outsourced}</div>
-                  <div className="text-[11px] text-gray-400 mt-0">외주</div>
+                  <div className="w-full flex justify-around text-[9px] text-gray-400 mt-0.5 border-t border-gray-100 pt-0.5">
+                    <span>삼우</span>
+                    <span>외주</span>
+                  </div>
+                  <div className="text-[11px] font-bold text-gray-700 mt-0.5">작업자</div>
                 </div>
+
+                {/* 기타 */}
                 <div className="flex flex-col items-center flex-1 h-full">
-                  <div className="w-full flex-1 flex items-end">
-                    <div className="w-full bg-green-400 rounded-t-sm" style={{ height: `${cumulativePersonnel.total > 0 ? (cumulativePersonnel.other / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}></div>
+                  <div className="w-full flex-1 flex items-end justify-center gap-1">
+                    {/* 공통관리 (삼우) */}
+                    <div className="flex-1 flex flex-col items-center h-full justify-end">
+                      <div className="text-[10px] font-semibold text-gray-500 mb-0.5">{cumulativePersonnel.other.common}</div>
+                      <div 
+                        className="w-full bg-green-400/80 rounded-t-sm transition-all" 
+                        style={{ height: `${manpowerMaxScale > 0 ? (cumulativePersonnel.other.common / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}
+                        title={`기타(삼우): ${cumulativePersonnel.other.common}명`}
+                      ></div>
+                    </div>
+                    {/* 기타공종 (외주) */}
+                    <div className="flex-1 flex flex-col items-center h-full justify-end">
+                      <div className="text-[10px] font-bold text-gray-700 mb-0.5">{cumulativePersonnel.other.other}</div>
+                      <div 
+                        className="w-full bg-green-500 rounded-t-sm transition-all" 
+                        style={{ height: `${manpowerMaxScale > 0 ? (cumulativePersonnel.other.other / manpowerMaxScale) * 100 : 0}%`, minHeight: '2px' }}
+                        title={`기타(외주): ${cumulativePersonnel.other.other}명`}
+                      ></div>
+                    </div>
                   </div>
-                  <div className="text-[11px] font-bold text-gray-600 mt-0.5">{cumulativePersonnel.other}</div>
-                  <div className="text-[11px] text-gray-400 mt-0">기타</div>
+                  <div className="w-full flex justify-around text-[9px] text-gray-400 mt-0.5 border-t border-gray-100 pt-0.5">
+                    <span>삼우</span>
+                    <span>외주</span>
+                  </div>
+                  <div className="text-[11px] font-bold text-gray-700 mt-0.5">기타</div>
                 </div>
               </div>
             </div>
@@ -1072,7 +1166,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                     <div className="flex w-full justify-center items-center gap-x-2">
                       <div className="flex flex-col items-center gap-1">
                         <CloudSun size={32} className="text-yellow-400" />
-                        <div className="text-sm text-gray-600">{weatherData?.status || todayReport?.weather?.status || '날씨 정보 없음'}</div>
+                        <div className="text-xs text-gray-600">{weatherData?.status || todayReport?.weather?.status || '날씨 정보 없음'}</div>
                       </div>
                       <div className="flex flex-col items-center gap-1">
                         <div className="flex items-baseline gap-1">
@@ -1261,11 +1355,11 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
             </div>
             <div className="space-y-3">
               <div className="flex justify-between items-center text-[11px]">
-                <span className="text-gray-600">직영</span>
+                <span className="text-gray-600">관리자</span>
                 <span className="text-blue-600 font-bold">{todayReport?.personnel?.direct || 0} <span className="text-gray-500 font-normal text-xs">명</span></span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
-                <span className="text-gray-600">외주</span>
+                <span className="text-gray-600">작업자</span>
                 <span className="text-blue-600 font-bold">{todayReport?.personnel?.outsourced || 0} <span className="text-gray-500 font-normal text-xs">명</span></span>
               </div>
               <div className="flex justify-between items-center text-[11px]">

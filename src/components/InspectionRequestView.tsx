@@ -7,6 +7,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { PhotoModal } from './PhotoModal';
 import { supabaseService } from '../services/supabaseService';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface InspectionRequestViewProps {
   project: Project | null;
@@ -47,7 +48,7 @@ export const InspectionRequestView: React.FC<InspectionRequestViewProps> = ({ pr
     if (!project) return;
     // Save logic (localStorage for now, Supabase if configured)
     const savedRequestsStr = localStorage.getItem(`cp_inspection_requests_${project.id}`);
-    let requests: InspectionRequest[] = savedRequestsStr ? JSON.parse(savedRequestsStr) : [];
+    let requests: InspectionRequest[] = safeJsonParse(savedRequestsStr, []);
     const index = requests.findIndex(r => r.id === request.id);
     if (index >= 0) {
       requests[index] = request;

@@ -6,6 +6,7 @@ import { compressImage } from '../utils/image';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { PhotoModal } from './PhotoModal';
+import { safeJsonParse } from '../utils/safeJson';
 
 interface MaterialApprovalViewProps {
   project: Project | null;
@@ -44,7 +45,7 @@ export const MaterialApprovalView: React.FC<MaterialApprovalViewProps> = ({ proj
   const handleSave = async () => {
     if (!project) return;
     const savedStr = localStorage.getItem(`cp_material_approvals_${project.id}`);
-    let items: MaterialApproval[] = savedStr ? JSON.parse(savedStr) : [];
+    let items: MaterialApproval[] = safeJsonParse(savedStr, []);
     const index = items.findIndex(i => i.id === approval.id);
     if (index >= 0) {
       items[index] = approval;
