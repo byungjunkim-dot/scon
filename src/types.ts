@@ -88,6 +88,7 @@ export interface DailyTask {
   category: string;
   subCategory: string;
   taskName: string;
+  contractor?: string;
   location: string;
   dongBlock?: string[];
   floor?: string[];
@@ -153,9 +154,11 @@ export interface ApprovalRecord {
 export interface DailyPersonnel {
   id: string;
   discipline: string;
+  contractor?: string;
   direct: number;
   outsourced: number;
   other: number;
+  workTime?: '주간' | '연장' | '야간' | '철야' | '조출' | string;
 }
 
 export interface DailyReport {

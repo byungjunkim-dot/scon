@@ -94,6 +94,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
 import { isSupabaseConfigured } from './lib/supabase';
 import { supabaseService } from './services/supabaseService';
+import { safeJsonParse } from './utils/safeJson';
 
 type ViewMode = 'auth' | 'projects' | 'project-detail' | 'user-management';
 type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'ai-diagnosis' | 'billing';
@@ -122,12 +123,8 @@ export default function App() {
 
   // 2. 현재 사용자
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('cp_current_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch(e) {
-      return null;
-    }
+    const saved = localStorage.getItem('cp_current_user');
+    return safeJsonParse(saved, null);
   });
 
   // 3. 메뉴 및 탭 상태 (유지)
@@ -146,12 +143,8 @@ export default function App() {
 
   // 4. 프로젝트 목록 (★AI가 지워서 에러가 났던 부분 복구!)
   const [projects, setProjects] = useState<Project[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_projects');
-      return saved ? JSON.parse(saved) : [];
-    } catch(e) {
-      return [];
-    }
+    const saved = localStorage.getItem('cp_projects');
+    return safeJsonParse(saved, []);
   });
 
   // 5. 현재 선택된 프로젝트 ID (유지)
@@ -293,7 +286,8 @@ export default function App() {
     const loadFromLocalStorage = () => {
       const savedSettings = localStorage.getItem('cp_settings');
       if (savedSettings) {
-        const parsedSettings = JSON.parse(savedSettings);
+        const parsedSettings = safeJsonParse<any>(savedSettings, null);
+        if (!parsedSettings) return;
 
         if (!parsedSettings.categoryColors) {
           parsedSettings.categoryColors = CATEGORY_COLORS;
@@ -360,18 +354,18 @@ export default function App() {
 
       if (!savedSchedules && localStorage.getItem('cp_schedules')) {
         const oldSchedules = localStorage.getItem('cp_schedules');
-        if (oldSchedules) setSchedules(JSON.parse(oldSchedules));
+        setSchedules(safeJsonParse(oldSchedules, []));
       } else if (savedSchedules) {
-        setSchedules(JSON.parse(savedSchedules));
+        setSchedules(safeJsonParse(savedSchedules, []));
       } else {
         setSchedules([]);
       }
 
       if (!savedBaseline && localStorage.getItem('cp_baseline')) {
         const oldBaseline = localStorage.getItem('cp_baseline');
-        if (oldBaseline) setBaselineSchedules(JSON.parse(oldBaseline));
+        setBaselineSchedules(safeJsonParse(oldBaseline, []));
       } else if (savedBaseline) {
-        setBaselineSchedules(JSON.parse(savedBaseline));
+        setBaselineSchedules(safeJsonParse(savedBaseline, []));
       } else {
         setBaselineSchedules([]);
       }
