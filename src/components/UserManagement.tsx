@@ -152,7 +152,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
                 <th className="px-6 py-4 font-bold">이름</th>
                 <th className="px-6 py-4 font-bold">연락처</th>
                 <th className="px-6 py-4 font-bold">이메일</th>
-                <th className="px-6 py-4 font-bold">소속 / 공종</th>
+                <th className="px-6 py-4 font-bold">회사명 / 공종</th>
                 <th className="px-6 py-4 font-bold">권한</th>
                 <th className="px-6 py-4 font-bold">가입코드</th>
                 <th className="px-6 py-4 font-bold">가입일</th>

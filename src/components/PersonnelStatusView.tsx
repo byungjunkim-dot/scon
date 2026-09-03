@@ -71,8 +71,12 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
   // Filter allocations for active projects only
   const activeAllocations = allocations.filter(a => activeProjects.some(p => p.id === a.projectId));
   
-  // Today's date reference
-  const todayStr = '2026-07-21';
+  // Today's date reference (dynamic actual date)
+  const todayDate = React.useMemo(() => new Date(), []);
+  const currentYear = todayDate.getFullYear();
+  const currentMonth = todayDate.getMonth() + 1;
+  const currentDay = todayDate.getDate();
+  const todayStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
 
   // Helper to check if allocation is active on a date
   const isAllocationActiveOnDate = (alloc: Allocation, dateStr: string) => {
@@ -91,7 +95,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
   const [selectedJobTitleFilter, setSelectedJobTitleFilter] = useState<string>('all');
 
   // Year selection for the monthly allocation trend chart
-  const [selectedChartYear, setSelectedChartYear] = useState<number>(2026);
+  const [selectedChartYear, setSelectedChartYear] = useState<number>(currentYear);
 
   // Filter projects for Gantt chart based on status filter and selectedStatuses
   const ganttProjects = React.useMemo(() => {
@@ -162,7 +166,7 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
   // Dynamically calculate the timeline range based on project and allocation dates
-  const { TOTAL_MONTHS, MONTHS, timelineStart, timelineEnd, totalDuration } = React.useMemo(() => {
+  const { TOTAL_MONTHS, MONTHS, timelineStart, timelineEnd, totalDuration, startYear } = React.useMemo(() => {
     let maxYear = 2027;
 
     const checkYearStr = (dateStr?: string) => {
@@ -194,8 +198,8 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
       maxYear = 2035;
     }
 
-    const startYear = 2026;
-    const endYear = maxYear;
+    const startYear = Math.min(2026, currentYear);
+    const endYear = Math.max(maxYear, currentYear + 1);
     const totalMonthsCount = (endYear - startYear + 1) * 12;
 
     const monthsArray = Array.from({ length: totalMonthsCount }, (_, i) => {
@@ -219,8 +223,9 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
       timelineStart: startVal,
       timelineEnd: endVal,
       totalDuration: endVal - startVal,
+      startYear,
     };
-  }, [projects, allocations]);
+  }, [projects, allocations, currentYear]);
 
   const yearsInMonths = React.useMemo(() => {
     const groups: { year: number; count: number }[] = [];
@@ -236,8 +241,8 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
   }, [MONTHS]);
 
   const getInitialScrollMonthIndex = () => {
-    const today = new Date('2026-07-21');
-    const start = new Date('2026-01-01');
+    const today = new Date();
+    const start = new Date(`${startYear}-01-01`);
     const yearDiff = today.getFullYear() - start.getFullYear();
     const monthDiff = today.getMonth() - start.getMonth();
     const totalMonthDiff = yearDiff * 12 + monthDiff;
@@ -566,8 +571,8 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
         projectCounts[p.id] = count;
       });
       
-      // Determine if this represents the current active month (today is 2026-07-21, so 2026-07)
-      const isCurrentMonth = year === 2026 && month === 7;
+      // Determine if this represents the current active month
+      const isCurrentMonth = year === currentYear && month === currentMonth;
       
       return {
         month: `${year}년 ${month}월`,
@@ -662,8 +667,8 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
     });
   }, [workerGanttData, projects, workerSearchQuery, workerWorkTypeFilter, workerJobTitleFilter, workerProjectFilter, workerStatusFilter]);
 
-  // Today marker (July 21, 2026 as per local time context)
-  const todayTime = new Date('2026-07-21').getTime();
+  // Today marker (dynamic real-time date)
+  const todayTime = todayDate.getTime();
   const todayLeftPercent = ((todayTime - timelineStart) / totalDuration) * 100;
 
   const activeFilterCount = activeGanttTab === 'project'
@@ -928,9 +933,11 @@ export const PersonnelStatusView: React.FC<PersonnelStatusViewProps> = ({
               onChange={(e) => setSelectedChartYear(Number(e.target.value))}
               className="appearance-none bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold pl-3 pr-8 py-1.5 rounded-lg border border-gray-200 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition-all"
             >
-              <option value={2026}>2026년</option>
-              <option value={2027}>2027년</option>
-              <option value={2028}>2028년</option>
+              {Array.from(new Set([currentYear - 1, currentYear, currentYear + 1, currentYear + 2, selectedChartYear]))
+                .sort((a, b) => a - b)
+                .map(yr => (
+                  <option key={yr} value={yr}>{yr}년</option>
+                ))}
             </select>
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
               <ChevronDown size={14} />

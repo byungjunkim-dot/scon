@@ -302,7 +302,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
                     <input 
                       type="text" 
                       name="affiliation"
-                      placeholder="소속" 
+                      placeholder="회사명" 
                       required={!isLogin}
                       value={formData.affiliation}
                       onChange={handleChange}

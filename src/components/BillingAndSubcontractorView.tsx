@@ -702,15 +702,93 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
   const monthlyClientChartData = useMemo(() => {
     const totalContractEok = projectDashboardMetrics.totalClientContractAmt / 100000000;
     const targetYearStr = dashboardYear.replace('년', '').trim();
+    const targetYear = parseInt(targetYearStr, 10) || 2026;
     const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+
+    // 1. 도급 계약 시작 연/월 추출 (계약일자 -> 착공일자 순)
+    const rawContractDate = clientContract.contractDate || clientContract.constructionStartDate || '';
+    const normalizedContractDate = rawContractDate ? rawContractDate.replace(/\./g, '-').trim() : '';
+    let contractYear = 0;
+    let contractMonth = 0;
+    if (normalizedContractDate && normalizedContractDate.includes('-')) {
+      const parts = normalizedContractDate.split('-');
+      contractYear = parseInt(parts[0], 10) || 0;
+      contractMonth = parseInt(parts[1], 10) || 0;
+    }
+
+    // 2. 전체 기성 데이터 중 도급잔액이 최초로 0원이 된 시점(연/월) 확인
+    let zeroBalanceYear = 0;
+    let zeroBalanceMonth = 0;
+    if (totalContractEok > 0) {
+      // 시간순 정렬된 전체 기성
+      const sortedBillings = [...clientBillings].sort((a, b) => {
+        const da = (a.claimDate || a.targetPeriodStart || a.referenceDate || '').replace(/\./g, '-').trim();
+        const db = (b.claimDate || b.targetPeriodStart || b.referenceDate || '').replace(/\./g, '-').trim();
+        return da.localeCompare(db);
+      });
+
+      let cumClaimed = 0;
+      for (const b of sortedBillings) {
+        cumClaimed += (b.currentClaimAmt || 0);
+        const cumClaimedEok = cumClaimed / 100000000;
+        if (cumClaimedEok >= totalContractEok - 0.001) {
+          const dateStr = (b.claimDate || b.targetPeriodStart || b.referenceDate || '').replace(/\./g, '-').trim();
+          if (dateStr && dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            zeroBalanceYear = parseInt(parts[0], 10) || 0;
+            zeroBalanceMonth = parseInt(parts[1], 10) || 0;
+          }
+          break;
+        }
+      }
+    }
 
     return months.map((m, idx) => {
       const monthNum = idx + 1;
+
+      // 계약 시작 전 월인지 판정 (계약월 이전에는 도급잔액 미표시)
+      let isContractStarted = true;
+      if (contractYear > 0) {
+        if (targetYear < contractYear) {
+          isContractStarted = false;
+        } else if (targetYear === contractYear) {
+          isContractStarted = monthNum >= contractMonth;
+        } else {
+          isContractStarted = true;
+        }
+      }
+
+      // 수금/기성이 100% 완료되어 도급잔액이 0원이 된 월 이후인지 판정
+      let isAfterZeroBalanceMonth = false;
+      if (zeroBalanceYear > 0 && zeroBalanceMonth > 0) {
+        if (targetYear > zeroBalanceYear) {
+          isAfterZeroBalanceMonth = true;
+        } else if (targetYear === zeroBalanceYear && monthNum > zeroBalanceMonth) {
+          isAfterZeroBalanceMonth = true;
+        }
+      }
+
+      // 계약 전이거나, 잔액 0원 도달 월 이후인 경우 차트 막대 미표시 (0원 처리)
+      if (!isContractStarted || isAfterZeroBalanceMonth || totalContractEok <= 0) {
+        return {
+          month: m,
+          수금완료액: 0,
+          미수금: 0,
+          도급잔액: 0
+        };
+      }
+
+      // 해당 연월까지의 누계 기성 데이터 필터링
       const billingsTillMonth = clientBillings.filter(b => {
-        const dateStr = b.claimDate || b.targetPeriodStart || '';
-        if (dateStr && targetYearStr && !dateStr.startsWith(targetYearStr)) return false;
-        const bMonth = dateStr ? parseInt(dateStr.split('-')[1], 10) : 0;
-        return bMonth > 0 && bMonth <= monthNum;
+        const dateStr = (b.claimDate || b.targetPeriodStart || b.referenceDate || '').replace(/\./g, '-').trim();
+        if (!dateStr || !dateStr.includes('-')) return false;
+        const [bYStr, bMStr] = dateStr.split('-');
+        const bY = parseInt(bYStr, 10);
+        const bM = parseInt(bMStr, 10);
+        if (isNaN(bY) || isNaN(bM)) return false;
+        if (bY < targetYear) return true;
+        if (bY === targetYear && bM <= monthNum) return true;
+        return false;
       });
 
       const collectedEok = billingsTillMonth.reduce((s, b) => s + (b.collectedAmt || 0), 0) / 100000000;
@@ -726,41 +804,147 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
         도급잔액: parseFloat(remainingEok.toFixed(1))
       };
     });
-  }, [clientBillings, projectDashboardMetrics.totalClientContractAmt, dashboardYear]);
+  }, [clientBillings, projectDashboardMetrics.totalClientContractAmt, dashboardYear, clientContract]);
 
   // 월별 누계 외주현황 추이 차트 데이터 (1월~12월)
   const monthlySubChartData = useMemo(() => {
-    const totalSubEok = projectDashboardMetrics.totalSubContractAmt / 100000000;
-    const targetYearStr = dashboardYear.replace('년', '').trim();
-    const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+    try {
+      const targetYearStr = (dashboardYear || '2026').replace('년', '').trim();
+      const targetYear = parseInt(targetYearStr, 10) || 2026;
+      const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
 
-    return months.map((m, idx) => {
-      const monthNum = idx + 1;
-      const subTillMonth = subBillings.filter(b => {
-        const dateStr = b.billingMonth || b.targetPeriodStart || b.claimDate || '';
-        if (dateStr && targetYearStr && !dateStr.startsWith(targetYearStr)) return false;
-        const bMonth = dateStr ? parseInt(dateStr.split('-')[1], 10) : 0;
-        return bMonth > 0 && bMonth <= monthNum;
+      const safeSubContracts = Array.isArray(subContracts) ? subContracts.filter(Boolean) : [];
+      const safeSubBillings = Array.isArray(subBillings) ? subBillings.filter(Boolean) : [];
+
+      // 1. 외주업체별 계약 시작월 및 기성완료(잔액 0원) 월 전처리
+      const subContractInfos = safeSubContracts.map(sc => {
+        const contractAmt = Number(sc?.currentAmount || sc?.initialAmount || 0);
+
+        // 계약기간 시작일자 (startDate -> contractDate 순)
+        const rawStartDate = String(sc?.startDate || sc?.contractDate || '').replace(/[\.\/]/g, '-').trim();
+        let startYear = 0;
+        let startMonth = 0;
+        if (rawStartDate && rawStartDate.includes('-')) {
+          const parts = rawStartDate.split('-');
+          startYear = parseInt(parts[0], 10) || 0;
+          startMonth = parseInt(parts[1], 10) || 0;
+        }
+
+        // 해당 외주업체의 기성 내역
+        const scBillings = safeSubBillings.filter(b => 
+          b && (
+            (b.subcontractorContractId && b.subcontractorContractId === sc.id) ||
+            (b.subcontractorId && b.subcontractorId === sc.id) || 
+            (b.subcontractorName && b.subcontractorName === sc.contractorName)
+          )
+        );
+
+        // 시간순 정렬
+        const sortedScBillings = [...scBillings].sort((a, b) => {
+          const da = String(a?.billingMonth || a?.targetPeriodStart || a?.claimDate || a?.referenceDate || '').replace(/[\.\/]/g, '-').trim();
+          const db = String(b?.billingMonth || b?.targetPeriodStart || b?.claimDate || b?.referenceDate || '').replace(/[\.\/]/g, '-').trim();
+          return da.localeCompare(db);
+        });
+
+        // 외주잔액이 최초로 0원이 된 연/월 확인
+        let zeroBalanceYear = 0;
+        let zeroBalanceMonth = 0;
+        if (contractAmt > 0) {
+          let cumClaimed = 0;
+          for (const sb of sortedScBillings) {
+            cumClaimed += Number(sb?.finalApprovedAmt || sb?.currentClaimAmt || sb?.subClaimAmt || 0);
+            if (cumClaimed >= contractAmt - 1) { // 1원 오차 방지
+              const dateStr = String(sb?.billingMonth || sb?.targetPeriodStart || sb?.claimDate || sb?.referenceDate || '').replace(/[\.\/]/g, '-').trim();
+              if (dateStr && dateStr.includes('-')) {
+                const parts = dateStr.split('-');
+                zeroBalanceYear = parseInt(parts[0], 10) || 0;
+                zeroBalanceMonth = parseInt(parts[1], 10) || 0;
+              }
+              break;
+            }
+          }
+        }
+
+        return {
+          sc,
+          contractAmt,
+          startYear,
+          startMonth,
+          zeroBalanceYear,
+          zeroBalanceMonth,
+          scBillings
+        };
       });
 
-      const approvedEok = subTillMonth
-        .filter(b => b.status === '지급완료' || b.status === '승인')
-        .reduce((s, b) => s + (b.finalApprovedAmt || 0), 0) / 100000000;
+      return months.map((m, idx) => {
+        const monthNum = idx + 1;
 
-      const pendingEok = subTillMonth
-        .filter(b => b.status === '검토' || b.status === '검토중' || b.status === '청구')
-        .reduce((s, b) => s + (b.finalApprovedAmt || b.currentClaimAmt || b.subClaimAmt || 0), 0) / 100000000;
+        let monthTotalApproved = 0;
+        let monthTotalPending = 0;
+        let monthTotalRemaining = 0;
 
-      const remainingEok = Math.max(0, totalSubEok - approvedEok - pendingEok);
+        subContractInfos.forEach(info => {
+          const { contractAmt, startYear, startMonth, zeroBalanceYear, zeroBalanceMonth, scBillings } = info;
+          if (contractAmt <= 0) return;
 
-      return {
+          // 1) 계약 시작 전인지 판정 (계약 시작월 이전에는 미적용)
+          if (startYear > 0) {
+            if (targetYear < startYear) return;
+            if (targetYear === startYear && monthNum < startMonth) return;
+          }
+
+          // 2) 잔액 0원이 된 월 이후인지 판정 (잔액 0원이 되는 월까지만 표시되고 이후는 종료)
+          if (zeroBalanceYear > 0 && zeroBalanceMonth > 0) {
+            if (targetYear > zeroBalanceYear) return;
+            if (targetYear === zeroBalanceYear && monthNum > zeroBalanceMonth) return;
+          }
+
+          // 3) 해당 월까지의 누계 기성 집계
+          const billingsTillMonth = scBillings.filter(b => {
+            if (!b) return false;
+            const dateStr = String(b.billingMonth || b.targetPeriodStart || b.claimDate || b.referenceDate || '').replace(/[\.\/]/g, '-').trim();
+            if (!dateStr || !dateStr.includes('-')) return false;
+            const [bYStr, bMStr] = dateStr.split('-');
+            const bY = parseInt(bYStr, 10);
+            const bM = parseInt(bMStr, 10);
+            if (isNaN(bY) || isNaN(bM)) return false;
+            if (bY < targetYear) return true;
+            if (bY === targetYear && bM <= monthNum) return true;
+            return false;
+          });
+
+          const approved = billingsTillMonth
+            .filter(b => b?.status === '지급완료' || b?.status === '승인')
+            .reduce((s, b) => s + (Number(b?.finalApprovedAmt) || 0), 0);
+
+          const pending = billingsTillMonth
+            .filter(b => b?.status === '검토' || b?.status === '검토중' || b?.status === '청구')
+            .reduce((s, b) => s + (Number(b?.finalApprovedAmt || b?.currentClaimAmt || b?.subClaimAmt) || 0), 0);
+
+          const remaining = Math.max(0, contractAmt - approved - pending);
+
+          monthTotalApproved += approved;
+          monthTotalPending += pending;
+          monthTotalRemaining += remaining;
+        });
+
+        return {
+          month: m,
+          외주승인총액: parseFloat((monthTotalApproved / 100000000).toFixed(1)),
+          승인대기총액: parseFloat((monthTotalPending / 100000000).toFixed(1)),
+          외주잔액: parseFloat((monthTotalRemaining / 100000000).toFixed(1))
+        };
+      });
+    } catch (err) {
+      console.error('Error in monthlySubChartData calculation:', err);
+      return ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'].map(m => ({
         month: m,
-        외주승인총액: parseFloat(approvedEok.toFixed(1)),
-        승인대기총액: parseFloat(pendingEok.toFixed(1)),
-        외주잔액: parseFloat(remainingEok.toFixed(1))
-      };
-    });
-  }, [subBillings, projectDashboardMetrics.totalSubContractAmt, dashboardYear]);
+        외주승인총액: 0,
+        승인대기총액: 0,
+        외주잔액: 0
+      }));
+    }
+  }, [subBillings, dashboardYear, subContracts]);
 
   // 5. 실행예산 및 원가관리 데이터 (Site Execution Budget)
   const [executionBudgets, setExecutionBudgets] = useState<SiteExecutionBudget[]>([
@@ -1886,6 +2070,41 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     saveToSupabase({ subContracts: updatedSubContracts });
   };
 
+  // Open Subcontractor Billing Modal with pre-selected contractor
+  const handleOpenSubBillingModal = (defaultContractorName?: string) => {
+    const targetName = defaultContractorName || (selectedSubHistoryName !== 'all' ? selectedSubHistoryName : '');
+    const matchedContract = subContracts.find(sc => sc.contractorName === targetName) || subContracts[0];
+    const targetContractId = matchedContract?.id || subContracts[0]?.id || '';
+
+    const existingBillings = subBillings.filter(sb =>
+      (matchedContract && sb.subcontractorContractId === matchedContract.id) ||
+      (matchedContract && sb.subcontractorName === matchedContract.contractorName)
+    );
+    const nextRound = existingBillings.length > 0
+      ? Math.max(...existingBillings.map(b => b.billingRound || 0)) + 1
+      : 1;
+
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(year, today.getMonth() + 1, 0).getDate();
+    const defaultStart = `${year}-${month}-01`;
+    const defaultEnd = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+
+    setNewSubBilling({
+      subcontractorContractId: targetContractId,
+      billingRound: nextRound,
+      targetPeriodStart: defaultStart,
+      targetPeriodEnd: defaultEnd,
+      claimDate: today.toISOString().split('T')[0],
+      currentClaimAmt: 0,
+      fieldReviewedAmt: 0,
+      finalApprovedAmt: 0,
+      remarks: ''
+    });
+    setIsSubBillingModalOpen(true);
+  };
+
   // Save Subcontractor Billing Handler
   const handleSaveSubBilling = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2363,12 +2582,12 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 </div>
               </div>
 
-              {/* [좌측 카드 하단] 최근 발주처 기성 이력 (유지) */}
+              {/* [좌측 카드 하단] 발주처 기성 이력 (모든 차수 조회 및 5개 초과 시 스크롤) */}
               <div className="pt-2 border-t border-slate-100 space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <FileText size={14} className="text-slate-500" />
-                    최근 발주처 기성 이력
+                    발주처 기성 이력 ({clientBillings.length}건)
                   </h4>
                   <button
                     onClick={() => setActiveTab('client-contract')}
@@ -2377,9 +2596,9 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                     상세보기 <ChevronRight size={12} />
                   </button>
                 </div>
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <div className="overflow-x-auto max-h-[195px] overflow-y-auto rounded-xl border border-slate-200">
                   <table className="w-full text-left text-[11px]">
-                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <thead className="sticky top-0 bg-slate-50 text-slate-600 font-bold border-b border-slate-200 z-10">
                       <tr>
                         <th className="p-2 text-center">차수</th>
                         <th className="p-2">청구년월</th>
@@ -2389,21 +2608,31 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {clientBillings.slice(-3).map(b => (
-                        <tr key={b.id} className="hover:bg-slate-50/80">
-                          <td className="p-2 text-center font-bold text-slate-700">{b.billingRound}차</td>
-                          <td className="p-2 text-slate-600">{b.billingExpectedDate?.slice(0, 7)}</td>
-                          <td className="p-2 text-right font-semibold text-slate-800">{formatKRW(b.currentClaimAmt)}</td>
-                          <td className="p-2 text-right font-semibold text-emerald-700">{formatKRW(b.collectedAmt || 0)}</td>
-                          <td className="p-2 text-center">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              b.status === '완료' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {b.status}
-                            </span>
+                      {Array.isArray(clientBillings) && clientBillings.length > 0 ? (
+                        [...clientBillings]
+                          .sort((a, b) => (Number(a.billingRound) || 0) - (Number(b.billingRound) || 0))
+                          .map(b => (
+                            <tr key={b.id || Math.random()} className="hover:bg-slate-50/80">
+                              <td className="p-2 text-center font-bold text-slate-700">{b.billingRound}차</td>
+                              <td className="p-2 text-slate-600">{b.billingExpectedDate ? String(b.billingExpectedDate).slice(0, 7) : '-'}</td>
+                              <td className="p-2 text-right font-semibold text-slate-800">{formatKRW(b.currentClaimAmt || 0)}</td>
+                              <td className="p-2 text-right font-semibold text-emerald-700">{formatKRW(b.collectedAmt || 0)}</td>
+                              <td className="p-2 text-center">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  b.status === '완료' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {b.status || '미정'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="p-4 text-center text-slate-400">
+                            등록된 발주처 기성 이력이 없습니다.
                           </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -2577,16 +2806,27 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                             <th className="p-2">업체명</th>
                             <th className="p-2">공종</th>
                             <th className="p-2 text-right">계약금액</th>
+                            <th className="p-2 text-right">외주잔액</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {subContracts.map(sc => (
-                            <tr key={sc.id} className="hover:bg-slate-50/80">
-                              <td className="p-2 font-bold text-slate-800">{sc.contractorName}</td>
-                              <td className="p-2 text-slate-600">{sc.discipline}</td>
-                              <td className="p-2 text-right font-semibold text-slate-900">{formatKRW(sc.currentAmount)}</td>
-                            </tr>
-                          ))}
+                          {Array.isArray(subContracts) && subContracts.map(sc => {
+                            if (!sc) return null;
+                            const scBillings = (validSubBillings || []).filter(
+                              sb => sb && (sb.subcontractorContractId === sc.id || sb.subcontractorName === sc.contractorName)
+                            );
+                            const approvedAmt = scBillings.reduce((sum, b) => sum + (Number(b?.finalApprovedAmt) || 0), 0);
+                            const remainingAmt = Math.max(0, (Number(sc.currentAmount) || 0) - approvedAmt);
+
+                            return (
+                              <tr key={sc.id || Math.random()} className="hover:bg-slate-50/80">
+                                <td className="p-2 font-bold text-slate-800">{sc.contractorName || '-'}</td>
+                                <td className="p-2 text-slate-600">{sc.discipline || '-'}</td>
+                                <td className="p-2 text-right font-semibold text-slate-900">{formatKRW(sc.currentAmount || 0)}</td>
+                                <td className="p-2 text-right font-bold text-slate-700">{formatKRW(remainingAmt)}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -3266,7 +3506,7 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
               </div>
 
               <button
-                onClick={() => setIsSubBillingModalOpen(true)}
+                onClick={() => handleOpenSubBillingModal()}
                 disabled={isCurrentMonthClosed && !isAdminUnlocked}
                 className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
               >
@@ -4538,7 +4778,23 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <label className="block font-bold text-slate-700 mb-1">대상 외주업체 선택</label>
                 <select
                   value={newSubBilling.subcontractorContractId || subContracts[0]?.id || ''}
-                  onChange={e => setNewSubBilling({ ...newSubBilling, subcontractorContractId: e.target.value })}
+                  onChange={e => {
+                    const scId = e.target.value;
+                    const matched = subContracts.find(sc => sc.id === scId);
+                    const existing = subBillings.filter(sb =>
+                      (matched && sb.subcontractorContractId === matched.id) ||
+                      (matched && sb.subcontractorName === matched.contractorName)
+                    );
+                    const nextRound = existing.length > 0
+                      ? Math.max(...existing.map(b => b.billingRound || 0)) + 1
+                      : 1;
+
+                    setNewSubBilling({
+                      ...newSubBilling,
+                      subcontractorContractId: scId,
+                      billingRound: nextRound
+                    });
+                  }}
                   className="w-full p-2.5 border rounded-xl font-bold text-slate-800"
                 >
                   {subContracts.map(sc => (
@@ -4549,14 +4805,51 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 </select>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">청구일</label>
-                <input
-                  type="date"
-                  value={newSubBilling.claimDate || new Date().toISOString().split('T')[0]}
-                  onChange={e => setNewSubBilling({ ...newSubBilling, claimDate: e.target.value })}
-                  className="w-full p-2.5 border rounded-xl font-bold text-slate-800"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">기성 차수</label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={newSubBilling.billingRound}
+                    onChange={e => setNewSubBilling({ ...newSubBilling, billingRound: Number(e.target.value) })}
+                    className="w-full p-2.5 border rounded-xl font-bold text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">청구 일자</label>
+                  <input
+                    type="date"
+                    required
+                    value={newSubBilling.claimDate || new Date().toISOString().split('T')[0]}
+                    onChange={e => setNewSubBilling({ ...newSubBilling, claimDate: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">대상 기간 시작일</label>
+                  <input
+                    type="date"
+                    required
+                    value={newSubBilling.targetPeriodStart || ''}
+                    onChange={e => setNewSubBilling({ ...newSubBilling, targetPeriodStart: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">대상 기간 종료일</label>
+                  <input
+                    type="date"
+                    required
+                    value={newSubBilling.targetPeriodEnd || ''}
+                    onChange={e => setNewSubBilling({ ...newSubBilling, targetPeriodEnd: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -4707,26 +5000,43 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">금회 청구액 (원)</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    금회 청구액 (원) <span className="text-rose-500">*</span>
+                  </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    value={editingSubBilling.currentClaimAmt || ''}
-                    onChange={e => setEditingSubBilling({ ...editingSubBilling, currentClaimAmt: Number(e.target.value) })}
-                    className="w-full p-2.5 border rounded-xl font-bold text-slate-800"
+                    placeholder="0"
+                    value={editingSubBilling.currentClaimAmt ? Number(editingSubBilling.currentClaimAmt).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const val = rawVal === '' ? 0 : Number(rawVal);
+                      setEditingSubBilling({ ...editingSubBilling, currentClaimAmt: val });
+                    }}
+                    className="w-full p-2.5 border rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(editingSubBilling.currentClaimAmt || 0))}
+                  </span>
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">최종 승인액 (원)</label>
                   <input
-                    type="number"
-                    value={editingSubBilling.finalApprovedAmt || ''}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={editingSubBilling.finalApprovedAmt ? Number(editingSubBilling.finalApprovedAmt).toLocaleString('ko-KR') : ''}
                     onChange={e => {
-                      const val = Number(e.target.value);
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const val = rawVal === '' ? 0 : Number(rawVal);
                       setEditingSubBilling({ ...editingSubBilling, finalApprovedAmt: val });
                     }}
-                    className="w-full p-2.5 border rounded-xl font-bold text-emerald-700"
+                    className="w-full p-2.5 border rounded-xl font-bold text-emerald-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(editingSubBilling.finalApprovedAmt || 0))}
+                  </span>
                 </div>
               </div>
 
@@ -4734,11 +5044,20 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">실지급 완료액 (원)</label>
                   <input
-                    type="number"
-                    value={editingSubBilling.actualPaidAmt || ''}
-                    onChange={e => setEditingSubBilling({ ...editingSubBilling, actualPaidAmt: Number(e.target.value) })}
-                    className="w-full p-2.5 border rounded-xl font-bold text-blue-700"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={editingSubBilling.actualPaidAmt ? Number(editingSubBilling.actualPaidAmt).toLocaleString('ko-KR') : ''}
+                    onChange={e => {
+                      const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                      const val = rawVal === '' ? 0 : Number(rawVal);
+                      setEditingSubBilling({ ...editingSubBilling, actualPaidAmt: val });
+                    }}
+                    className="w-full p-2.5 border rounded-xl font-bold text-blue-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    입력값: {formatKRW(Number(editingSubBilling.actualPaidAmt || 0))}
+                  </span>
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">지급 상태</label>
