@@ -374,6 +374,8 @@ export interface ClientBilling {
   taxInvoiceDate?: string;
   collectionExpectedDate: string;
   actualCollectionDate?: string;
+  claimDate?: string;
+  billingMonth?: string;
 
   // Amounts
   prevCumulativeAmt: number;
@@ -391,6 +393,7 @@ export interface ClientBilling {
   status: ClientBillingStatus;
   remarks?: string;
   attachments?: string[];
+  attachment?: string;
 }
 
 export interface ClientBillingItem {
@@ -465,6 +468,7 @@ export interface SubcontractorContractHistory {
 export type SubcontractorBillingStatus =
   | '청구'
   | '검토'
+  | '검토중'
   | '승인'
   | '지급완료'
   | '반려';
@@ -473,12 +477,15 @@ export interface SubcontractorBilling {
   id: string;
   projectId: string;
   subcontractorContractId: string;
+  subcontractorId?: string;
   subcontractorName: string;
   discipline: Category;
   billingRound: number;
   targetPeriodStart: string;
   targetPeriodEnd: string;
   claimDate: string;
+  billingMonth?: string;
+  referenceDate?: string;
   reviewDate?: string;
   approvalDate?: string;
   paymentScheduledDate: string;
@@ -487,6 +494,7 @@ export interface SubcontractorBilling {
   // Amounts
   prevCumulativeAmt: number;
   currentClaimAmt: number; // 업체 청구액
+  subClaimAmt?: number;
   fieldReviewedAmt: number; // 현장 검토액
   finalApprovedAmt: number; // 최종 승인액
   cumulativeApprovedAmt: number;
@@ -504,12 +512,13 @@ export interface SubcontractorBilling {
   actualPaidAmt: number; // 실제 지급 완료액
   unpaidAmt: number; // 미지급액
 
-  paymentType: '현금' | '어음';
-  taxInvoiceIssued: boolean;
-  directPaymentStatus: boolean;
   status: SubcontractorBillingStatus;
+  paymentType?: '현금' | '어음';
+  taxInvoiceIssued?: boolean;
+  directPaymentStatus?: boolean;
   remarks?: string;
   attachments?: string[];
+  attachment?: string;
 }
 
 export interface SubcontractorBillingItem {

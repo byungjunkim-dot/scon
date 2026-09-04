@@ -29,7 +29,9 @@ import {
   Sparkles,
   ShieldAlert,
   Image as ImageIcon,
-  DollarSign
+  DollarSign,
+  Clipboard,
+  Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExcelJS from 'exceljs';
@@ -43,21 +45,6 @@ import {
   min as minDate,
   max as maxDate
 } from 'date-fns';
-
-const LogoIcon = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    className={className}
-  >
-    <path d="M6 2l5 9H1l5-9z" />
-    <circle cx="18" cy="6.5" r="4.5" />
-    <rect x="1.5" y="13.5" width="9" height="9" rx="1.5" />
-    <path d="M18 22l-5-9h10l-5 9z" />
-  </svg>
-);
 
 import ProjectList from './components/ProjectList';
 import { ConfirmModal } from './components/ConfirmModal';
@@ -76,6 +63,10 @@ import { AiDiagnosisView } from './components/AiDiagnosisView';
 import { PhotoGalleryView } from './components/PhotoGalleryView';
 import { QuickMemoView } from './components/QuickMemoView';
 import { BillingAndSubcontractorView } from './components/BillingAndSubcontractorView';
+import { ReportSummaryView } from './components/ReportSummaryView';
+import { ProductionStatusView } from './components/ProductionStatusView';
+import { SettingsModal } from './components/SettingsModal';
+import { ProfileModal } from './components/ProfileModal';
 
 import { Project, ScheduleItem, Category, Status, AppSettings, User } from './types';
 import {
@@ -90,14 +81,27 @@ import {
   CATEGORY_COLORS,
   CATEGORY_TEXT_COLORS
 } from './constants';
-import { SettingsModal } from './components/SettingsModal';
-import { ProfileModal } from './components/ProfileModal';
 import { isSupabaseConfigured } from './lib/supabase';
 import { supabaseService } from './services/supabaseService';
 import { safeJsonParse } from './utils/safeJson';
 
+const LogoIcon = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+  >
+    <path d="M6 2l5 9H1l5-9z" />
+    <circle cx="18" cy="6.5" r="4.5" />
+    <rect x="1.5" y="13.5" width="9" height="9" rx="1.5" />
+    <path d="M18 22l-5-9h10l-5 9z" />
+  </svg>
+);
+
 type ViewMode = 'auth' | 'projects' | 'project-detail' | 'user-management';
-type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'ai-diagnosis' | 'billing';
+type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'ai-diagnosis' | 'billing' | 'report' | 'production';
 type TabMode = 'gantt' | 'table' | 'comparison' | 'baseline';
 type DocumentTab = 'daily-report' | 'inspection' | 'material' | 'concrete';
 type AiDiagnosisTab = 'ai-risk' | 'ai-report';
@@ -114,17 +118,18 @@ const INITIAL_SETTINGS: AppSettings = {
 };
 
 export default function App() {
-// 1. 화면 모드 (유지)
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const savedUser = localStorage.getItem('cp_current_user');
-    const savedView = localStorage.getItem('cp_view_mode') as ViewMode;
-    return savedUser ? (savedView || 'projects') : 'auth';
-  });
-
-  // 2. 현재 사용자
+  // 1. 현재 사용자
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('cp_current_user');
-    return safeJsonParse(saved, null);
+    return safeJsonParse<User | null>(saved, null);
+  });
+
+  // 2. 화면 모드 (사용자 유효성 검증)
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('cp_current_user');
+    const parsedUser = safeJsonParse<User | null>(saved, null);
+    const savedView = localStorage.getItem('cp_view_mode') as ViewMode;
+    return (parsedUser && parsedUser.id) ? (savedView || 'projects') : 'auth';
   });
 
   // 3. 메뉴 및 탭 상태 (유지)
@@ -1294,7 +1299,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               <div className="flex items-center gap-3 order-1 sm:order-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
-                    {currentUser?.name.charAt(0)}
+                    {(currentUser?.name || 'U').charAt(0)}
                   </div>
                   <div className="flex flex-col">
                     <span className="text-xs font-bold text-gray-900">{currentUser?.name}</span>
@@ -1492,7 +1497,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'material' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                     >
                       <FileText size={18} className={documentTab === 'material' ? 'text-blue-600' : 'text-gray-400'} />
-                      <span>자재승인서</span>
+                      <span>제작/출고 현황</span>
                     </button>
                     <button
                       onClick={() => checkUnsavedChanges(() => setDocumentTab('concrete'))}
@@ -1605,14 +1610,16 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                   className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'drawings' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
                   <Building size={16} className={`${mainMenu === 'drawings' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
-                  <span>도면 보기</span>
+                  <span className="md:hidden">도면</span>
+                  <span className="hidden md:inline">도면 보기</span>
                 </button>
                 <button
                   onClick={() => setMainMenu('photo-gallery')}
                   className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'photo-gallery' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
                   <ImageIcon size={16} className={`${mainMenu === 'photo-gallery' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
-                  <span>사진 갤러리</span>
+                  <span className="md:hidden">사진</span>
+                  <span className="hidden md:inline">사진 갤러리</span>
                 </button>
 
                 <button
@@ -1620,7 +1627,24 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                   className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'quick-memo' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
                   <AlertTriangle size={16} className={`${mainMenu === 'quick-memo' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
-                  <span>퀵 메모</span>
+                  <span className="md:hidden">메모</span>
+                  <span className="hidden md:inline">퀵 메모</span>
+                </button>
+
+                <button
+                  onClick={() => setMainMenu('report')}
+                  className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'report' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                >
+                  <Clipboard size={16} className={`${mainMenu === 'report' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span>보고</span>
+                </button>
+                <button
+                  onClick={() => setMainMenu('production')}
+                  className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'production' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                >
+                  <Package size={16} className={`${mainMenu === 'production' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span className="md:hidden">제작</span>
+                  <span className="hidden md:inline">제작현황</span>
                 </button>
                 <button
                   onClick={() => setMainMenu('ai-diagnosis')}
@@ -1700,9 +1724,9 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                   </button>
                   <button
                     onClick={() => setDocumentTab('material')}
-                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'material' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                    className={`flex-shrink-0 flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'material' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
                   >
-                    <span>자재승인서</span>
+                    <span>제작/출고 현황</span>
                   </button>
                   <button
                     onClick={() => setDocumentTab('concrete')}
@@ -1873,6 +1897,25 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     </motion.div>
                   )}
 
+                  {mainMenu === 'report' && (
+                    <motion.div
+                      key="report"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full bg-white"
+                    >
+                      <ReportSummaryView
+                        project={currentProject || null}
+                        currentUser={currentUser}
+                        onGoToDailyReport={() => {
+                          setMainMenu('documents');
+                          setDocumentTab('daily-report');
+                        }}
+                      />
+                    </motion.div>
+                  )}
+
                   {mainMenu === 'ai-diagnosis' && (
                     <motion.div
                       key={`ai-diagnosis-${aiDiagnosisTab}`}
@@ -1923,7 +1966,23 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     </motion.div>
                   )}
 
-                  {mainMenu === 'documents' && documentTab !== 'daily-report' && (
+                  {(mainMenu === 'production' || (mainMenu === 'documents' && documentTab === 'material')) && (
+                    <motion.div
+                      key="production-status"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+                    >
+                      <ProductionStatusView
+                        project={currentProject || null}
+                        settings={settings}
+                        currentUser={currentUser}
+                      />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'documents' && documentTab !== 'daily-report' && documentTab !== 'material' && (
                     <motion.div
                       key={`doc-${documentTab}`}
                       initial={{ opacity: 0, scale: 0.98 }}
