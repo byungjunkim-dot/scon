@@ -136,7 +136,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="space-y-4">
             <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
               <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner">
-                {user.name.charAt(0)}
+                {(user?.name || 'U').charAt(0)}
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-slate-800">{user.name}</h3>

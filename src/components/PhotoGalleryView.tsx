@@ -157,7 +157,7 @@ export function PhotoGalleryView({ project }: PhotoGalleryViewProps) {
               source: 'material',
               date: item.date,
               sourceId: item.id,
-              sourceLocalName: '자재승인서',
+              sourceLocalName: '제작/출고 현황',
             });
           });
         }

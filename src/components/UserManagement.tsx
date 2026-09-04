@@ -170,7 +170,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack }) => {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
-                        {user.name.charAt(0)}
+                        {(user?.name || 'U').charAt(0)}
                       </div>
                       <span className="font-bold text-gray-900">{user.name}</span>
                     </div>

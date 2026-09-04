@@ -367,7 +367,7 @@ function buildRisks(params: AIRiskCardProps): AIRiskItem[] {
       category: 'document',
       severity: 'medium',
       description:
-        '향후 7일 예정 공정이 있으나 같은 기간의 검측요청서, 자재승인서, 타설계획서가 확인되지 않습니다.',
+        '향후 7일 예정 공정이 있으나 같은 기간의 검측요청서, 제작/출고 현황, 타설계획서가 확인되지 않습니다.',
       evidence: [
         `향후 7일 예정 공정 ${upcomingSchedules.length}건`,
         '향후 7일 관련 문서 0건',

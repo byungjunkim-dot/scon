@@ -95,6 +95,50 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
   const [storageTick, setStorageTick] = useState(0);
 
+  const filteredTodayPersonnel = useMemo(() => {
+    let direct = 0;
+    let outsourced = 0;
+    let other = 0;
+
+    const isCommonManagement = (contractor: string, discipline: string) => {
+      const n = (contractor || '').trim();
+      const d = (discipline || '').trim();
+      return (
+        n === '공통관리' || 
+        n === '삼우' || 
+        n.includes('공통관리') || 
+        n.includes('삼우') || 
+        d === '공통관리' || 
+        d.includes('공통관리')
+      );
+    };
+
+    if (todayReport?.personnel?.details && Array.isArray(todayReport.personnel.details) && todayReport.personnel.details.length > 0) {
+      todayReport.personnel.details.forEach(p => {
+        if (!isCommonManagement(p.contractor || '', p.discipline || '')) {
+          direct += Number(p.direct) || 0;
+          outsourced += Number(p.outsourced) || 0;
+          other += Number(p.other) || 0;
+        } else {
+          // 공통관리(삼우)의 경우 관리자(direct)만 제외하고, 근로자 및 기타 인원은 포함
+          outsourced += Number(p.outsourced) || 0;
+          other += Number(p.other) || 0;
+        }
+      });
+    } else {
+      direct = Number(todayReport?.personnel?.direct) || 0;
+      outsourced = Number(todayReport?.personnel?.outsourced) || 0;
+      other = Number(todayReport?.personnel?.other) || 0;
+    }
+
+    return {
+      direct,
+      outsourced,
+      other,
+      total: direct + outsourced + other
+    };
+  }, [todayReport]);
+
   useEffect(() => {
     const handleStorageChange = () => setStorageTick(t => t + 1);
     window.addEventListener('storage', handleStorageChange);
@@ -568,7 +612,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
       // Materials
       allMaterialApprovals.filter(r => r.date === dateStr).forEach(mat => {
-        events.push({ type: '자재승인서', id: mat.id, label: '자재승인서' });
+        events.push({ type: '자재승인서', id: mat.id, label: '제작/출고 현황' });
       });
 
       // Concrete Plans
@@ -1035,14 +1079,14 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <div className="space-y-2">
                     {schedules
-                      .filter(s => s.isMilestone)
+                      .filter(s => (s as any).isMilestone || s.duration <= 1 || s.status === '완료')
                       .sort((a, b) => a.startDate.localeCompare(b.startDate))
                       .slice(0, 3)
                       .map((milestone, idx) => (
                         <div key={idx} className="flex items-center justify-between">
                           <div className="flex items-center gap-2 overflow-hidden">
                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></div>
-                            <span className="text-xs text-gray-700 truncate">{milestone.title}</span>
+                            <span className="text-xs text-gray-700 truncate">{milestone.taskName || (milestone as any).title}</span>
                           </div>
                           <span className="text-[10px] font-medium text-gray-400 whitespace-nowrap ml-2">
                             {milestone.startDate.replace(/-/g, '.').substring(2)}
@@ -1349,22 +1393,22 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
             <div className="mb-4 p-3 bg-white rounded-lg flex justify-between items-center">
               <span className="text-sm font-medium text-gray-500">합계</span>
               <span className="text-lg font-black text-blue-600">
-                {(todayReport?.personnel?.direct || 0) + (todayReport?.personnel?.outsourced || 0) + (todayReport?.personnel?.other || 0)}
+                {filteredTodayPersonnel.total}
                 <span className="text-xs font-bold text-gray-400 ml-1">명</span>
               </span>
             </div>
             <div className="space-y-3">
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-gray-600">관리자</span>
-                <span className="text-blue-600 font-bold">{todayReport?.personnel?.direct || 0} <span className="text-gray-500 font-normal text-xs">명</span></span>
+                <span className="text-blue-600 font-bold">{filteredTodayPersonnel.direct} <span className="text-gray-500 font-normal text-xs">명</span></span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-gray-600">작업자</span>
-                <span className="text-blue-600 font-bold">{todayReport?.personnel?.outsourced || 0} <span className="text-gray-500 font-normal text-xs">명</span></span>
+                <span className="text-blue-600 font-bold">{filteredTodayPersonnel.outsourced} <span className="text-gray-500 font-normal text-xs">명</span></span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-gray-600">기타</span>
-                <span className="text-blue-600 font-bold">{todayReport?.personnel?.other || 0} <span className="text-gray-500 font-normal text-xs">명</span></span>
+                <span className="text-blue-600 font-bold">{filteredTodayPersonnel.other} <span className="text-gray-500 font-normal text-xs">명</span></span>
               </div>
             </div>
           </div>

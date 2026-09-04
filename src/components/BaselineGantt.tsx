@@ -404,6 +404,7 @@ const BaselineGantt: React.FC<BaselineGanttProps> = ({ items, onAdd, onUpdate, o
       handleClear();
     } else {
       onAdd({
+        projectId: items[0]?.projectId || '',
         category: newCategory,
         subCategory: newSubCategory,
         taskName: newTaskName,

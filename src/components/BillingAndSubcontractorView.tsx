@@ -1451,6 +1451,8 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
     setIsContractModalOpen(false);
     setAmendmentForm({
       date: new Date().toISOString().split('T')[0],
+      constructionStartDate: clientContract?.constructionStartDate || '2025-02-01',
+      constructionEndDate: clientContract?.constructionEndDate || '2027-12-31',
       changeAmount: 0,
       designChangeAmount: 0,
       priceFluctuationAmount: 0,
@@ -4711,12 +4713,11 @@ export const BillingAndSubcontractorView: React.FC<Props> = ({ projectId = 'pjt-
                   <label className="block font-bold text-slate-700 mb-1">노무비 구분</label>
                   <select
                     value={newSubContract.laborCostType || '직접노무비'}
-                    onChange={e => setNewSubContract({ ...newSubContract, laborCostType: e.target.value })}
+                    onChange={e => setNewSubContract({ ...newSubContract, laborCostType: e.target.value as '직접노무비' | '간접노무비' })}
                     className="w-full p-2.5 border rounded-xl"
                   >
                     <option value="직접노무비">직접노무비</option>
                     <option value="간접노무비">간접노무비</option>
-                    <option value="기타노무비">기타노무비</option>
                   </select>
                 </div>
                 <div>
