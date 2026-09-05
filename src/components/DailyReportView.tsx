@@ -96,6 +96,14 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
 
   const showStatus = (msg: string) => { setStatusMessage(msg); };
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [isPersonnelModalOpen, setIsPersonnelModalOpen] = useState(false);
@@ -624,31 +632,35 @@ const handleImportQuickMemos = async () => {
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="border-b border-gray-100 bg-gray-50 flex-shrink-0">
+      <div className="border-b border-gray-100 bg-gray-50 flex-shrink-0 hidden md:block">
         <div className="max-w-4xl mx-auto px-6 py-2 flex justify-end items-center">
           <div className="flex items-center gap-2">
             <button onClick={handleSave} disabled={isReadOnly}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-bold ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
               <Save size={16} /> 저장
             </button>
-            <button onClick={() => setIsBulkExportModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-bold">
-              <Download size={16} /> 일괄 다운로드
-            </button>
             <button onClick={() => setIsExcelModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-bold shadow-xs">
               <FileSpreadsheet size={16} /> 엑셀 다운로드
             </button>
-            <button onClick={handleExportPDF} disabled={isExporting}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-bold">
-              {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} PDF 다운로드
-            </button>
+            {(currentUser?.role === 'admin' || currentUser?.userRole === '골드') && (
+              <>
+                <button onClick={() => setIsBulkExportModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-bold">
+                  <Download size={16} /> 일괄 다운로드
+                </button>
+                <button onClick={handleExportPDF} disabled={isExporting}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-bold">
+                  {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} PDF 다운로드
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-1 lg:p-1 bg-gray-100/50">
-        <div ref={reportRef} className={`max-w-4xl mx-auto bg-white p-8 border border-gray-200 rounded-xl space-y-8 ${isExporting ? 'pdf-export-mode' : ''}`}>
+      <div className="flex-1 overflow-y-auto p-1 lg:p-4 bg-gray-100/50 pb-20 md:pb-4">
+        <div ref={reportRef} className={`w-full mx-auto bg-transparent p-0 md:px-3 lg:bg-white lg:p-8 lg:border lg:border-gray-200 lg:rounded-xl space-y-4 lg:space-y-8 ${isExporting ? 'pdf-export-mode' : ''}`}>
           {isExporting && (
             <style>{`
               .pdf-export-mode button { display: none !important; }
@@ -659,15 +671,15 @@ const handleImportQuickMemos = async () => {
             `}</style>
           )}
             
-            <div data-pdf-section className="flex justify-between items-start mb-5">
-              <div className="flex-1">
-                <h1 className="text-3xl font-black text-gray-900 tracking-widest text-center mt-4 inline-block">공 사 일 보</h1>
+            <div data-pdf-section className="flex flex-row items-center justify-between mb-1 sm:mb-5 gap-3">
+              <div>
+                <h1 className="text-[14px] sm:text-[20px] font-black text-gray-900 tracking-widest text-center">공 사 일 보</h1>
               </div>
-              <div className="flex items-stretch bg-white rounded-xl border border-gray-200 overflow-hidden divide-x divide-gray-100">
+              <div className="flex flex-col sm:flex-row bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm w-full max-w-[200px] sm:max-w-max ml-auto">
                 <div className="hidden sm:flex items-center justify-center bg-gray-50 px-2 py-4 text-md text-gray-400 [writing-mode:vertical-lr] tracking-widest uppercase border-r border-gray-100">
                   결재
                 </div>
-                <div className="flex divide-x divide-gray-100">
+                <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-gray-100 w-full">
                   {[
                     { role: 'author' as const, label: '작성자', name: report.author },
                     { role: 'reviewer' as const, label: '검토자', name: report.reviewer },
@@ -686,12 +698,12 @@ const handleImportQuickMemos = async () => {
                     const isApproverDone = report.approvalStatus === '승인';
 
                     return (
-                      <div key={item.role} className="flex flex-col w-24 sm:w-28 transition-all group">
-                        <div className="bg-gray-50/50 px-2 py-1.5 text-[10px] font-bold text-gray-500 text-center border-b border-gray-100 uppercase tracking-tighter">
+                      <div key={item.role} className="flex flex-row sm:flex-col items-center sm:w-28 transition-all group p-2 sm:p-0">
+                        <div className="bg-gray-50/50 px-2 py-1.5 text-[10px] font-bold text-gray-500 text-center sm:border-b border-gray-100 uppercase tracking-tighter w-16 sm:w-full shrink-0">
                           {item.label}
                         </div>
                         <div 
-                          className="h-20 flex flex-col items-center justify-center p-2 gap-1 relative"
+                          className="flex flex-row sm:flex-col items-center justify-between sm:justify-center p-0.5 sm:p-2 gap-0 sm:gap-2 relative w-full"
                         >
                           {item.name ? (
                             <>
@@ -717,12 +729,12 @@ const handleImportQuickMemos = async () => {
                                   if (record) {
                                     const dateObj = new Date(record.timestamp);
                                     return (
-                                      <div className="flex flex-col items-center bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 animate-in fade-in zoom-in duration-300">
+                                      <div className="flex items-center bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 animate-in fade-in zoom-in duration-300 gap-1">
                                         <span className="text-[9px] font-black text-blue-600 leading-none">
-                                          {record.status === '승인요청' ? '요청완료' : record.status === '검토완료' ? '검토완료' : '승인완료'}
+                                          {record.status === '승인요청' ? '요청' : record.status === '검토완료' ? '검토' : '승인'}
                                         </span>
-                                        <span className="text-[8px] text-blue-400 font-medium leading-none mt-0.5">
-                                          {format(dateObj, 'yy.MM.dd HH:mm')}
+                                        <span className="text-[8px] text-blue-400 font-medium leading-none">
+                                          {format(dateObj, 'yy.MM.dd')}
                                         </span>
                                       </div>
                                     );
@@ -794,7 +806,7 @@ const handleImportQuickMemos = async () => {
               </div>
             </div>
 
-            <div data-pdf-section className="mb-5 bg-white rounded-xl border border-gray-200 p-5 divide-y divide-gray-100">
+            <div data-pdf-section className="mb-1 sm:mb-5 bg-white rounded-xl border border-gray-200 p-4 sm:p-5 divide-y divide-gray-100">
               {/* 프로젝트 & 일자 */}
               <div className="grid grid-cols-1 md:grid-cols-10 gap-4 pb-4">
                 <div className="md:col-span-6 flex items-center gap-3">
@@ -872,7 +884,7 @@ const handleImportQuickMemos = async () => {
             </div>
 
             {/* Section 1: 금일 작업 사항 */}
-            <div data-pdf-section className="mb-5 bg-white rounded-xl border border-gray-200 p-5">
+            <div data-pdf-section className="mb-1 sm:mb-5 bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                   <span className="bg-gray-700 text-white w-5 h-5 rounded flex items-center justify-center text-[10px]">1</span> 금일 작업 사항
@@ -885,69 +897,130 @@ const handleImportQuickMemos = async () => {
                   <Plus size={14} /> 내역 추가
                 </button>
               </div>
-              <div className="space-y-1">
-                {report.todayTasks.length > 0 && (
-                  <div className="flex items-center gap-4 px-3 py-1 border-b border-gray-50 mb-1 opacity-60">
-                    <div className="w-32 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">공종 / 세부공종</div>
-                    <div className="flex-1 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">작업내용 / 위치</div>
-                    <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-center">작업량</div>
-                    <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-right">관리</div>
-                  </div>
-                )}
-                {report.todayTasks.map((task, idx) => (
-                  <div key={task.id} className="flex items-center py-1 px-3 bg-gray-50 rounded-lg border border-gray-100 gap-4 group transition-all hover:bg-gray-100/50">
-                    <div className="flex flex-col shrink-0 w-32">
-                      <span className="text-xs font-bold truncate" style={{ color: settings.categoryTextColors[task.category] }}>{task.category}</span>
-                      <span className="text-[10px] text-gray-500 truncate font-medium">{task.subCategory}</span>
+              <div>
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
+                  {report.todayTasks.length > 0 && (
+                    <div className="flex items-center gap-4 px-3 py-1 border-b border-gray-50 mb-1 opacity-60">
+                      <div className="w-32 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">공종 / 세부공종</div>
+                      <div className="flex-1 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">작업내용 / 위치</div>
+                      <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-center">작업량</div>
+                      <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-right">관리</div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-bold text-gray-900">{task.taskName}</span>
-                        {task.contractor && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold border border-blue-100 shrink-0">
-                            {task.contractor}
-                          </span>
+                  )}
+                  {report.todayTasks.map((task, idx) => (
+                    <div key={task.id} className="flex items-center py-1 px-3 bg-gray-50 rounded-lg border border-gray-100 gap-4 group transition-all hover:bg-gray-100/50 mb-1">
+                      <div className="flex flex-col shrink-0 w-32">
+                        <span className="text-xs font-bold truncate" style={{ color: settings.categoryTextColors[task.category] }}>{task.category}</span>
+                        <span className="text-[10px] text-gray-500 truncate font-medium">{task.subCategory}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-bold text-gray-900">{task.taskName}</span>
+                          {task.contractor && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold border border-blue-100 shrink-0">
+                              {task.contractor}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                          {[formatMultiValue(task.dongBlock), formatMultiValue(task.floor), formatMultiValue(task.zone)].filter(Boolean).join(' / ')}
+                        </p>
+                      </div>
+                      <div className="shrink-0 w-16 text-center">
+                        <span className="text-xs font-bold text-gray-700">{task.amount || '-'}</span>
+                      </div>
+                      <div className="shrink-0 w-16 flex items-center justify-end">
+                        {!isReadOnly && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => handleOpenTaskModal('today', task)} 
+                              className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all"
+                              title="수정"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button 
+                              onClick={() => setReport({...report, todayTasks: report.todayTasks.filter(t => t.id !== task.id)})} 
+                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                              title="삭제"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         )}
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5 truncate">
-                        {[formatMultiValue(task.dongBlock), formatMultiValue(task.floor), formatMultiValue(task.zone)].filter(Boolean).join(' / ')}
-                      </p>
                     </div>
-                    <div className="shrink-0 w-16 text-center">
-                      <span className="text-xs font-bold text-gray-700">{task.amount || '-'}</span>
-                    </div>
-                    <div className="shrink-0 w-16 flex items-center justify-end">
-                      {!isReadOnly && (
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
-                            onClick={() => handleOpenTaskModal('today', task)} 
-                            className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all"
-                            title="수정"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button 
-                            onClick={() => setReport({...report, todayTasks: report.todayTasks.filter(t => t.id !== task.id)})} 
-                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
-                            title="삭제"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                  ))}
+                  {report.todayTasks.length === 0 && (
+                    <div className="text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded-lg border border-dashed border-gray-200">등록된 작업 사항이 없습니다.</div>
+                  )}
+                </div>
+
+                {/* Mobile Vertical List */}
+                <div className="space-y-4 md:hidden">
+                  {report.todayTasks.map((task, idx) => (
+                    <div key={task.id} className="space-y-2 pb-3.5 border-b border-gray-100 last:border-0 last:pb-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-black text-gray-500">작업 #{idx + 1}</span>
+                        {!isReadOnly && (
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={() => handleOpenTaskModal('today', task)} 
+                              className="px-2 py-1 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-all flex items-center gap-1"
+                            >
+                              <Edit2 size={12} /> 수정
+                            </button>
+                            <button 
+                              onClick={() => setReport({...report, todayTasks: report.todayTasks.filter(t => t.id !== task.id)})} 
+                              className="px-2 py-1 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-all flex items-center gap-1"
+                            >
+                              <Trash2 size={12} /> 삭제
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">공종</span>
+                          <span className="font-bold" style={{ color: settings.categoryTextColors[task.category] }}>
+                            {task.category || '-'}
+                            {task.contractor && (
+                              <span className="font-normal ml-1">({task.contractor})</span>
+                            )}
+                          </span>
                         </div>
-                      )}
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">세부공종</span>
+                          <span className="text-gray-700 font-medium">{task.subCategory || '-'}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">작업내용</span>
+                          <span className="font-black text-gray-900">{task.taskName || '-'}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">위치</span>
+                          <span className="text-gray-600">{[formatMultiValue(task.dongBlock), formatMultiValue(task.floor), formatMultiValue(task.zone)].filter(Boolean).join(' / ') || '-'}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">작업량</span>
+                          <span className="font-bold text-gray-800">{task.amount || '-'}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {report.todayTasks.length === 0 && (
-                  <div className="text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded-lg border border-dashed border-gray-200">등록된 작업 사항이 없습니다.</div>
-                )}
+                  ))}
+                  {report.todayTasks.length === 0 && (
+                    <div className="text-center py-6 text-gray-400 text-xs bg-gray-50/50 rounded-xl border border-dashed border-gray-200">등록된 작업 사항이 없습니다.</div>
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Section 2 & 3: Personnel and Equipment */}
-            <div data-pdf-section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+            <div data-pdf-section className="grid grid-cols-1 lg:grid-cols-2 gap-y-1 sm:gap-y-5 gap-x-5 mb-1 sm:mb-5">
               {/* 출력 인원 현황 */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                     <span className="bg-gray-700 text-white w-5 h-5 rounded flex items-center justify-center text-[10px]">2</span> 출력 인원 현황
@@ -961,14 +1034,14 @@ const handleImportQuickMemos = async () => {
                   </button>
                 </div>
                 
-                <div className="mb-4 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center transition-all hover:bg-gray-100">
+                <div className="mb-3 pb-3 border-b border-gray-100 flex justify-between items-center">
                   <span className="text-xs font-semibold text-gray-500">금일 투입 인력</span>
                   <div className="flex items-center gap-2.5">
                     <span className="text-xl font-black text-blue-600">
                       {totalPersonnel}
                       <span className="text-xs font-bold text-gray-400 ml-1">명</span>
                     </span>
-                    <span className="text-xs font-medium text-gray-600 bg-gray-200/80 px-2 py-0.5 rounded">
+                    <span className="text-xs font-medium text-gray-600 bg-gray-200/80 px-2 py-0.5 rounded hidden sm:inline-block">
                       전일누적 <strong className="text-gray-800 font-bold">{previousCumulativePersonnel.toLocaleString()}</strong>명
                     </span>
                   </div>
@@ -979,11 +1052,11 @@ const handleImportQuickMemos = async () => {
                     <div className="flex justify-between items-center px-2.5 py-1 border-b border-gray-50 mb-1 opacity-60">
                       <span className="text-[10px] font-bold text-gray-600 uppercase tracking-tighter">공종</span>
                       <div className="flex gap-2.5 sm:gap-3 text-right items-center">
-                        <span className="w-7 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">관리자</span>
-                        <span className="w-7 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">작업자</span>
-                        <span className="w-7 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">기타</span>
-                        <span className="w-7 sm:w-8 text-[10px] font-bold text-blue-500 uppercase tracking-tighter">합계</span>
-                        <span className="w-11 sm:w-12 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">전일누적</span>
+                        <span className="w-8 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">관리자</span>
+                        <span className="w-8 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">작업자</span>
+                        <span className="w-8 sm:w-8 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">기타</span>
+                        <span className="w-8 sm:w-8 text-[10px] font-bold text-blue-500 uppercase tracking-tighter">합계</span>
+                        <span className="w-11 sm:w-12 text-[10px] font-bold text-gray-600 uppercase tracking-tighter hidden sm:inline-block">전일누적</span>
                       </div>
                     </div>
                   )}
@@ -994,15 +1067,12 @@ const handleImportQuickMemos = async () => {
                       return (
                         <div key={p.id} className="flex justify-between items-center p-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 rounded-md transition-colors gap-2">
                           <div className="flex items-center gap-1.5 overflow-hidden min-w-0 flex-1 flex-wrap">
-                            <span className="text-sm font-bold text-gray-700 truncate">{p.discipline}</span>
-                            {p.contractor && (
-                              <span 
-                                className="text-[11px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-medium border border-blue-100 shrink-0"
-                                title={p.contractor}
-                              >
-                                {p.contractor.slice(0, 2)}
-                              </span>
-                            )}
+                            <span className="text-xs font-bold text-gray-700">
+                              {p.discipline || '-'}
+                              {p.contractor && (
+                                <span className="font-normal ml-1">({p.contractor})</span>
+                              )}
+                            </span>
                             {p.workTime && p.workTime !== '주간' && (
                               <span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded font-semibold border border-amber-100 shrink-0">
                                 {p.workTime}
@@ -1010,19 +1080,19 @@ const handleImportQuickMemos = async () => {
                             )}
                           </div>
                           <div className="flex gap-2.5 sm:gap-3 shrink-0 items-center">
-                            <div className="w-7 sm:w-8 flex flex-col items-end">
+                            <div className="w-8 sm:w-8 flex flex-col items-end">
                               <span className="text-xs font-bold text-gray-600">{p.direct || 0}</span>
                             </div>
-                            <div className="w-7 sm:w-8 flex flex-col items-end">
+                            <div className="w-8 sm:w-8 flex flex-col items-end">
                               <span className="text-xs font-bold text-gray-600">{p.outsourced || 0}</span>
                             </div>
-                            <div className="w-7 sm:w-8 flex flex-col items-end">
+                            <div className="w-8 sm:w-8 flex flex-col items-end">
                               <span className="text-xs font-bold text-gray-600">{p.other || 0}</span>
                             </div>
-                            <div className="w-7 sm:w-8 flex flex-col items-end">
+                            <div className="w-8 sm:w-8 flex flex-col items-end">
                               <span className="text-xs font-black text-blue-600">{(Number(p.direct) || 0) + (Number(p.outsourced) || 0) + (Number(p.other) || 0)}</span>
                             </div>
-                            <div className="w-11 sm:w-12 flex flex-col items-end">
+                            <div className="w-11 sm:w-12 flex flex-col items-end hidden sm:flex">
                               <span className="text-xs font-medium text-gray-500 bg-gray-100/80 px-1 py-0.5 rounded text-right w-full">
                                 {prevCum.toLocaleString()}
                               </span>
@@ -1038,7 +1108,7 @@ const handleImportQuickMemos = async () => {
               </div>
 
               {/* 장비 투입 현황 */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                     <span className="bg-gray-700 text-white w-5 h-5 rounded flex items-center justify-center text-[10px]">3</span> 장비 투입 현황
@@ -1061,14 +1131,19 @@ const handleImportQuickMemos = async () => {
                     </div>
                   )}
                   {report.equipment.map((eq) => (
-                    <div key={eq.id} className="flex items-center p-1 px-3 bg-gray-50 rounded-lg border border-gray-50 transition-all hover:bg-gray-100/50">
+                    <div key={eq.id} className="flex items-center p-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 rounded-md transition-colors gap-2">
                       <div className="shrink-0 w-16">
-                        <span className="text-[11px] font-bold text-gray-700 truncate block">{eq.discipline || '-'}</span>
+                        <span className="text-xs font-bold text-gray-700 truncate block">{eq.discipline || '-'}</span>
                       </div>
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <span className="text-sm font-bold text-gray-800 truncate">{eq.type}</span>
-                        {eq.capacity && (
-                          <span className="text-[11px] text-gray-500 truncate pt-0.5">({eq.capacity})</span>
+                      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs sm:text-sm font-bold text-gray-800 truncate">{eq.type}</span>
+                          {eq.capacity && (
+                            <span className="text-[11px] text-gray-500 truncate pt-0.5">({eq.capacity})</span>
+                          )}
+                        </div>
+                        {eq.note && (
+                          <span className="block text-[10px] text-gray-500 truncate h-3.5 leading-tight">{eq.note}</span>
                         )}
                       </div>
                       <div className="shrink-0 w-16 text-center">
@@ -1085,7 +1160,7 @@ const handleImportQuickMemos = async () => {
             </div>
 
             {/* Section 4: 특기사항 */}
-            <div data-pdf-section className="mb-5 bg-white rounded-xl border border-gray-200 p-5">
+            <div data-pdf-section className="mb-1 sm:mb-5 bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                 <span className="bg-gray-700 text-white w-5 h-5 rounded flex items-center justify-center text-[10px]">4</span>
@@ -1099,7 +1174,7 @@ const handleImportQuickMemos = async () => {
               className="text-xs font-bold flex items-center gap-1 px-1 py-1 text-purple-600 hover:text-purple-700 hover:underline transition-all disabled:opacity-50"
               title="선택한 날짜의 AI 퀵 메모를 공사일보 특기사항과 사진 대지로 가져옵니다."
               >
-              <Sparkles size={14} /> AI 퀵 메모 가져오기
+              <Sparkles size={14} /> <span className="hidden sm:inline">AI 퀵 메모</span> 가져오기
               </button>
               
               <button 
@@ -1114,8 +1189,8 @@ const handleImportQuickMemos = async () => {
             
               <div className="space-y-1">
                 {report.issues.map((issue, idx) => (
-                  <div key={issue.id} className="flex items-center p-1 bg-gray-50 rounded-lg border border-gray-100 gap-4 group">
-                    <div className="shrink-0 w-24">
+                  <div key={issue.id} className="flex items-center p-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 rounded-md transition-colors gap-4 group">
+                    <div className="shrink-0 w-16">
                       <select
   value={issue.type}
   onChange={(e) => {
@@ -1124,7 +1199,7 @@ const handleImportQuickMemos = async () => {
     setReport({ ...report, issues: newIssues });
   }}
   disabled={isReadOnly}
-  className={`w-full px-2 py-1 bg-white border border-gray-200 rounded text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${getDailyIssueTypeTextClass(issue.type)}`}
+  className={`w-full px-1 py-1 bg-white border border-gray-200 rounded text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${getDailyIssueTypeTextClass(issue.type)}`}
 >
   <option value="안전" className="text-red-600 font-bold">
     안전
@@ -1159,7 +1234,7 @@ const handleImportQuickMemos = async () => {
                         onChange={e => { const newIssues = [...report.issues]; newIssues[idx].description = e.target.value; setReport({...report, issues: newIssues}); }} 
                         disabled={isReadOnly}
                         placeholder="특기사항 내용을 입력하세요." 
-                        className="w-full bg-transparent focus:outline-none text-sm text-gray-700 placeholder:text-gray-400 disabled:placeholder-transparent" 
+                        className="w-full bg-transparent focus:outline-none text-xs text-gray-700 placeholder:text-gray-400 disabled:placeholder-transparent" 
                       />
                     </div>
                     {!isReadOnly && (
@@ -1183,7 +1258,7 @@ const handleImportQuickMemos = async () => {
 
 
             {/* Section 5: 사진 대지 */}
-            <div data-pdf-section className="mb-5 bg-white rounded-xl border border-gray-200 p-5">
+            <div data-pdf-section className="mb-1 sm:mb-5 bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                   <span className="bg-gray-700 text-white w-5 h-5 rounded flex items-center justify-center text-[10px]">5</span> 사진 대지
@@ -1228,7 +1303,7 @@ const handleImportQuickMemos = async () => {
             </div>
 
             {/* Section 6: 명일 작업 계획 */}
-            <div data-pdf-section className="mb-5 bg-white rounded-xl border border-gray-200 p-5">
+            <div data-pdf-section className="mb-1 sm:mb-5 bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                   <span className="bg-gray-700 text-white w-5 h-5 rounded flex items-center justify-center text-[10px]">6</span> 명일 작업 계획
@@ -1241,62 +1316,123 @@ const handleImportQuickMemos = async () => {
                   <Plus size={14} /> 계획 추가
                 </button>
               </div>
-              <div className="space-y-1">
-                {report.tomorrowTasks.length > 0 && (
-                  <div className="flex items-center gap-4 px-3 py-1.5 border-b border-gray-50 mb-1 opacity-60">
-                    <div className="w-32 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">공종 / 세부공종</div>
-                    <div className="flex-1 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">작업내용 / 위치</div>
-                    <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-center">작업량</div>
-                    <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-right">관리</div>
-                  </div>
-                )}
-                {report.tomorrowTasks.map((task, idx) => (
-                  <div key={task.id} className="flex items-center py-1.5 px-3 bg-gray-50 rounded-lg border border-gray-100 gap-4 group transition-all hover:bg-gray-100/50">
-                    <div className="flex flex-col shrink-0 w-32">
-                      <span className="text-xs font-bold truncate" style={{ color: settings.categoryTextColors[task.category] }}>{task.category}</span>
-                      <span className="text-[10px] text-gray-500 truncate font-medium">{task.subCategory}</span>
+              <div>
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
+                  {report.tomorrowTasks.length > 0 && (
+                    <div className="flex items-center gap-4 px-3 py-1.5 border-b border-gray-50 mb-1 opacity-60">
+                      <div className="w-32 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">공종 / 세부공종</div>
+                      <div className="flex-1 text-[10px] font-bold text-gray-600 uppercase tracking-tighter">작업내용 / 위치</div>
+                      <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-center">작업량</div>
+                      <div className="w-16 text-[10px] font-bold text-gray-600 uppercase tracking-tighter text-right">관리</div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-bold text-gray-900">{task.taskName}</span>
-                        {task.contractor && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold border border-blue-100 shrink-0">
-                            {task.contractor}
-                          </span>
+                  )}
+                  {report.tomorrowTasks.map((task, idx) => (
+                    <div key={task.id} className="flex items-center py-1.5 px-3 bg-gray-50 rounded-lg border border-gray-100 gap-4 group transition-all hover:bg-gray-100/50 mb-1">
+                      <div className="flex flex-col shrink-0 w-32">
+                        <span className="text-xs font-bold truncate" style={{ color: settings.categoryTextColors[task.category] }}>{task.category}</span>
+                        <span className="text-[10px] text-gray-500 truncate font-medium">{task.subCategory}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-bold text-gray-900">{task.taskName}</span>
+                          {task.contractor && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold border border-blue-100 shrink-0">
+                              {task.contractor}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                          {[formatMultiValue(task.dongBlock), formatMultiValue(task.floor), formatMultiValue(task.zone)].filter(Boolean).join(' / ')}
+                        </p>
+                      </div>
+                      <div className="shrink-0 w-16 text-center">
+                        <span className="text-xs font-bold text-gray-700">{task.amount || '-'}</span>
+                      </div>
+                      <div className="shrink-0 w-16 flex items-center justify-end">
+                        {!isReadOnly && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => handleOpenTaskModal('tomorrow', task)} 
+                              className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all"
+                              title="수정"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button 
+                              onClick={() => setReport({...report, tomorrowTasks: report.tomorrowTasks.filter(t => t.id !== task.id)})} 
+                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                              title="삭제"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         )}
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5 truncate">
-                        {[formatMultiValue(task.dongBlock), formatMultiValue(task.floor), formatMultiValue(task.zone)].filter(Boolean).join(' / ')}
-                      </p>
                     </div>
-                    <div className="shrink-0 w-16 text-center">
-                      <span className="text-xs font-bold text-gray-700">{task.amount || '-'}</span>
-                    </div>
-                    <div className="shrink-0 w-16 flex items-center justify-end">
-                      {!isReadOnly && (
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
-                            onClick={() => handleOpenTaskModal('tomorrow', task)} 
-                            className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all"
-                            title="수정"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button 
-                            onClick={() => setReport({...report, tomorrowTasks: report.tomorrowTasks.filter(t => t.id !== task.id)})} 
-                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
-                            title="삭제"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                  ))}
+                  {report.tomorrowTasks.length === 0 && (
+                    <div className="text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded-lg border border-dashed border-gray-200">등록된 작업 계획이 없습니다.</div>
+                  )}
+                </div>
+
+                {/* Mobile Vertical List */}
+                <div className="space-y-4 md:hidden">
+                  {report.tomorrowTasks.map((task, idx) => (
+                    <div key={task.id} className="space-y-2 pb-3.5 border-b border-gray-100 last:border-0 last:pb-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-black text-gray-500">계획 #{idx + 1}</span>
+                        {!isReadOnly && (
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={() => handleOpenTaskModal('tomorrow', task)} 
+                              className="px-2 py-1 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-all flex items-center gap-1"
+                            >
+                              <Edit2 size={12} /> 수정
+                            </button>
+                            <button 
+                              onClick={() => setReport({...report, tomorrowTasks: report.tomorrowTasks.filter(t => t.id !== task.id)})} 
+                              className="px-2 py-1 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-all flex items-center gap-1"
+                            >
+                              <Trash2 size={12} /> 삭제
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">공종</span>
+                          <span className="font-bold" style={{ color: settings.categoryTextColors[task.category] }}>
+                            {task.category || '-'}
+                            {task.contractor && (
+                              <span className="font-normal ml-1">({task.contractor})</span>
+                            )}
+                          </span>
                         </div>
-                      )}
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">세부공종</span>
+                          <span className="text-gray-700 font-medium">{task.subCategory || '-'}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">작업내용</span>
+                          <span className="font-black text-gray-900">{task.taskName || '-'}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">위치</span>
+                          <span className="text-gray-600">{[formatMultiValue(task.dongBlock), formatMultiValue(task.floor), formatMultiValue(task.zone)].filter(Boolean).join(' / ') || '-'}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-18 shrink-0 text-[11px] font-bold text-gray-400">작업량</span>
+                          <span className="font-bold text-gray-800">{task.amount || '-'}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {report.tomorrowTasks.length === 0 && (
-                  <div className="text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded-lg border border-dashed border-gray-200">등록된 작업 계획이 없습니다.</div>
-                )}
+                  ))}
+                  {report.tomorrowTasks.length === 0 && (
+                    <div className="text-center py-6 text-gray-400 text-xs bg-gray-50/50 rounded-xl border border-dashed border-gray-200">등록된 작업 계획이 없습니다.</div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1325,6 +1461,18 @@ const handleImportQuickMemos = async () => {
           </motion.div>
         </div>
       )}
+
+      {/* 모바일 하단 고정 플로팅 저장 바 */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/90 p-3 z-40 shadow-xl md:hidden">
+        <button
+          onClick={handleSave}
+          disabled={isReadOnly}
+          className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all shadow-md ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-98 shadow-blue-500/25'}`}
+        >
+          <Save size={16} />
+          <span>일보 저장</span>
+        </button>
+      </div>
     </div>
   );
 };
