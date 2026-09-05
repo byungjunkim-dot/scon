@@ -101,7 +101,7 @@ const LogoIcon = ({ size = 20, className = "" }: { size?: number, className?: st
 );
 
 type ViewMode = 'auth' | 'projects' | 'project-detail' | 'user-management';
-type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'ai-diagnosis' | 'billing' | 'report' | 'production';
+type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'daily-report' | 'ai-diagnosis' | 'billing' | 'report' | 'production';
 type TabMode = 'gantt' | 'table' | 'comparison' | 'baseline';
 type DocumentTab = 'daily-report' | 'inspection' | 'material' | 'concrete';
 type AiDiagnosisTab = 'ai-risk' | 'ai-report';
@@ -1600,7 +1600,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                 </button>
                 <button
                   onClick={() => setMainMenu('documents')}
-                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'documents' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                  className={`hidden lg:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'documents' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
                   <FileText size={16} className={`${mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>문서 관리</span>
@@ -1632,11 +1632,20 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                 </button>
 
                 <button
+                  onClick={() => setMainMenu('daily-report')}
+                  className={`flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'daily-report' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                >
+                  <Clipboard size={16} className={`${mainMenu === 'daily-report' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span className="md:hidden">일보</span>
+                  <span className="hidden md:inline">공사일보</span>
+                </button>
+
+                <button
                   onClick={() => setMainMenu('report')}
-                  className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'report' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                  className={`flex md:hidden flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'report' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
                   <Clipboard size={16} className={`${mainMenu === 'report' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
-                  <span>보고</span>
+                  <span>공유</span>
                 </button>
                 <button
                   onClick={() => setMainMenu('production')}
@@ -1949,7 +1958,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     </motion.div>
                   )}
 
-                  {mainMenu === 'documents' && documentTab === 'daily-report' && (
+                  {(mainMenu === 'daily-report' || (mainMenu === 'documents' && documentTab === 'daily-report')) && (
                     <motion.div
                       key="daily-report"
                       initial={{ opacity: 0, scale: 0.98 }}
