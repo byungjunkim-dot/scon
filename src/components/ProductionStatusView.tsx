@@ -306,14 +306,14 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     const existingBreakdowns = currentDayData.breakdowns || [];
     
     activeCombinations.forEach((comb, idx) => {
-      const found = existingBreakdowns.find(b => b.factory === comb.factory && b.floor === comb.floor);
+      const found: any = existingBreakdowns.find(b => b.factory === comb.factory && b.floor === comb.floor);
       if (found) {
         list.push({
           factory: comb.factory,
           floor: comb.floor,
           steel: Number(found.steel) || 0,
           single: Number(found.single) || 0,
-          moduleFrame: Number(found.moduleFrame) || 0,
+          moduleFrame: Number(found.moduleFrame ?? found.module_frame) || 0,
           finished: Number(found.finished) || 0,
           shipped: Number(found.shipped) || 0,
         });
