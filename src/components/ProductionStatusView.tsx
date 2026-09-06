@@ -23,45 +23,11 @@ import {
   SlidersHorizontal,
   Sparkles
 } from 'lucide-react';
-import { Project, AppSettings, User } from '../types';
+import { Project, AppSettings, User, ProductionPhoto, ProductionBreakdown, ProductionDayData, ProductionConfig } from '../types';
 import { compressImage } from '../utils/image';
 import { exportProductionStatusToExcel } from '../utils/productionExcelExport';
-
-interface ProductionPhoto {
-  id: string;
-  url: string;
-  title: string;
-}
-
-interface ProductionBreakdown {
-  factory: string;
-  floor: string;
-  steel: number;
-  single: number;
-  moduleFrame: number;
-  finished: number;
-  shipped: number;
-}
-
-interface ProductionDayData {
-  id: string; // "YYYY-MM-DD"
-  projectId: string;
-  date: string;
-  
-  // 금일 제작/출고 수량
-  steel: number;        // 철골
-  single: number;       // 단품
-  moduleFrame: number;  // 프레임
-  finished: number;     // 완성품
-  shipped: number;      // 출고
-
-  // 현황 사진 및 특기사항
-  photos: ProductionPhoto[];
-  notes: string;
-
-  // 공장별 / 층별 세부 실적
-  breakdowns?: ProductionBreakdown[];
-}
+import { supabaseService } from '../services/supabaseService';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 interface ProductionStatusViewProps {
   project: Project | null;
@@ -197,6 +163,58 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     localStorage.setItem(`cp_floors_${projectId}`, JSON.stringify(activeFloors));
   }, [activeFloors, projectId]);
 
+  // Supabase 비동기 데이터 로드 (다른 기기/브라우저 동기화)
+  useEffect(() => {
+    let isMounted = true;
+    const loadSupabaseData = async () => {
+      if (!project?.id) return;
+      try {
+        // 1. 설정 정보 불러오기 (계획수량, 활성 공장, 활성 층수)
+        const config = await supabaseService.getProductionConfig(project.id);
+        if (config && isMounted) {
+          if (config.plannedVolumes) {
+            setPlannedVolumes(config.plannedVolumes);
+            localStorage.setItem(`cp_production_planned_v3_${project.id}`, JSON.stringify(config.plannedVolumes));
+          }
+          if (config.activeFactories && config.activeFactories.length > 0) {
+            setActiveFactories(config.activeFactories);
+            localStorage.setItem(`cp_factories_${project.id}`, JSON.stringify(config.activeFactories));
+          }
+          if (config.activeFloors && config.activeFloors.length > 0) {
+            setActiveFloors(config.activeFloors);
+            localStorage.setItem(`cp_floors_${project.id}`, JSON.stringify(config.activeFloors));
+          }
+        }
+
+        // 2. 날짜별 제작/출고 실적 데이터 불러오기
+        const daysMap = await supabaseService.getProductionDays(project.id);
+        if (daysMap && Object.keys(daysMap).length > 0 && isMounted) {
+          setAllDaysData(daysMap);
+          localStorage.setItem(`cp_production_data_${project.id}`, JSON.stringify(daysMap));
+        }
+      } catch (err) {
+        console.warn('Supabase 제작현황 데이터 로드 중 알림:', err);
+      }
+    };
+
+    loadSupabaseData();
+    return () => { isMounted = false; };
+  }, [project?.id]);
+
+  // 공장 및 층수, 계획수량 설정을 Supabase에 보존
+  const persistConfigToSupabase = async (newFactories?: string[], newFloors?: string[], newPlanned?: Record<string, number>) => {
+    if (!project?.id) return;
+    try {
+      await supabaseService.saveProductionConfig(project.id, {
+        plannedVolumes: (newPlanned || plannedVolumes) as any,
+        activeFactories: newFactories || activeFactories,
+        activeFloors: newFloors || activeFloors,
+      });
+    } catch (err) {
+      console.warn('Supabase 설정 저장 중 오류 (로컬 캐시 유지):', err);
+    }
+  };
+
   const handleOpenPlannedEdit = (field: string) => {
     if (!hasAdminOrGoldAccess) {
       showStatus('전체 계획물량 설정은 골드 등급 또는 관리자만 접근 가능합니다.');
@@ -225,7 +243,9 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       showStatus('이미 존재하는 공장명입니다.');
       return;
     }
-    setActiveFactories(prev => [...prev, val]);
+    const updated = [...activeFactories, val];
+    setActiveFactories(updated);
+    persistConfigToSupabase(updated, undefined, undefined);
     setNewFactoryInput('');
   };
 
@@ -234,7 +254,9 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       showStatus('공장 설정 권한이 없습니다 (골드 등급 및 관리자 전용).');
       return;
     }
-    setActiveFactories(prev => prev.filter(f => f !== fact));
+    const updated = activeFactories.filter(f => f !== fact);
+    setActiveFactories(updated);
+    persistConfigToSupabase(updated, undefined, undefined);
   };
 
   const handleAddFloor = () => {
@@ -248,7 +270,9 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       showStatus('이미 존재하는 층명입니다.');
       return;
     }
-    setActiveFloors(prev => [...prev, val]);
+    const updated = [...activeFloors, val];
+    setActiveFloors(updated);
+    persistConfigToSupabase(undefined, updated, undefined);
     setNewFloorInput('');
   };
 
@@ -257,7 +281,9 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       showStatus('층수 설정 권한이 없습니다 (골드 등급 및 관리자 전용).');
       return;
     }
-    setActiveFloors(prev => prev.filter(f => f !== fl));
+    const updated = activeFloors.filter(f => f !== fl);
+    setActiveFloors(updated);
+    persistConfigToSupabase(undefined, updated, undefined);
   };
 
   // 공장 X 층수 조합 배열 구하기 (useMemo)
@@ -558,23 +584,36 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       
       setPlannedVolumes(updated);
       localStorage.setItem(`cp_production_planned_v3_${projectId}`, JSON.stringify(updated));
+      persistConfigToSupabase(undefined, undefined, updated);
       setEditingField(null);
-      showStatus(`${getCategoryLabel(key)} 계획물량이 정상 반영되었습니다.`);
+      showStatus(`${getCategoryLabel(key)} 계획물량이 정상 반영되었습니다 (클라우드 동기화).`);
     }
   };
 
-  // 5. 오늘의 데이터 저장 기능
-  const handleSaveCurrentDay = () => {
+  // 5. 오늘의 데이터 저장 기능 (Supabase 클라우드 동기화 + 로컬스토리지 백업)
+  const handleSaveCurrentDay = async () => {
     const updatedAll = {
       ...allDaysData,
       [selectedDate]: currentDayData
     };
     setAllDaysData(updatedAll);
     localStorage.setItem(`cp_production_data_${projectId}`, JSON.stringify(updatedAll));
-    showStatus(`${selectedDate} 제작/출고 현황이 안전하게 저장되었습니다.`);
+
+    if (project?.id) {
+      try {
+        await supabaseService.saveProductionDay(project.id, currentDayData, updatedAll);
+        showStatus(`${selectedDate} 제작/출고 현황이 Supabase 클라우드에 안전하게 저장되었습니다.`);
+        return;
+      } catch (err) {
+        console.error('Supabase 저장 중 오류 (로컬 스토리지에 보관됨):', err);
+        showStatus(`${selectedDate} 제작/출고 현황이 로컬 컴퓨터에 안전하게 저장되었습니다.`);
+      }
+    } else {
+      showStatus(`${selectedDate} 제작/출고 현황이 안전하게 저장되었습니다.`);
+    }
   };
 
-  // 6. 이미지 업로드 및 압축
+  // 6. 이미지 업로드 (Supabase Storage 우선 업로드 + 압축 base64 폴백)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setIsCompressing(true);
@@ -584,11 +623,26 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       const newPhotos: ProductionPhoto[] = [];
 
       for (const file of filesArray) {
-        const base64Url = await compressImage(file, 500); // 500KB max size limit
+        let photoUrl = '';
+
+        // Supabase 환경변수가 설정되어 있으면 Supabase Storage 버킷('photos')에 업로드 시도
+        if (isSupabaseConfigured && project?.id) {
+          try {
+            const fileName = `production_${project.id}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
+            photoUrl = await supabaseService.uploadImage(file, fileName);
+          } catch (storageErr) {
+            console.warn('Supabase Storage 업로드 실패, 이미지 압축 base64로 대체합니다:', storageErr);
+          }
+        }
+
+        // Supabase 미설정 또는 업로드 실패 시 안전하게 압축 base64 유지
+        if (!photoUrl) {
+          photoUrl = await compressImage(file, 500); // 500KB max size limit
+        }
         
         newPhotos.push({
           id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          url: base64Url,
+          url: photoUrl,
           title: '' // 팝업창에서 사용자가 직접 설명이나 내용을 입력하도록 유도하기 위해 빈 문자열 설정
         });
       }
@@ -597,7 +651,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       setIsPhotoModalOpen(true);
     } catch (err) {
       console.error(err);
-      showStatus('사진 압축 중 오류가 발생했습니다.');
+      showStatus('사진 처리 중 오류가 발생했습니다.');
     } finally {
       setIsCompressing(false);
       if (e.target) {
@@ -680,13 +734,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       {/* ========================================================================= */}
       {/* 1. 모바일 최적화 화면 (md:hidden) : 현장 스마트폰 간편 입력 전용 UI */}
       {/* ========================================================================= */}
-      <div className="block md:hidden flex-1 overflow-y-auto pb-24 px-3 pt-3 space-y-3">
+      <div className="block md:hidden flex-1 overflow-y-auto pb-24 p-2 space-y-2">
         
         {/* 모바일 상단 네비게이션 & 날짜 탐색기 & 5대 공정 통합 현황 카드 */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div>
-              <h2 className="text-xs font-black text-slate-900 leading-tight">금일 제작·출고 현황</h2>
+              <h2 className="text-sm font-black text-slate-900 leading-tight">금일 제작·출고 현황</h2>
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -778,7 +832,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs space-y-3">
           {/* 공장 선택 영역 (철골 입력란 상단 배치) */}
           <div className="space-y-2">
-            <h3 className="text-xs font-black text-slate-800">수량 입력</h3>
+            <h3 className="text-sm font-black text-slate-800">수량 입력</h3>
 
             {/* 공장 탭 바 (가로 스크롤 - 공장명만 표기) */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar py-0.5">
@@ -888,7 +942,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         {/* 모바일 특기사항 섹션 */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-800">
+            <h3 className="text-sm font-black text-slate-800">
               특기사항 ({structuredNotes.length}건)
             </h3>
             <button
@@ -939,7 +993,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         {/* 모바일 현황 사진 업로드 섹션 */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-800">
+            <h3 className="text-sm font-black text-slate-800">
               현황 사진 ({currentDayData.photos.length}장)
             </h3>
             <label className="flex items-center gap-1 px-2.5 py-1 text-blue-600 bg-blue-50 hover:bg-blue-100 text-[11px] font-bold rounded-lg transition-colors cursor-pointer">
@@ -1151,23 +1205,12 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
 
                   {/* 세 개의 지표(총 물량, 누계 제작물량, 진행률)를 모아서 시각화 */}
                   <div className="space-y-2.5">
-                    {/* 1. 총 계획 물량 */}
+                    {/* 1 & 2 통합. 누계 수량 */}
                     <div className="flex justify-between items-baseline">
-                      <span className="text-[10px] text-gray-400 font-medium">총 계획물량</span>
+                      <span className="text-[10px] text-gray-400 font-medium">누계수량</span>
                       <div className="flex items-baseline gap-0.5">
-                        <span className="text-xs font-bold text-gray-800">{totalVolume.toLocaleString()}</span>
-                        <span className="text-[9px] text-gray-400 font-medium">개</span>
-                      </div>
-                    </div>
-
-                    {/* 2. 누계 제작/출고 수량 */}
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-[10px] text-gray-400 font-medium">
-                        {key === 'shipped' ? '누계 출고수량' : '누계 제작수량'}
-                      </span>
-                      <div className="flex items-baseline gap-0.5">
-                        <span className={`text-base font-black ${textClass}`}>{cumulativeVolume.toLocaleString()}</span>
-                        <span className="text-[9px] text-gray-400 font-medium">개</span>
+                        <span className={`text-sm font-black ${textClass}`}>{cumulativeVolume.toLocaleString()}개</span>
+                        <span className="text-[10px] text-gray-400 font-medium">/총{totalVolume.toLocaleString()}개</span>
                       </div>
                     </div>
 

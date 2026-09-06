@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Copy, Check, Calendar, ArrowLeft, Share2, Clipboard, AlertCircle } from 'lucide-react';
+import { Copy, Check, Calendar, ArrowLeft, Share2, Clipboard, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DailyReport, Project, User } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { safeJsonParse } from '../utils/safeJson';
@@ -24,6 +24,31 @@ export function ReportSummaryView({ project, currentUser, onGoToDailyReport }: R
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
+
+  // 모바일 날짜 포맷 (예: 2026.09.04 (금))
+  const formatMobileDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      const dayName = days[d.getDay()];
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}.${mm}.${dd} (${dayName})`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const handleMoveDate = (daysOffset: number) => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + daysOffset);
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
+
+  const handleSetToday = () => {
+    setSelectedDate(getTodayKST());
+  };
 
   // 일보 데이터 로드
   useEffect(() => {
@@ -248,25 +273,59 @@ ${workContentStr.trim()}`;
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* 상단 타이틀 바 */}
-      <div className="bg-white px-4 py-3 border-b border-slate-200 flex items-center justify-between shadow-sm shrink-0">
-        <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-          <Clipboard size={16} className="text-blue-600" />
-          <span>보고 요약 및 복사</span>
-        </h2>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="text-xs font-bold bg-slate-100 text-slate-800 border-0 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          />
+    <div className="flex flex-col h-full bg-slate-50 p-2 space-y-2 overflow-hidden pb-[76px]">
+      {/* 카드 1: 제목과 날짜 영역 */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs shrink-0">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-black text-slate-900 leading-tight">공사일보 요약 공유하기</h2>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleSetToday}
+              className="px-2.5 py-1 text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+            >
+              오늘
+            </button>
+          </div>
+        </div>
+
+        {/* 날짜 선택 버튼 그룹 */}
+        <div className="flex items-center justify-between py-1 pt-1">
+          <button 
+            onClick={() => handleMoveDate(-1)}
+            className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg transition-all active:scale-95 cursor-pointer"
+            title="이전 날짜"
+          >
+            <ChevronLeft size={18} />
+          </button>
+
+          <div className="relative flex-1 text-center">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+            />
+            <div className="flex items-center justify-center gap-1.5 py-0.5 font-black text-xs sm:text-sm text-slate-800">
+              <Calendar size={14} className="text-blue-600" />
+              <span>{formatMobileDate(selectedDate)}</span>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => handleMoveDate(1)}
+            className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg transition-all active:scale-95 cursor-pointer"
+            title="다음 날짜"
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
       </div>
 
-      {/* 메인 내용 영역 */}
-      <div className="flex-1 flex flex-col p-4 pb-[76px] bg-white overflow-hidden">
+      {/* 카드 2: 내용이 보여지는 카드영역 */}
+      <div className="flex-1 bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs flex flex-col overflow-hidden">
         {/* 보고서가 없을 때 안내 */}
         {isLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center space-y-2">
@@ -290,12 +349,12 @@ ${workContentStr.trim()}`;
             )}
           </div>
         ) : (
-          <div className="flex-1 flex flex-col w-full h-full">
+          <div className="flex-1 flex flex-col w-full h-full overflow-hidden">
             <textarea
               readOnly
               value={summaryText}
               onClick={handleCopy}
-              className="flex-1 w-full p-0 text-xs font-mono text-slate-700 border-0 focus:ring-0 focus:outline-none resize-none leading-relaxed bg-white cursor-pointer select-all"
+              className="flex-1 w-full p-1 text-xs font-mono text-slate-700 border-0 focus:ring-0 focus:outline-none resize-none leading-relaxed bg-white cursor-pointer select-all"
               placeholder="보고서 데이터를 수집하고 있습니다."
             />
           </div>

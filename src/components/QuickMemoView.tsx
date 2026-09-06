@@ -14,7 +14,25 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
 } from 'lucide-react';
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  isToday,
+  addMonths,
+  subMonths,
+  parseISO,
+} from 'date-fns';
+import { ko } from 'date-fns/locale';
 import { Project, User } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { isSupabaseConfigured as hasSupabase } from '../lib/supabase';
@@ -261,6 +279,9 @@ function QuickMemoCard({
   );
 }
 
+
+
+
 export function QuickMemoView({
   project,
   currentUser,
@@ -270,6 +291,78 @@ export function QuickMemoView({
   const [memos, setMemos] = useState<QuickMemo[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(autoOpenModal);
+  const [isMobileCalendarOpen, setIsMobileCalendarOpen] = useState(false);
+
+  const CalendarContent = () => (
+    <div className="flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm p-4 w-full shrink-0">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-bold text-gray-900">
+          {format(calendarMonth, 'yyyy년 M월', { locale: ko })}
+        </h2>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-gray-400 mb-2">
+        {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
+          <div key={day} className="py-1">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {monthDays.map((day, i) => {
+          const dayStr = format(day, 'yyyy-MM-dd');
+          const isSelected = dayStr === selectedDate;
+          const isCurrentMonth = isSameMonth(day, calendarMonth);
+          const hasMemos = memos.some((m) => m.date === dayStr);
+
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setSelectedDate(dayStr);
+                if (!isSameMonth(day, calendarMonth)) {
+                  setCalendarMonth(day);
+                }
+                setIsMobileCalendarOpen(false);
+              }}
+              className={`
+                relative aspect-square flex items-center justify-center rounded-lg text-sm transition-all
+                ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}
+                ${isSelected ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-200' : 'hover:bg-gray-100'}
+                ${isToday(day) && !isSelected ? 'text-blue-600 font-bold' : ''}
+              `}
+            >
+              {format(day, 'd')}
+              {hasMemos && !isSelected && (
+                <span className="absolute bottom-1 w-1 h-1 rounded-full bg-blue-500"></span>
+              )}
+              {hasMemos && isSelected && (
+                <span className="absolute bottom-1 w-1 h-1 rounded-full bg-white"></span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   useEffect(() => {
     if (autoOpenModal) {
@@ -284,6 +377,32 @@ export function QuickMemoView({
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'전체' | QuickMemoCategory>('전체');
   const [severityFilter, setSeverityFilter] = useState<'전체' | QuickMemoSeverity>('전체');
+
+  // Calendar states
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+
+  const monthStart = startOfMonth(calendarMonth);
+  const monthEnd = endOfMonth(monthStart);
+  const startDate = startOfWeek(monthStart, { weekStartsOn: 0 }); // Sunday
+  const endDate = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const monthDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+  const handlePrevMonth = () => setCalendarMonth(subMonths(calendarMonth, 1));
+  const handleNextMonth = () => setCalendarMonth(addMonths(calendarMonth, 1));
+
+  // Sync calendar Month when selectedDate is changed from external sources
+  useEffect(() => {
+    if (selectedDate) {
+      try {
+        const parsed = parseISO(selectedDate);
+        if (!isNaN(parsed.getTime())) {
+          setCalendarMonth(parsed);
+        }
+      } catch (e) {
+        console.warn('Failed to parse selectedDate:', e);
+      }
+    }
+  }, [selectedDate]);
 
   const isSupabaseConfigured = hasSupabase;
 
@@ -602,92 +721,138 @@ serverMemos.forEach((serverMemo) => {
   return (
     <div className="h-full bg-gray-50 overflow-y-auto">
       <div className="p-2 md:p-4 lg:p-8">
-        <div className="max-w-7xl mx-auto space-y-4">
-        {/* Header */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
-                  <Sparkles size={20} className="text-blue-600" />
-                </div>
-
-                <div>
-                  <h1 className="text-md md:text-md font-bold text-gray-900">
+        {/* Mobile Calendar Modal */}
+        {isMobileCalendarOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <div className="bg-white rounded-2xl p-4 w-full max-w-sm shadow-xl">
+              <CalendarContent />
+              <button 
+                onClick={() => setIsMobileCalendarOpen(false)}
+                className="w-full mt-4 h-10 rounded-xl bg-gray-100 font-bold text-sm"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="max-w-7xl mx-auto space-y-2 md:space-y-4">
+        {/* Header and Calendar layout for desktop and tablet */}
+        <div className="flex flex-col md:flex-row gap-4 md:items-stretch items-stretch w-full">
+          {/* Header Card (Left) */}
+          <div className="flex-1 min-w-0 bg-white rounded-2xl border border-gray-200 shadow-sm p-3.5 w-full">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="w-full">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <h1 className="text-sm md:text-md font-bold text-gray-900">
                     AI 퀵 메모
                   </h1>
-                  <p className="text-xs text-gray-500 hidden md:block">
-                    현장 이슈를 사진, 음성, 텍스트로 빠르게 기록합니다.
-                  </p>
+                  <button 
+                    onClick={() => setSelectedDate(getToday())}
+                    className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-md font-medium"
+                  >
+                    오늘
+                  </button>
                 </div>
+                <p className="text-xs text-gray-500 hidden md:block mb-3">
+                  현장 이슈를 빠르게 기록합니다.
+                </p>
+                
+                {/* Mobile Date Selector */}
+                <div className="md:hidden flex items-center justify-between py-1 pt-1">
+                  <button 
+                    onClick={() => {
+                        const d = new Date(selectedDate);
+                        d.setDate(d.getDate() - 1);
+                        setSelectedDate(d.toISOString().split('T')[0]);
+                    }}
+                    className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg transition-all active:scale-95 cursor-pointer"
+                    title="이전 날짜"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+
+                  <div 
+                        className="relative flex-1 text-center cursor-pointer"
+                        onClick={() => setIsMobileCalendarOpen(true)}
+                      >
+                        <div className="flex items-center justify-center gap-1.5 py-0.5 font-black text-xs sm:text-sm text-slate-800">
+                          <Calendar size={14} className="text-blue-600" />
+                          <span>{format(parseISO(selectedDate), 'yyyy.MM.dd (eee)', { locale: ko })}</span>
+                        </div>
+                      </div>
+
+                  <button 
+                    onClick={() => {
+                        const d = new Date(selectedDate);
+                        d.setDate(d.getDate() + 1);
+                        setSelectedDate(d.toISOString().split('T')[0]);
+                    }}
+                    className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg transition-all active:scale-95 cursor-pointer"
+                    title="다음 날짜"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadMemos}
+                  disabled={loading}
+                  className="h-10 px-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 hidden md:flex items-center gap-2 text-sm font-semibold disabled:opacity-50"
+                >
+                  {loading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={16} />
+                  )}
+                  새로고침
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={loadMemos}
-                disabled={loading}
-                className="h-10 px-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 hidden md:flex items-center gap-2 text-sm font-semibold disabled:opacity-50"
-              >
-                {loading ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={16} />
-                )}
-                새로고침
-              </button>
+            {/* Stats */}
+            <div className="hidden lg:grid grid-cols-2 md:grid-cols-5 gap-3 mt-5">
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                <p className="text-xs text-gray-500">선택일 전체</p>
+                <p className="text-xl font-bold text-gray-900">
+                  {selectedDateStats.total}
+                </p>
+              </div>
 
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white hidden md:flex items-center gap-2 text-sm font-bold shadow-sm"
-              >
-                <Plus size={18} />
-                퀵 메모
-              </button>
-            </div>
-          </div>
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                <p className="text-xs text-red-500">안전</p>
+                <p className="text-xl font-bold text-red-700">
+                  {selectedDateStats.safety}
+                </p>
+              </div>
 
-          {/* Stats */}
-          <div className="hidden lg:grid grid-cols-2 md:grid-cols-5 gap-3 mt-5">
-            <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
-              <p className="text-xs text-gray-500">선택일 전체</p>
-              <p className="text-xl font-bold text-gray-900">
-                {selectedDateStats.total}
-              </p>
-            </div>
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                <p className="text-xs text-orange-500">품질</p>
+                <p className="text-xl font-bold text-orange-700">
+                  {selectedDateStats.quality}
+                </p>
+              </div>
 
-            <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
-              <p className="text-xs text-red-500">안전</p>
-              <p className="text-xl font-bold text-red-700">
-                {selectedDateStats.safety}
-              </p>
-            </div>
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                <p className="text-xs text-yellow-600">높음/긴급</p>
+                <p className="text-xl font-bold text-yellow-700">
+                  {selectedDateStats.high}
+                </p>
+              </div>
 
-            <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
-              <p className="text-xs text-orange-500">품질</p>
-              <p className="text-xl font-bold text-orange-700">
-                {selectedDateStats.quality}
-              </p>
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                <p className="text-xs text-blue-500">미조치</p>
+                <p className="text-xl font-bold text-blue-700">
+                  {selectedDateStats.open}
+                </p>
+              </div>
             </div>
-
-            <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
-              <p className="text-xs text-yellow-600">높음/긴급</p>
-              <p className="text-xl font-bold text-yellow-700">
-                {selectedDateStats.high}
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
-              <p className="text-xs text-blue-500">미조치</p>
-              <p className="text-xl font-bold text-blue-700">
-                {selectedDateStats.open}
-              </p>
-            </div>
-          </div>
 
             {/* Filters */}
             <div className="grid grid-cols-2 md:grid-cols-12 gap-3 mt-2">
-              <div className="col-span-1 md:col-span-3">
+              <div className="hidden md:block col-span-1 md:col-span-3">
                 <label className="block text-xs font-bold text-gray-500 mb-1">
                   날짜
                 </label>
@@ -699,7 +864,7 @@ serverMemos.forEach((serverMemo) => {
                 />
               </div>
 
-              <div className="col-span-1 md:col-span-3">
+              <div className="hidden md:block col-span-1 md:col-span-3">
                 <label className="block text-xs font-bold text-gray-500 mb-1">
                   검색
                 </label>
@@ -759,6 +924,12 @@ serverMemos.forEach((serverMemo) => {
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* Monthly Calendar (Right) */}
+          <div className="hidden md:flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm p-4 w-[240px] shrink-0 self-stretch">
+            <CalendarContent />
+          </div>
         </div>
 
         {/* List */}
@@ -777,7 +948,7 @@ serverMemos.forEach((serverMemo) => {
               <p className="font-bold text-gray-800">
                 선택한 날짜에 기록된 퀵 메모가 없습니다.
               </p>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 mt-1">
                 현장에서 발생한 안전, 품질, 설계, 공정 이슈를 빠르게 기록해 보세요.
               </p>
 
