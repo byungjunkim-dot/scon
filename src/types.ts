@@ -601,3 +601,46 @@ export interface BillingComment {
   createdAt: string;
 }
 
+export interface ProductionPhoto {
+  id: string;
+  url: string;
+  title: string;
+}
+
+export interface ProductionBreakdown {
+  factory: string;
+  floor: string;
+  steel: number;
+  single: number;
+  moduleFrame: number;
+  finished: number;
+  shipped: number;
+}
+
+export interface ProductionDayData {
+  id: string; // "YYYY-MM-DD"
+  projectId: string;
+  date: string;
+  steel: number;        // 철골
+  single: number;       // 단품
+  moduleFrame: number;  // 프레임
+  finished: number;     // 완성품
+  shipped: number;      // 출고
+  photos: ProductionPhoto[];
+  notes: string;
+  breakdowns?: ProductionBreakdown[];
+}
+
+export interface ProductionConfig {
+  plannedVolumes: {
+    total: number;
+    steel: number;
+    single: number;
+    moduleFrame: number;
+    finished: number;
+    shipped: number;
+  };
+  activeFactories: string[];
+  activeFloors: string[];
+}
+

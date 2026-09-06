@@ -1497,7 +1497,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'material' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                     >
                       <FileText size={18} className={documentTab === 'material' ? 'text-blue-600' : 'text-gray-400'} />
-                      <span>제작/출고 현황</span>
+                      <span>제작 현황</span>
                     </button>
                     <button
                       onClick={() => checkUnsavedChanges(() => setDocumentTab('concrete'))}
