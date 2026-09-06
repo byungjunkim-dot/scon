@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Project, ScheduleItem, AppSettings, User, DailyReport, Drawing, Category, Status, Allocation } from '../types';
+import { Project, ScheduleItem, AppSettings, User, DailyReport, Drawing, Category, Status, Allocation, ProductionConfig, ProductionDayData } from '../types';
 
 
 export const getCurrentUser = async () => {
@@ -871,5 +871,335 @@ async saveQuickMemo(memo: any) {
 
     if (error) throw error;
   },
+
+  // -------------------------------------------------------------
+  // 제작 / 출고 현황 (Production Status)
+  // -------------------------------------------------------------
+  async getProductionConfig(projectId: string): Promise<ProductionConfig | null> {
+    let dedicatedConfig: ProductionConfig | null = null;
+    let settingsConfig: ProductionConfig | null = null;
+
+    try {
+      // 1. 전용 테이블 production_configs 우선 조회 시도
+      const { data: dedicatedData, error: dedicatedErr } = await supabase
+        .from('production_configs')
+        .select('*')
+        .eq('projectId', projectId)
+        .maybeSingle();
+
+      if (!dedicatedErr && dedicatedData) {
+        dedicatedConfig = {
+          plannedVolumes: dedicatedData.plannedVolumes || dedicatedData.planned_volumes || { total: 5000, steel: 5000, single: 5000, moduleFrame: 5000, finished: 5000, shipped: 5000 },
+          activeFactories: dedicatedData.activeFactories || dedicatedData.active_factories || ['진천공장'],
+          activeFloors: dedicatedData.activeFloors || dedicatedData.active_floors || ['1층', '2층'],
+        };
+      }
+    } catch (e) {
+      // 전용 테이블 미존재 또는 로드 실패
+    }
+
+    try {
+      // 2. settings 테이블 폴백 조회
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('id', `production_config_${projectId}`)
+        .maybeSingle();
+
+      if (!error && data?.settings) {
+        settingsConfig = data.settings as ProductionConfig;
+      }
+    } catch (err) {
+      console.warn('Failed to load production config from settings:', err);
+    }
+
+    // 양쪽 모두 존재하면, 데이터 정합성을 극대화하기 위해 settings 설정을 우선적으로 머지/복구
+    if (dedicatedConfig && settingsConfig) {
+      return {
+        plannedVolumes: settingsConfig.plannedVolumes || dedicatedConfig.plannedVolumes || { total: 5000, steel: 5000, single: 5000, moduleFrame: 5000, finished: 5000, shipped: 5000 },
+        activeFactories: settingsConfig.activeFactories || dedicatedConfig.activeFactories || ['진천공장'],
+        activeFloors: settingsConfig.activeFloors || dedicatedConfig.activeFloors || ['1층', '2층'],
+      };
+    }
+
+    return dedicatedConfig || settingsConfig || null;
+  },
+
+  async saveProductionConfig(projectId: string, config: ProductionConfig) {
+    let saved = false;
+    let lastErr = null;
+
+    // 1. 전용 테이블에 저장 시도 (CamelCase 페이로드)
+    try {
+      const { error: err } = await supabase
+        .from('production_configs')
+        .upsert({
+          id: projectId,
+          projectId,
+          plannedVolumes: config.plannedVolumes,
+          activeFactories: config.activeFactories,
+          activeFloors: config.activeFloors,
+          updated_at: new Date()
+        });
+      if (!err) {
+        saved = true;
+      } else {
+        lastErr = err;
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+
+    // Fallback: 전용 테이블에 저장 시도 (SnakeCase 페이로드)
+    if (!saved) {
+      try {
+        const { error: err2 } = await supabase
+          .from('production_configs')
+          .upsert({
+            id: projectId,
+            projectId,
+            planned_volumes: config.plannedVolumes,
+            active_factories: config.activeFactories,
+            active_floors: config.activeFloors,
+            updated_at: new Date()
+          });
+        if (!err2) {
+          saved = true;
+        } else {
+          lastErr = err2;
+        }
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+
+    if (!saved && lastErr) {
+      console.warn('[saveProductionConfig] Dedicated table upsert failed, relying on settings synchronization. Error:', lastErr);
+    }
+
+    // 2. settings 테이블에 항상 동기화 백업 저장 (모든 기기에서 즉각 정합성을 유지하기 위함)
+    try {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({
+          id: `production_config_${projectId}`,
+          settings: config
+        });
+      if (error) {
+        if (!saved) throw error;
+      }
+    } catch (err) {
+      if (!saved) {
+        console.error('Failed to save production config to settings:', err);
+        throw err;
+      }
+    }
+  },
+
+  async getProductionDays(projectId: string): Promise<Record<string, ProductionDayData> | null> {
+    const result: Record<string, ProductionDayData> = {};
+
+    // 1. 전용 테이블 production_reports 조회 시도
+    try {
+      const { data: dedicatedList, error: dedicatedErr } = await supabase
+        .from('production_reports')
+        .select('*')
+        .eq('projectId', projectId);
+
+      if (!dedicatedErr && dedicatedList && dedicatedList.length > 0) {
+        dedicatedList.forEach((row: any) => {
+          const dateStr = row.date || row.id;
+          result[dateStr] = {
+            id: dateStr,
+            projectId,
+            date: dateStr,
+            steel: Number(row.steel) || 0,
+            single: Number(row.single) || 0,
+            moduleFrame: Number(row.moduleFrame || row.module_frame) || 0,
+            finished: Number(row.finished) || 0,
+            shipped: Number(row.shipped) || 0,
+            photos: row.photos || [],
+            notes: typeof row.notes === 'string' ? row.notes : JSON.stringify(row.notes || []),
+            breakdowns: row.breakdowns || []
+          };
+        });
+      }
+    } catch (e) {
+      // 전용 테이블 조회 실패
+    }
+
+    // 2. settings 테이블 폴백 데이터 조회 및 완벽 병합 (Merge)
+    // 기기 간, 테이블 간 누락 데이터를 완전히 교정함
+    try {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('id', `production_data_${projectId}`)
+        .maybeSingle();
+
+      if (!error && data?.settings?.days) {
+        const settingsDays = data.settings.days as Record<string, ProductionDayData>;
+        Object.keys(settingsDays).forEach((dateStr) => {
+          // 전용 테이블에 해당 날짜 기록이 아예 없는 경우에만 복원/병합
+          if (!result[dateStr]) {
+            result[dateStr] = settingsDays[dateStr];
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to merge production days from settings fallback:', err);
+    }
+
+    if (Object.keys(result).length > 0) {
+      return result;
+    }
+    return null;
+  },
+
+  async saveProductionDay(projectId: string, dayData: ProductionDayData, allDaysMap?: Record<string, ProductionDayData>) {
+    let dedicatedSuccess = false;
+    let lastErr = null;
+
+    // 1. 전용 테이블 production_reports upsert 시도 (CamelCase 페이로드)
+    try {
+      const { error: err } = await supabase
+        .from('production_reports')
+        .upsert({
+          id: `${projectId}_${dayData.date}`,
+          projectId,
+          date: dayData.date,
+          steel: dayData.steel,
+          single: dayData.single,
+          moduleFrame: dayData.moduleFrame,
+          finished: dayData.finished,
+          shipped: dayData.shipped,
+          photos: dayData.photos,
+          notes: dayData.notes,
+          breakdowns: dayData.breakdowns,
+          updated_at: new Date()
+        });
+
+      if (!err) {
+        dedicatedSuccess = true;
+      } else {
+        lastErr = err;
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+
+    // Fallback: snake_case 컬럼 지원 (특히 `module_frame` 인 경우)
+    if (!dedicatedSuccess) {
+      try {
+        const { error: err2 } = await supabase
+          .from('production_reports')
+          .upsert({
+            id: `${projectId}_${dayData.date}`,
+            projectId,
+            date: dayData.date,
+            steel: dayData.steel,
+            single: dayData.single,
+            module_frame: dayData.moduleFrame, // snake_case 폴백
+            finished: dayData.finished,
+            shipped: dayData.shipped,
+            photos: dayData.photos,
+            notes: dayData.notes,
+            breakdowns: dayData.breakdowns,
+            updated_at: new Date()
+          });
+
+        if (!err2) {
+          dedicatedSuccess = true;
+        } else {
+          lastErr = err2;
+        }
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+
+    if (!dedicatedSuccess && lastErr) {
+      console.warn('[saveProductionDay] Dedicated table upsert failed, relying on settings sync fallback. Error:', lastErr);
+    }
+
+    // 2. settings 테이블에 동기화 저장
+    try {
+      let daysMap = allDaysMap;
+      if (!daysMap) {
+        const existing = await this.getProductionDays(projectId);
+        daysMap = existing || {};
+      }
+      daysMap[dayData.date] = dayData;
+
+      const { error } = await supabase
+        .from('settings')
+        .upsert({
+          id: `production_data_${projectId}`,
+          settings: { days: daysMap }
+        });
+
+      if (error && !dedicatedSuccess) throw error;
+    } catch (err) {
+      if (!dedicatedSuccess) {
+        console.error('Failed to save production day to settings:', err);
+        throw err;
+      }
+    }
+  },
+
+  async saveAllProductionDays(projectId: string, daysMap: Record<string, ProductionDayData>) {
+    // 1. settings 테이블에 즉시 저장
+    const { error } = await supabase
+      .from('settings')
+      .upsert({
+        id: `production_data_${projectId}`,
+        settings: { days: daysMap }
+      });
+
+    // 2. 전용 테이블이 있는 경우 비동기로 전용 테이블도 동기화
+    try {
+      const rowsCamel = Object.values(daysMap).map(d => ({
+        id: `${projectId}_${d.date}`,
+        projectId,
+        date: d.date,
+        steel: d.steel,
+        single: d.single,
+        moduleFrame: d.moduleFrame,
+        finished: d.finished,
+        shipped: d.shipped,
+        photos: d.photos,
+        notes: d.notes,
+        breakdowns: d.breakdowns,
+        updated_at: new Date()
+      }));
+      
+      if (rowsCamel.length > 0) {
+        const { error: err1 } = await supabase.from('production_reports').upsert(rowsCamel);
+        
+        // CamelCase upsert 실패 시 snake_case로 재생성하여 폴백 시도
+        if (err1) {
+          const rowsSnake = Object.values(daysMap).map(d => ({
+            id: `${projectId}_${d.date}`,
+            projectId,
+            date: d.date,
+            steel: d.steel,
+            single: d.single,
+            module_frame: d.moduleFrame, // snake_case
+            finished: d.finished,
+            shipped: d.shipped,
+            photos: d.photos,
+            notes: d.notes,
+            breakdowns: d.breakdowns,
+            updated_at: new Date()
+          }));
+          await supabase.from('production_reports').upsert(rowsSnake);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to sync all production days to dedicated table:', e);
+    }
+
+    if (error) throw error;
+  }
 
 };
