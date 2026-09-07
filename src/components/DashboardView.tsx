@@ -6,7 +6,7 @@ import { fetchWeather } from '../services/weatherService';
 import { supabaseService } from '../services/supabaseService';
 import { safeJsonParse } from '../utils/safeJson';
 
-import { startOfWeek, addDays, format, isSameDay } from 'date-fns';
+import { startOfWeek, addDays, format, isSameDay, startOfMonth, endOfMonth, endOfWeek, eachDayOfInterval, subMonths, addMonths, isSameMonth, isToday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
 import { AIReportPanel } from './AIReportPanel';
@@ -38,6 +38,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   };
 
   const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
@@ -79,6 +80,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchEndX, setTouchEndX] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{url: string, title?: string} | null>(null);
+  const [productionDays, setProductionDays] = useState<Record<string, any>>({});
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; event?: { type: string, id: string } }>({ open: false });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -278,6 +280,23 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
     };
   }, [project, storageTick]);
 
+  const combinedPhotos = useMemo(() => {
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    const reportPhotos = todayReport?.photos || [];
+    const prodPhotos = productionDays[dateStr]?.photos || [];
+    
+    const formattedReportPhotos = reportPhotos.map((p, idx) => ({
+      ...p,
+      title: p.title || `현장사진 ${idx + 1}`
+    }));
+    const formattedProdPhotos = prodPhotos.map((p, idx) => ({
+      ...p,
+      title: p.title || `제작사진 ${idx + 1}`
+    }));
+    
+    return [...formattedReportPhotos, ...formattedProdPhotos];
+  }, [todayReport, productionDays, selectedDate]);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
@@ -386,6 +405,25 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
         setAllInspections(inspections);
         setAllMaterialApprovals(materialApprovals);
         setAllConcretePlans(concretePlans);
+
+        // 제작현황 데이터 가져오기
+        let prodDays: Record<string, any> = {};
+        if (isSupabaseConfigured) {
+          try {
+            const data = await supabaseService.getProductionDays(project.id);
+            if (data) {
+              prodDays = data;
+            }
+          } catch (e) {
+            console.warn('Production days fetch failed, trying local storage', e);
+            const saved = localStorage.getItem(`cp_production_data_${project.id}`);
+            prodDays = safeJsonParse(saved, {});
+          }
+        } else {
+          const saved = localStorage.getItem(`cp_production_data_${project.id}`);
+          prodDays = safeJsonParse(saved, {});
+        }
+        setProductionDays(prodDays);
 
         // Selected date's report
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -545,6 +583,20 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   const weekStart = startOfWeek(calendarDate, { weekStartsOn: 0 });
   const daysCount = isMobile ? 3 : 7;
   const startDate = isMobile ? addDays(calendarDate, -1) : weekStart;
+
+  // Sync calendarMonth when calendarDate is updated
+  useEffect(() => {
+    setCalendarMonth(calendarDate);
+  }, [calendarDate]);
+
+  const monthStart = startOfMonth(calendarMonth);
+  const monthEnd = endOfMonth(monthStart);
+  const monthGridStart = startOfWeek(monthStart, { weekStartsOn: 0 }); // Sunday
+  const monthGridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const monthDays = eachDayOfInterval({ start: monthGridStart, end: monthGridEnd });
+
+  const handlePrevMonth = () => setCalendarMonth(prev => subMonths(prev, 1));
+  const handleNextMonth = () => setCalendarMonth(prev => addMonths(prev, 1));
 
   const canDeleteDocs = currentUser?.role === 'admin' || currentUser?.userRole === '골드';
 
@@ -830,7 +882,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                 )}
 
                 {/* 도급 및 외주 내역 요약 박스 */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 mt-4 border-t border-gray-100">
+                <div className="grid grid-cols-2 gap-4 pt-4 mt-4 border-t border-gray-100">
                   {/* 좌: 발주처 도급 총액 */}
                   <div className="space-y-2.5">
                     <div>
@@ -1073,29 +1125,6 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
               <div className="flex justify-between mt-1.5">
                 <span className="text-[10px] text-gray-400">계획대비 {Math.abs(displayProgress.actual - displayProgress.planned).toFixed(1)}% {displayProgress.actual >= displayProgress.planned ? '초과' : '미달'}</span>
               </div>
-
-              {/* Milestones */}
-              {schedules.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <div className="space-y-2">
-                    {schedules
-                      .filter(s => (s as any).isMilestone || s.duration <= 1 || s.status === '완료')
-                      .sort((a, b) => a.startDate.localeCompare(b.startDate))
-                      .slice(0, 3)
-                      .map((milestone, idx) => (
-                        <div key={idx} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></div>
-                            <span className="text-xs text-gray-700 truncate">{milestone.taskName || (milestone as any).title}</span>
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-400 whitespace-nowrap ml-2">
-                            {milestone.startDate.replace(/-/g, '.').substring(2)}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* 누적 투입 인력 */}
@@ -1242,94 +1271,162 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
         </div>
 
         {/* Middle Section: Calendar */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 overflow-hidden">
-          <div className="flex items-center justify-between md:justify-start gap-4 mb-4 md:mb-6">
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={handleToday}
-                className="px-4 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Today
-              </button>
-              <h2 className="text-sm md:text-lg font-bold text-gray-900 min-w-[120px] md:min-w-[150px]">
-                {format(calendarDate, 'yyyy년 MM월', { locale: ko })}
-              </h2>
-            </div>
-            <div className="hidden md:flex items-center border border-gray-300 rounded-md overflow-hidden">
-              <button 
-                onClick={handlePrevWeek}
-                className="p-1.5 hover:bg-gray-50 text-gray-600 transition-colors"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <div className="w-px h-4 bg-gray-300"></div>
-              <button 
-                onClick={handleNextWeek}
-                className="p-1.5 hover:bg-gray-50 text-gray-600 transition-colors"
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
-          </div>
-          
-          <div 
-            className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-7'} border-l border-gray-200 relative`}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-          >
-            {/* Mobile Navigation Indicators */}
-            {isMobile && (
-              <>
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 z-10 pointer-events-none flex items-center">
-                  <ChevronLeft size={14} className="text-gray-400 -ml-1.5" />
-                </div>
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10 pointer-events-none flex items-center">
-                  <ChevronRight size={14} className="text-gray-400 -mr-1.5" />
-                </div>
-              </>
-            )}
-            {calendarDays.map((day, idx) => (
-              <div 
-                key={idx} 
-                onClick={() => handleDateClick(day.date)}
-                className={`border-r border-gray-200 min-h-[100px] md:min-h-[120px] flex flex-col cursor-pointer transition-colors hover:bg-gray-50/50 ${day.isSelected ? 'bg-blue-50/20' : ''} ${day.isToday ? 'bg-blue-50/30' : ''}`}
-              >
-                <div className={`text-center py-2 border-b border-gray-100 ${day.isSelected ? 'bg-blue-50' : day.isToday ? 'bg-blue-50/50' : ''}`}>
-                  <div className="text-xs text-gray-500 font-medium">{day.dayName}</div>
-                  <div className="flex items-center justify-center gap-1.5">
-                    {day.isToday && <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>}
-                    <div className={`text-2xl font-bold ${day.isSunday ? 'text-red-500' : day.isSaturday ? 'text-blue-500' : 'text-gray-900'}`}>
-                      {day.dayNumber}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex-1 p-1 space-y-1 bg-gray-50/30">
-                  {day.events.map((event, eIdx) => (
-                    <div 
-                      key={eIdx} 
-                      className={`text-[10px] py-0.5 px-1.5 rounded font-medium group flex items-center justify-between gap-1 overflow-hidden pointer-events-auto ${
-                        event.type === '공사일보' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 
-                        event.type === '검측요청서' ? 'bg-blue-100 text-orange-700 border border-blue-200' :
-                        event.type === '자재승인서' ? 'bg-blue-100 text-green-700 border border-blue-200' :
-                        event.type === '타설계획서' ? 'bg-blue-100 text-purple-700 border border-blue-200' :
-                        'bg-gray-100 text-gray-600 border border-gray-200'
-                      }`}
-                    >
-                      <span className="truncate flex-1">{event.label}</span>
-                      {canDeleteDocs && (
-                        <button 
-                          onClick={(e) => handleDeleteEvent(e, event)}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-black/10 rounded transition-all shrink-0 cursor-pointer z-10"
-                        >
-                          <Trash2 size={10} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-4 overflow-hidden">
+          <div className="flex flex-col md:flex-row gap-4">
+            
+            {/* Left: Monthly Calendar (Desktop/Tablet only) */}
+            <div className="hidden md:block md:w-[195px] lg:w-[260px] flex-shrink-0 border-r border-gray-200 md:pr-4 lg:pr-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="md:text-xs lg:text-sm font-bold text-gray-900">
+                  {format(calendarMonth, 'yyyy년 M월', { locale: ko })}
+                </h2>
+                <div className="flex gap-1">
+                  <button 
+                    onClick={handlePrevMonth} 
+                    className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5 lg:w-[18px] lg:h-[18px]" />
+                  </button>
+                  <button 
+                    onClick={handleNextMonth} 
+                    className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5 lg:w-[18px] lg:h-[18px]" />
+                  </button>
                 </div>
               </div>
-            ))}
+              
+              <div className="grid grid-cols-7 gap-1 text-center md:text-[10px] lg:text-[11px] font-bold text-gray-400 mb-2">
+                {['일', '월', '화', '수', '목', '금', '토'].map(day => (
+                  <div key={day} className="py-1">{day}</div>
+                ))}
+              </div>
+              
+              <div className="grid grid-cols-7 gap-0.5 lg:grid-cols-7 lg:gap-1">
+                {monthDays.map((day, i) => {
+                  const isSelected = isSameDay(day, selectedDate);
+                  const isCurrentMonth = isSameMonth(day, calendarMonth);
+                  
+                  // Check if any report or production status has photos on this day
+                  const dayStr = format(day, 'yyyy-MM-dd');
+                  const reportPhotos = allReports.find(r => r.date === dayStr)?.photos || [];
+                  const prodPhotos = productionDays[dayStr]?.photos || [];
+                  const hasPhotos = reportPhotos.length > 0 || prodPhotos.length > 0;
+                  
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setSelectedDate(day);
+                        setCalendarDate(day);
+                        if (!isSameMonth(day, calendarMonth)) {
+                          setCalendarMonth(day);
+                        }
+                      }}
+                      className={`
+                        relative aspect-square flex items-center justify-center md:rounded-md lg:rounded-lg md:text-[12px] lg:text-xs transition-all cursor-pointer
+                        ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}
+                        ${isSelected ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-200' : 'hover:bg-gray-100'}
+                        ${isToday(day) && !isSelected ? 'text-blue-600 font-bold' : ''}
+                      `}
+                    >
+                      {format(day, 'd')}
+                      {hasPhotos && !isSelected && (
+                        <span className="absolute bottom-0 w-1 h-1 rounded-full bg-blue-500"></span>
+                      )}
+                      {hasPhotos && isSelected && (
+                        <span className="absolute bottom-0 w-1 h-1 rounded-full bg-white"></span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Right: Weekly Calendar */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between md:justify-start gap-4 mb-4 md:mb-6">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={handleToday}
+                    className="px-2 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                  >
+                    Today
+                  </button>
+                  <h2 className="text-sm md:text-md font-bold text-gray-900 min-w-[120px] md:min-w-[150px]">
+                    {format(calendarDate, 'yyyy년 MM월', { locale: ko })}
+                  </h2>
+                </div>
+                <div className="hidden md:flex items-center border border-gray-300 rounded-md overflow-hidden">
+                  <button 
+                    onClick={handlePrevWeek}
+                    className="p-1.5 hover:bg-gray-50 text-gray-600 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <div className="w-px h-4 bg-gray-300"></div>
+                  <button 
+                    onClick={handleNextWeek}
+                    className="p-1.5 hover:bg-gray-50 text-gray-600 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+              </div>
+              
+              <div 
+                className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-7'} border-l border-gray-200 relative`}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
+                {/* Mobile Navigation Indicators */}
+                {isMobile && (
+                  <>
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 z-10 pointer-events-none flex items-center">
+                      <ChevronLeft size={14} className="text-gray-400 -ml-1.5" />
+                    </div>
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10 pointer-events-none flex items-center">
+                      <ChevronRight size={14} className="text-gray-400 -mr-1.5" />
+                    </div>
+                  </>
+                )}
+                {calendarDays.map((day, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => handleDateClick(day.date)}
+                    className={`border-r border-gray-200 min-h-[100px] md:min-h-[135px] flex flex-col cursor-pointer transition-colors hover:bg-gray-50/50 ${day.isSelected ? 'bg-blue-50/20' : ''} ${day.isToday ? 'bg-blue-50/30' : ''}`}
+                  >
+                    <div className={`text-center py-2 border-b border-gray-100 ${day.isSelected ? 'bg-blue-50' : day.isToday ? 'bg-blue-50/50' : ''}`}>
+                      <div className="text-xs text-gray-500 font-medium">{day.dayName}</div>
+                      <div className="flex items-center justify-center gap-1.5">
+                        {day.isToday && <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>}
+                        <div className={`text-xl font-bold ${day.isSunday ? 'text-red-500' : day.isSaturday ? 'text-blue-500' : 'text-gray-900'}`}>
+                          {day.dayNumber}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex-1 p-1 space-y-1 bg-gray-50/30">
+                      {day.events.map((event, eIdx) => (
+                        <div 
+                          key={eIdx} 
+                          className={`text-[10px] text-center py-0.5 px-0.5 rounded font-medium group flex items-center justify-between gap-1 overflow-hidden pointer-events-auto ${
+                            event.type === '공사일보' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 
+                            event.type === '검측요청서' ? 'bg-blue-100 text-orange-700 border border-blue-200' :
+                            event.type === '자재승인서' ? 'bg-blue-100 text-green-700 border border-blue-200' :
+                            event.type === '타설계획서' ? 'bg-blue-100 text-purple-700 border border-blue-200' :
+                            'bg-gray-100 text-gray-600 border border-gray-200'
+                          }`}
+                        >
+                          <span className="truncate flex-1">{event.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1389,7 +1486,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
           {/* 투입 인력 */}
           <div className="col-span-1 md:col-span-6 lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-sm font-bold text-gray-900 mb-4">투입 인력</h2>
+            <h2 className="text-sm font-bold text-gray-900 mb-4">투입 인력(외주)</h2>
             <div className="mb-4 p-3 bg-white rounded-lg flex justify-between items-center">
               <span className="text-sm font-medium text-gray-500">합계</span>
               <span className="text-lg font-black text-blue-600">
@@ -1460,30 +1557,31 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
 
           {/* 현장사진 */}
           <div className="col-span-2 md:col-span-12 lg:col-span-4 lg:row-span-3 bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col max-h-[260px] md:max-h-[300px] lg:max-h-[600px]">
-            <h2 className="text-sm font-bold text-gray-900 mb-2 md:mb-4 shrink-0">현장사진</h2>
+            <h2 className="text-sm font-bold text-gray-900 mb-2 md:mb-4 shrink-0">사진</h2>
             <div className="overflow-y-auto pr-2 custom-scrollbar flex-1">
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-2 gap-4">
-                {(todayReport?.photos || []).map((photo, idx) => (
+                {combinedPhotos.map((photo, idx) => (
                   <div 
                     key={photo.id || idx} 
                     className="relative flex flex-col gap-2 group cursor-pointer"
-                    onClick={() => setSelectedPhoto({ url: photo.url, title: photo.title || `현장사진 ${idx + 1}` })}
+                    onClick={() => setSelectedPhoto({ url: photo.url, title: photo.title })}
                   >
                     <div className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 shadow-sm group-hover:shadow-md transition-shadow">
                       <img 
                         src={photo.url} 
-                        alt={photo.title || `현장사진 ${idx + 1}`} 
+                        alt={photo.title} 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                        referrerPolicy="no-referrer"
                       />
                     </div>
                     <div className="text-xs font-medium text-gray-700 truncate text-center px-1">
-                      {photo.title || `현장사진 ${idx + 1}`}
+                      {photo.title}
                     </div>
                   </div>
                 ))}
-                {(!todayReport?.photos || todayReport.photos.length === 0) && (
+                {combinedPhotos.length === 0 && (
                   <div className="col-span-full text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded">
-                    등록된 현장사진이 없습니다.
+                    등록된 사진이 없습니다.
                   </div>
                 )}
               </div>

@@ -27,7 +27,7 @@ interface DailyReportViewProps {
 const initialReport = (projectId: string): DailyReport => ({
   id: Date.now().toString(),
   projectId,
-  date: new Date().toISOString().split('T')[0],
+  date: format(new Date(), 'yyyy-MM-dd'),
   author: '',
   reviewer: '',
   approver: '',
@@ -315,7 +315,14 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
         const autoFetchWeather = async () => {
           try {
             const data = await fetchWeather(project.latitude!, project.longitude!, report.date);
-            if (data) { setReport(prev => ({ ...prev, weather: { ...prev.weather, ...data } })); }
+            if (data) { 
+              // 'status'(상태)를 제외한 나머지 날씨 정보만 업데이트
+              const { status, ...otherWeatherData } = data;
+              setReport(prev => ({ 
+                ...prev, 
+                weather: { ...prev.weather, ...otherWeatherData } 
+              })); 
+            }
           } catch (error) { console.error(error); }
         };
         autoFetchWeather();
@@ -660,7 +667,7 @@ const handleImportQuickMemos = async () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-1 lg:p-4 bg-gray-100/50 pb-20 md:pb-4">
-        <div ref={reportRef} className={`w-full mx-auto bg-transparent p-0 md:px-3 lg:bg-white lg:p-8 lg:border lg:border-gray-200 lg:rounded-xl space-y-4 lg:space-y-8 ${isExporting ? 'pdf-export-mode' : ''}`}>
+        <div ref={reportRef} className={`w-full mx-auto bg-transparent p-0 md:px-3 lg:bg-white lg:p-8 lg:border lg:border-gray-200 lg:rounded-xl space-y-4 lg:space-y-8 max-w-7xl ${isExporting ? 'pdf-export-mode' : ''}`}>
           {isExporting && (
             <style>{`
               .pdf-export-mode button { display: none !important; }

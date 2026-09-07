@@ -294,7 +294,7 @@ export function QuickMemoView({
   const [isMobileCalendarOpen, setIsMobileCalendarOpen] = useState(false);
 
   const CalendarContent = () => (
-    <div className="flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm p-4 w-full shrink-0">
+    <div className="flex flex-col w-full shrink-0">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-bold text-gray-900">
           {format(calendarMonth, 'yyyy년 M월', { locale: ko })}
@@ -723,15 +723,15 @@ serverMemos.forEach((serverMemo) => {
       <div className="p-2 md:p-4 lg:p-8">
         {/* Mobile Calendar Modal */}
         {isMobileCalendarOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-            <div className="bg-white rounded-2xl p-4 w-full max-w-sm shadow-xl">
+          <div 
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm md:hidden"
+            onClick={() => setIsMobileCalendarOpen(false)}
+          >
+            <div 
+              className="bg-white rounded-xl shadow-xl w-full max-w-[320px] p-4 flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
               <CalendarContent />
-              <button 
-                onClick={() => setIsMobileCalendarOpen(false)}
-                className="w-full mt-4 h-10 rounded-xl bg-gray-100 font-bold text-sm"
-              >
-                닫기
-              </button>
             </div>
           </div>
         )}

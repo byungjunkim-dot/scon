@@ -30,7 +30,8 @@ interface GalleryPhoto extends DailyPhoto {
     | 'inspection'
     | 'material'
     | 'concrete'
-    | 'quick-memo';
+    | 'quick-memo'
+    | 'production';
   date: string;
   sourceId: string;
   sourceLocalName?: string;
@@ -64,6 +65,7 @@ export function PhotoGalleryView({ project }: PhotoGalleryViewProps) {
         materials,
         concrete,
         serverQuickMemos,
+        productionDaysData,
       ] = await Promise.all([
         supabaseService.getDailyReports(project.id).catch(() => []),
         supabaseService.getInspectionRequests(project.id).catch(() => []),
@@ -72,7 +74,16 @@ export function PhotoGalleryView({ project }: PhotoGalleryViewProps) {
         typeof service.getQuickMemos === 'function'
           ? service.getQuickMemos(project.id).catch(() => [])
           : Promise.resolve([]),
+        typeof service.getProductionDays === 'function' && import.meta.env.VITE_SUPABASE_URL
+          ? service.getProductionDays(project.id).catch(() => ({}))
+          : Promise.resolve({}),
       ]);
+
+      let prodDays = { ...productionDaysData };
+      if (!import.meta.env.VITE_SUPABASE_URL || Object.keys(prodDays).length === 0) {
+        const saved = localStorage.getItem(`cp_production_data_${project.id}`);
+        prodDays = safeJsonParse(saved, {});
+      }
 
       const localQuickMemos = getLocalQuickMemos(project.id);
 
@@ -203,6 +214,24 @@ export function PhotoGalleryView({ project }: PhotoGalleryViewProps) {
             sourceLocalName: 'AI 퀵메모',
           });
         });
+      });
+
+      /**
+       * 제작현황 사진 추가
+       */
+      Object.entries(prodDays).forEach(([date, dayData]: [string, any]) => {
+        if (dayData && dayData.photos && Array.isArray(dayData.photos)) {
+          dayData.photos.forEach((photo: DailyPhoto, index: number) => {
+            pushPhotoOnce({
+              ...photo,
+              title: photo.title || `제작사진 ${index + 1}`,
+              source: 'production',
+              date: date,
+              sourceId: `production-${date}-${index}`,
+              sourceLocalName: '제작현황',
+            });
+          });
+        }
       });
 
       photos.sort((a, b) => {

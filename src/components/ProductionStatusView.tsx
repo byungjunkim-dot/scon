@@ -1,4 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  format, 
+  startOfMonth, 
+  endOfMonth, 
+  startOfWeek, 
+  endOfWeek, 
+  eachDayOfInterval, 
+  isSameMonth, 
+  isToday,
+  addMonths,
+  subMonths,
+  parseISO
+} from 'date-fns';
+import { ko } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Calendar, 
@@ -56,6 +70,119 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+
+  // 캘린더 상태 선언
+  const [isMobileCalendarOpen, setIsMobileCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    try {
+      const d = parseISO(new Date().toISOString().split('T')[0]);
+      return isNaN(d.getTime()) ? new Date() : d;
+    } catch (e) {
+      return new Date();
+    }
+  });
+
+  // Sync calendar Month when selectedDate is changed
+  useEffect(() => {
+    if (selectedDate) {
+      try {
+        const parsed = parseISO(selectedDate);
+        if (!isNaN(parsed.getTime())) {
+          setCalendarMonth(parsed);
+        }
+      } catch (e) {}
+    }
+  }, [selectedDate]);
+
+  const monthStart = startOfMonth(calendarMonth);
+  const monthEnd = endOfMonth(monthStart);
+  const startDate = startOfWeek(monthStart, { weekStartsOn: 0 }); // Sunday
+  const endDate = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const monthDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+  const handlePrevMonth = () => setCalendarMonth(subMonths(calendarMonth, 1));
+  const handleNextMonth = () => setCalendarMonth(addMonths(calendarMonth, 1));
+
+  const CalendarContent = () => (
+    <div className="flex flex-col w-full shrink-0">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-bold text-gray-900">
+          {format(calendarMonth, 'yyyy년 M월', { locale: ko })}
+        </h2>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors cursor-pointer"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors cursor-pointer"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-gray-400 mb-2">
+        {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
+          <div key={day} className="py-1">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {monthDays.map((day, i) => {
+          const dayStr = format(day, 'yyyy-MM-dd');
+          const isSelected = dayStr === selectedDate;
+          const isCurrentMonth = isSameMonth(day, calendarMonth);
+          
+          // Check if this day has any registered production quantities or photos
+          const dayData = allDaysData[dayStr];
+          const hasData = dayData && (
+            (dayData.photos && dayData.photos.length > 0) ||
+            (dayData.steel || 0) > 0 ||
+            (dayData.single || 0) > 0 ||
+            (dayData.moduleFrame || 0) > 0 ||
+            (dayData.finished || 0) > 0 ||
+            (dayData.shipped || 0) > 0
+          );
+
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setSelectedDate(dayStr);
+                if (!isSameMonth(day, calendarMonth)) {
+                  setCalendarMonth(day);
+                }
+                setIsMobileCalendarOpen(false);
+              }}
+              className={`
+                relative aspect-square flex items-center justify-center rounded-lg text-sm transition-all cursor-pointer
+                ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}
+                ${isSelected ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-200' : 'hover:bg-gray-100'}
+                ${isToday(day) && !isSelected ? 'text-blue-600 font-bold' : ''}
+              `}
+            >
+              {format(day, 'd')}
+              {hasData && !isSelected && (
+                <span className="absolute bottom-1 w-1 h-1 rounded-full bg-blue-500"></span>
+              )}
+              {hasData && isSelected && (
+                <span className="absolute bottom-1 w-1 h-1 rounded-full bg-white"></span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
   
   // 계획 물량 관리 (전체/철골/단품/프레임/완성품/출고)
   const [plannedVolumes, setPlannedVolumes] = useState<Record<string, number>>(() => {
@@ -384,6 +511,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
   const [isCompressing, setIsCompressing] = useState(false);
   const [pendingPhotos, setPendingPhotos] = useState<ProductionPhoto[]>([]);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<ProductionPhoto | null>(null);
 
   const handlePendingPhotoTitleChange = (id: string, value: string) => {
     setPendingPhotos(prev => prev.map(p => p.id === id ? { ...p, title: value } : p));
@@ -730,17 +858,56 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         </div>
       )}
 
+      {/* Mobile Calendar Modal */}
+      {isMobileCalendarOpen && (
+        <div 
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setIsMobileCalendarOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-xl w-full max-w-[320px] p-4 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CalendarContent />
+          </div>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* ========================================================================= */}
       {/* 1. 모바일 최적화 화면 (md:hidden) : 현장 스마트폰 간편 입력 전용 UI */}
       {/* ========================================================================= */}
       <div className="block md:hidden flex-1 overflow-y-auto pb-24 p-2 space-y-2">
         
+        {/* [모바일 통합 카드] 전체 현황 요약 (철골/단품/프레임/완성품/출고 누계 및 진행률) */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-sm font-black text-slate-900">전체 현황</h2>
+            <span className="text-xs text-slate-500">( 총 {(plannedVolumes.total || 0).toLocaleString()}개 )</span>
+          </div>
+          <div className="grid grid-cols-5 gap-1.5 text-center">
+            {['steel', 'single', 'moduleFrame', 'finished', 'shipped'].map((key) => {
+              const label = getCategoryLabel(key);
+              const totalVolume = plannedVolumes[key as keyof typeof plannedVolumes] || 0;
+              const cumulative = (cumulativeStats[key as 'steel' | 'single' | 'moduleFrame' | 'finished' | 'shipped'] as number) || 0;
+              const percent = totalVolume > 0 ? Math.round((cumulative / totalVolume) * 100) : 0;
+              
+              return (
+                <div key={key} className="flex flex-col items-center">
+                  <p className="text-xs text-slate-500 mb-1">{label}</p>
+                  <p className="text-xs font-black text-slate-900 leading-none">{cumulative.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400 mt-1">{percent}%</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* 모바일 상단 네비게이션 & 날짜 탐색기 & 5대 공정 통합 현황 카드 */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div>
-              <h2 className="text-sm font-black text-slate-900 leading-tight">금일 제작·출고 현황</h2>
+              <h2 className="text-sm font-black text-slate-900 leading-tight">금일 현황</h2>
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -771,17 +938,14 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
               <ChevronLeft size={18} />
             </button>
 
-            <div className="relative flex-1 text-center">
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
-              />
-              <div className="flex items-center justify-center gap-1.5 py-0.5 font-black text-xs sm:text-sm text-slate-800">
+            <div className="flex-1 text-center">
+              <button
+                onClick={() => setIsMobileCalendarOpen(true)}
+                className="inline-flex items-center justify-center gap-1.5 py-0.5 px-3 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-all font-black text-xs sm:text-sm text-slate-800 cursor-pointer"
+              >
                 <Calendar size={14} className="text-blue-600" />
                 <span>{formatMobileDate(selectedDate)}</span>
-              </div>
+              </button>
             </div>
 
             <button 
@@ -794,33 +958,33 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           </div>
 
           {/* 통합된 5대 공정 합계 (바탕색 없이 심플하고 정돈된 그리드) */}
-          <div className="grid grid-cols-5 pt-2.5 mt-1.5 border-t border-slate-100 text-center">
+          <div className="grid grid-cols-5 pt-2.5 mt-1.5 text-center">
             <div className="flex flex-col items-center">
-              <span className="text-[10px] font-bold text-slate-500">철골</span>
+              <span className="text-xs text-slate-500">철골</span>
               <span className="text-xs font-black text-slate-900 mt-0.5">
                 {(currentDayData.steel || 0).toLocaleString()}
               </span>
             </div>
             <div className="flex flex-col items-center border-l border-slate-100">
-              <span className="text-[10px] font-bold text-slate-500">단품</span>
+              <span className="text-xs text-slate-500">단품</span>
               <span className="text-xs font-black text-slate-900 mt-0.5">
                 {(currentDayData.single || 0).toLocaleString()}
               </span>
             </div>
             <div className="flex flex-col items-center border-l border-slate-100">
-              <span className="text-[10px] font-bold text-slate-500">프레임</span>
+              <span className="text-xs text-slate-500">프레임</span>
               <span className="text-xs font-black text-slate-900 mt-0.5">
                 {(currentDayData.moduleFrame || 0).toLocaleString()}
               </span>
             </div>
             <div className="flex flex-col items-center border-l border-slate-100">
-              <span className="text-[10px] font-bold text-slate-500">완성품</span>
+              <span className="text-xs text-slate-500">완성품</span>
               <span className="text-xs font-black text-slate-900 mt-0.5">
                 {(currentDayData.finished || 0).toLocaleString()}
               </span>
             </div>
             <div className="flex flex-col items-center border-l border-slate-100">
-              <span className="text-[10px] font-bold text-slate-500">출고</span>
+              <span className="text-xs text-slate-500">출고</span>
               <span className="text-xs font-black text-blue-600 mt-0.5">
                 {(currentDayData.shipped || 0).toLocaleString()}
               </span>
@@ -832,7 +996,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs space-y-3">
           {/* 공장 선택 영역 (철골 입력란 상단 배치) */}
           <div className="space-y-2">
-            <h3 className="text-sm font-black text-slate-800">수량 입력</h3>
+            <h3 className="text-sm font-black text-slate-800">수량 입력(신규)</h3>
 
             {/* 공장 탭 바 (가로 스크롤 - 공장명만 표기) */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar py-0.5">
@@ -843,9 +1007,9 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   <button
                     key={`${b.factory}-${b.floor}`}
                     onClick={() => setSelectedMobileLocationIdx(idx)}
-                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-0.5 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                       isSelected
-                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30 ring-2 ring-blue-600/30'
+                        ? 'bg-blue-600 text-white shadow-sm'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80 border border-slate-200/60'
                     }`}
                   >
@@ -863,12 +1027,12 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </div>
           </div>
 
-          {/* 공정별 수량 입력 영역 (가로 5개 컬럼 한 행 배치) */}
-          <div className="pt-2.5 border-t border-slate-100">
-            <div className="grid grid-cols-5 gap-1.5">
+          {/* 공장별 수량 입력 영역 (가로 5개 컬럼 한 행 배치) */}
+          <div className="pt-0.5">
+            <div className="grid grid-cols-5 gap-1">
               {/* 1. 철골 */}
               <div className="flex flex-col items-center">
-                <label className="text-[11px] font-bold text-slate-600 mb-1">철골</label>
+                <label className="text-xs text-slate-600 mb-1">철골</label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -876,13 +1040,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   value={activeMobileLocation.steel === 0 ? '' : activeMobileLocation.steel}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'steel', e.target.value)}
                   placeholder="0"
-                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
                 />
               </div>
 
               {/* 2. 단품 */}
               <div className="flex flex-col items-center">
-                <label className="text-[11px] font-bold text-slate-600 mb-1">단품</label>
+                <label className="text-xs text-slate-600 mb-1">단품</label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -890,13 +1054,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   value={activeMobileLocation.single === 0 ? '' : activeMobileLocation.single}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'single', e.target.value)}
                   placeholder="0"
-                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
                 />
               </div>
 
               {/* 3. 프레임 */}
               <div className="flex flex-col items-center">
-                <label className="text-[11px] font-bold text-slate-600 mb-1">프레임</label>
+                <label className="text-xs text-slate-600 mb-1">프레임</label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -904,13 +1068,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   value={activeMobileLocation.moduleFrame === 0 ? '' : activeMobileLocation.moduleFrame}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'moduleFrame', e.target.value)}
                   placeholder="0"
-                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
                 />
               </div>
 
               {/* 4. 완성품 */}
               <div className="flex flex-col items-center">
-                <label className="text-[11px] font-bold text-slate-600 mb-1">완성품</label>
+                <label className="text-xs text-slate-600 mb-1">완성품</label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -918,13 +1082,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   value={activeMobileLocation.finished === 0 ? '' : activeMobileLocation.finished}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'finished', e.target.value)}
                   placeholder="0"
-                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
                 />
               </div>
 
               {/* 5. 출고 */}
               <div className="flex flex-col items-center">
-                <label className="text-[11px] font-bold text-slate-600 mb-1">출고</label>
+                <label className="text-xs text-slate-600 mb-1">출고</label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -932,7 +1096,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   value={activeMobileLocation.shipped === 0 ? '' : activeMobileLocation.shipped}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'shipped', e.target.value)}
                   placeholder="0"
-                  className="w-full text-center text-sm font-black text-blue-600 bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  className="w-full text-center text-sm font-black text-blue-600 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -1021,16 +1185,19 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             <div className="grid grid-cols-2 gap-2.5 pt-1">
               {currentDayData.photos.map((photo) => (
                 <div key={photo.id} className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-2xs flex flex-col">
-                  <div className="relative aspect-video bg-slate-900 overflow-hidden">
+                  <div className="relative aspect-video bg-slate-900 overflow-hidden cursor-zoom-in" onClick={() => setPreviewPhoto(photo)}>
                     <img 
                       src={photo.url} 
                       alt={photo.title}
-                      className="w-full h-full object-cover" 
+                      className="w-full h-full object-cover active:opacity-80 transition-opacity" 
                       referrerPolicy="no-referrer"
                     />
                     <button
-                      onClick={() => handleDeletePhoto(photo.id)}
-                      className="absolute top-1 right-1 bg-red-600/90 text-white p-1 rounded-md shadow-xs active:scale-95 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeletePhoto(photo.id);
+                      }}
+                      className="absolute top-1 right-1 bg-red-600/90 text-white p-1 rounded-md shadow-xs active:scale-95 cursor-pointer z-10"
                     >
                       <Trash2 size={11} />
                     </button>
@@ -1070,7 +1237,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       {/* ========================================================================= */}
       {/* 2. 데스크톱 & 태블릿 화면 (hidden md:block) : 종합 대시보드 및 스프레드시트 */}
       {/* ========================================================================= */}
-      <div className="hidden md:block flex-1 overflow-y-auto p-6 space-y-6 max-w-[1280px] mx-auto w-full">
+      <div className="hidden md:block flex-1 overflow-y-auto p-6 space-y-6 max-w-7xl mx-auto w-full">
         
         {/* [목차 1] 전체 현황 대시보드 */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
@@ -1144,7 +1311,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           </div>
 
           {/* 5분할 격자 레이아웃 (철골 / 단품 / 프레임 / 완성품 / 출고) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
             {['steel', 'single', 'moduleFrame', 'finished', 'shipped'].map((key) => {
               const label = getCategoryLabel(key);
               const totalVolume = plannedVolumes[key] || 0;
@@ -1205,12 +1372,15 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
 
                   {/* 세 개의 지표(총 물량, 누계 제작물량, 진행률)를 모아서 시각화 */}
                   <div className="space-y-2.5">
-                    {/* 1 & 2 통합. 누계 수량 */}
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-[10px] text-gray-400 font-medium">누계수량</span>
-                      <div className="flex items-baseline gap-0.5">
-                        <span className={`text-sm font-black ${textClass}`}>{cumulativeVolume.toLocaleString()}개</span>
-                        <span className="text-[10px] text-gray-400 font-medium">/총{totalVolume.toLocaleString()}개</span>
+                    {/* 1 & 2 누계 및 총 수량 2줄 분리 표시 */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-gray-400 font-medium">누계수량</span>
+                        <span className={`text-xs font-black ${textClass}`}>{cumulativeVolume.toLocaleString()}개</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-gray-400 font-medium">총 수량</span>
+                        <span className="text-[10px] text-gray-500 font-bold">{totalVolume.toLocaleString()}개</span>
                       </div>
                     </div>
 
@@ -1239,7 +1409,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5">
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <span>금일 제작 현황</span>
+                <span>금일 제작 현황(신규)</span>
               </h2>
               
               {/* 날짜 선택 및 검색 컨트롤 */}
@@ -1323,7 +1493,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
               <h3 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                <span>금일 수량 입력 (공장 및 층별 세부 실적)</span>
+                <span>금일 수량 입력 (공장별 세부 실적)</span>
               </h3>
               <button
                 onClick={handleToggleConfigPanel}
@@ -1438,7 +1608,6 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                 <thead className="text-[11px] uppercase text-gray-700 bg-slate-100 border-b border-slate-200">
                   <tr>
                     <th scope="col" className="px-3 py-2.5 font-bold text-gray-700 w-28 text-center">공장</th>
-                    <th scope="col" className="px-3 py-2.5 font-bold text-gray-700 w-24 text-center">위치(층)</th>
                     <th scope="col" className="px-3 py-2.5 font-bold text-indigo-700 text-right">철골</th>
                     <th scope="col" className="px-3 py-2.5 font-bold text-emerald-700 text-right">단품</th>
                     <th scope="col" className="px-3 py-2.5 font-bold text-sky-700 text-right">프레임</th>
@@ -1451,9 +1620,6 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                     <tr key={`${b.factory}-${b.floor}`} className="bg-white border-b border-gray-100 hover:bg-slate-50/50 transition-colors">
                       <td className="px-3 py-2 text-center font-bold text-gray-700 bg-slate-50/30">
                         {b.factory}
-                      </td>
-                      <td className="px-3 py-2 text-center font-medium text-gray-600 bg-slate-50/30">
-                        {b.floor}
                       </td>
                       <td className="px-3 py-1.5 text-right">
                         <input
@@ -1591,7 +1757,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[280px] overflow-y-auto pr-1">
                     {currentDayData.photos.map((photo) => (
                       <div key={photo.id} className="group relative bg-gray-50 rounded-lg border border-gray-200 overflow-hidden shadow-xs flex flex-col justify-between">
-                        <div className="relative aspect-video bg-slate-900 overflow-hidden">
+                        <div className="relative aspect-video bg-slate-900 overflow-hidden cursor-zoom-in" onClick={() => setPreviewPhoto(photo)}>
                           <img 
                             src={photo.url} 
                             alt={photo.title}
@@ -1599,8 +1765,11 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                             referrerPolicy="no-referrer"
                           />
                           <button
-                            onClick={() => handleDeletePhoto(photo.id)}
-                            className="absolute top-1 right-1 bg-red-600/90 text-white p-1 rounded hover:bg-red-700 transition-all shadow-md opacity-0 group-hover:opacity-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeletePhoto(photo.id);
+                            }}
+                            className="absolute top-1 right-1 bg-red-600/90 text-white p-1 rounded hover:bg-red-700 transition-all shadow-md opacity-0 group-hover:opacity-100 z-10"
                           >
                             <Trash2 size={11} />
                           </button>
@@ -1749,6 +1918,56 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   </button>
                 </div>
               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {previewPhoto && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* 배경 레이어 (어두운 투명도 & 블러 적용) */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setPreviewPhoto(null)}
+              className="absolute inset-0 bg-slate-950/85 backdrop-blur-md cursor-zoom-out"
+            />
+            
+            {/* 모달 콘텐츠 박스 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="relative max-w-4xl w-full flex flex-col items-center z-10"
+            >
+              {/* 이미지 영역 */}
+              <div className="relative max-h-[80vh] max-w-full overflow-hidden rounded-2xl shadow-2xl bg-slate-950/40 flex items-center justify-center border border-slate-800/50">
+                <img 
+                  src={previewPhoto.url} 
+                  alt={previewPhoto.title || "현황 사진"} 
+                  className="max-h-[80vh] w-auto max-w-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+                
+                {/* 닫기 버튼 */}
+                <button
+                  onClick={() => setPreviewPhoto(null)}
+                  className="absolute top-4 right-4 bg-slate-950/60 hover:bg-slate-950 text-white p-2.5 rounded-full shadow-lg transition-all active:scale-95 cursor-pointer border border-slate-700/50"
+                  title="닫기"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* 하단 캡션 설명 박스 */}
+              {previewPhoto.title && (
+                <div className="mt-4 bg-slate-900/90 backdrop-blur-sm px-6 py-2.5 rounded-full shadow-2xl border border-slate-800 max-w-lg text-center mx-4">
+                  <p className="text-xs sm:text-sm font-semibold text-white tracking-wide">
+                    {previewPhoto.title}
+                  </p>
+                </div>
+              )}
             </motion.div>
           </div>
         )}
