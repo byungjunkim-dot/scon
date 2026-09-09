@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Save, Image as ImageIcon } from 'lucide-react';
+import { X, Save, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { DailyPhoto, AppSettings } from '../types';
 
 interface PhotoModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (photo: DailyPhoto) => void;
+  onDelete?: (photo: DailyPhoto) => void;
   photo: DailyPhoto | null;
   settings: AppSettings;
 }
@@ -15,6 +16,7 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
   isOpen, 
   onClose, 
   onSave, 
+  onDelete,
   photo, 
   settings 
 }) => {
@@ -24,8 +26,10 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
     subCategory: '',
     description: ''
   });
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   useEffect(() => {
+    setIsConfirmingDelete(false);
     if (photo) {
       setFormData({
         title: photo.title || '',
@@ -55,6 +59,12 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
     onClose();
   };
 
+  const handleDelete = () => {
+    if (!photo || !onDelete) return;
+    onDelete(photo);
+    onClose();
+  };
+
   const categories = settings.categories || [];
   const subCategories = formData.category ? (settings.taskMaster[formData.category] ? Object.keys(settings.taskMaster[formData.category]) : []) : [];
 
@@ -77,12 +87,24 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
                 </div>
                 <h3 className="text-xl font-bold text-gray-900">사진 정보 입력</h3>
               </div>
-              <button 
-                onClick={onClose}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-1">
+                {onDelete && photo && (
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmingDelete(true)}
+                    className="p-2 hover:bg-red-50 rounded-full transition-colors text-gray-400 hover:text-red-600 cursor-pointer"
+                    title="사진 삭제"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                )}
+                <button 
+                  onClick={onClose}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-600 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             {/* Body */}
@@ -161,19 +183,57 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 bg-gray-50/50">
-              <button
-                onClick={onClose}
-                className="flex-1 px-4 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors font-bold text-sm"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleSave}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-bold text-sm flex items-center justify-center gap-2"
-              >
-                <Save size={18} /> 저장하기
-              </button>
+            <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-gray-50/50">
+              {onDelete && photo ? (
+                <div>
+                  {isConfirmingDelete ? (
+                    <div className="flex items-center gap-2 bg-red-50/80 px-3 py-1.5 rounded-xl border border-red-200/80">
+                      <span className="text-xs font-semibold text-red-600">사진을 삭제하시겠습니까?</span>
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        삭제 확인
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsConfirmingDelete(false)}
+                        className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingDelete(true)}
+                      className="px-3.5 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors font-bold text-sm flex items-center gap-1.5 border border-red-200 bg-white cursor-pointer shadow-xs"
+                    >
+                      <Trash2 size={16} /> 사진 삭제
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors font-bold text-sm cursor-pointer"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-bold text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <Save size={18} /> 저장하기
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>

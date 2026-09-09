@@ -228,6 +228,7 @@ export const ConcretePlanView: React.FC<ConcretePlanViewProps> = ({ project, set
         onClose={() => setIsPhotoModalOpen(false)}
         photo={editingPhoto}
         onSave={handleSavePhoto}
+        onDelete={(photo) => setPlan(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photo.id) }))}
         settings={settings}
       />
     </div>

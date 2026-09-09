@@ -222,6 +222,7 @@ export const InspectionRequestView: React.FC<InspectionRequestViewProps> = ({ pr
         onClose={() => setIsPhotoModalOpen(false)}
         photo={editingPhoto}
         onSave={handleSavePhoto}
+        onDelete={(photo) => setRequest(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photo.id) }))}
         settings={settings}
       />
     </div>

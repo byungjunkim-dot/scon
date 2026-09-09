@@ -548,6 +548,7 @@ const handleImportQuickMemos = async () => {
 
   const handleDeletePhoto = async (photoToDelete: DailyPhoto) => {
     setReport(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photoToDelete.id) }));
+    showStatus('사진이 삭제되었습니다.');
     const isTempFile = photoToDelete.url.startsWith('data:image/') || photoToDelete.url.startsWith('blob:');
     if (!isTempFile && !!import.meta.env.VITE_SUPABASE_URL) {
       try {
@@ -1448,7 +1449,14 @@ const handleImportQuickMemos = async () => {
       </div>
 
       <TaskModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} onSave={handleSaveTask} task={editingTask} type={taskModalType} settings={settings} />
-      <PhotoModal isOpen={isPhotoModalOpen} onClose={() => setIsPhotoModalOpen(false)} onSave={handleSavePhoto} photo={editingPhoto} settings={settings} />
+      <PhotoModal 
+        isOpen={isPhotoModalOpen} 
+        onClose={() => { setIsPhotoModalOpen(false); setEditingPhoto(null); }} 
+        onSave={handleSavePhoto} 
+        onDelete={!isReadOnly ? handleDeletePhoto : undefined}
+        photo={editingPhoto} 
+        settings={settings} 
+      />
       <PersonnelModal isOpen={isPersonnelModalOpen} onClose={() => setIsPersonnelModalOpen(false)} onSave={handleSavePersonnel} initialPersonnel={legacyPersonnel} settings={settings} />
       <EquipmentModal isOpen={isEquipmentModalOpen} onClose={() => setIsEquipmentModalOpen(false)} onSave={handleSaveEquipment} initialEquipment={report.equipment} settings={settings} />
       <UserSelectModal isOpen={isUserSelectModalOpen} onClose={() => setIsUserSelectModalOpen(false)} onSelect={handleSelectUser} title={userSelectType === 'author' ? '작성자' : userSelectType === 'reviewer' ? '검토자' : '승인자'} />

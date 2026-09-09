@@ -210,6 +210,7 @@ export const MaterialApprovalView: React.FC<MaterialApprovalViewProps> = ({ proj
         onClose={() => setIsPhotoModalOpen(false)}
         photo={editingPhoto}
         onSave={handleSavePhoto}
+        onDelete={(photo) => setApproval(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photo.id) }))}
         settings={settings}
       />
     </div>
