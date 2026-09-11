@@ -594,6 +594,18 @@ const handleImportQuickMemos = async () => {
       }, 0);
   }, [bulkExportReports, report.date, report.id]);
 
+  const getContractorKey = (contractor?: string, discipline?: string): string => {
+    const c = (contractor || '').trim();
+    const d = (discipline || '').trim();
+    if (c === '공통관리' || c === '삼우' || (!c && (d === '공통관리' || d === '직영' || d.includes('공통관리')))) {
+      return '공통관리';
+    }
+    if (c) {
+      return c;
+    }
+    return d || '기타';
+  };
+
   const prevCumulativeMap = React.useMemo(() => {
     const map: Record<string, number> = {};
     if (!bulkExportReports || bulkExportReports.length === 0) return map;
@@ -603,10 +615,18 @@ const handleImportQuickMemos = async () => {
     pastReports.forEach(r => {
       if (r.personnel?.details && Array.isArray(r.personnel.details)) {
         r.personnel.details.forEach(d => {
-          const key = `${(d.discipline || '').trim()}||${(d.contractor || '').trim()}`;
+          const key = getContractorKey(d.contractor, d.discipline);
           const count = (Number(d.direct) || 0) + (Number(d.outsourced) || 0) + (Number(d.other) || 0);
           map[key] = (map[key] || 0) + count;
         });
+      } else {
+        const direct = Number(r.personnel?.direct) || 0;
+        const outsourced = Number(r.personnel?.outsourced) || 0;
+        const other = Number(r.personnel?.other) || 0;
+        map['공통관리'] = (map['공통관리'] || 0) + direct;
+        if (outsourced + other > 0) {
+          map['기타'] = (map['기타'] || 0) + (outsourced + other);
+        }
       }
     });
     return map;
@@ -818,11 +838,11 @@ const handleImportQuickMemos = async () => {
               {/* 프로젝트 & 일자 */}
               <div className="grid grid-cols-1 md:grid-cols-10 gap-4 pb-4">
                 <div className="md:col-span-6 flex items-center gap-3">
-                  <span className="text-[10px] font-bold text-gray-400 w-16 shrink-0">프로젝트명</span>
+                  <span className="text-xs font-bold text-gray-400 w-16 shrink-0">프로젝트명</span>
                   <span className="text-sm font-black text-gray-900 truncate">{project?.name || '프로젝트 미지정'}</span>
                 </div>
                 <div className="md:col-span-4 flex items-center gap-3">
-                  <span className="text-[10px] font-bold text-gray-400 w-16 shrink-0">일자</span>
+                  <span className="text-xs font-bold text-gray-400 w-16 shrink-0">일자</span>
                   <input 
                     type="date" 
                     value={report.date} 
@@ -836,7 +856,7 @@ const handleImportQuickMemos = async () => {
               {/* 날씨 & 공정률 */}
               <div className="grid grid-cols-1 md:grid-cols-10 gap-4 pt-4">
                 <div className="md:col-span-6 flex items-start gap-3">
-                  <span className="text-[10px] font-bold text-gray-400 w-16 shrink-0 mt-1.5">날씨</span>
+                  <span className="text-xs font-bold text-gray-400 w-16 shrink-0 mt-1.5">날씨</span>
                   <div className="flex-1 flex flex-col gap-3">
                     {/* 첫번째 줄: 상태 */}
                     <div className="flex items-center gap-1.5">
@@ -872,7 +892,7 @@ const handleImportQuickMemos = async () => {
                   </div>
                 </div>
                 <div className="md:col-span-4 flex items-start gap-3 mt-1.5">
-                  <span className="text-[10px] font-bold text-gray-400 w-16 shrink-0">공정률</span>
+                  <span className="text-xs font-bold text-gray-400 w-16 shrink-0">공정률</span>
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-1">
@@ -1070,7 +1090,7 @@ const handleImportQuickMemos = async () => {
                   )}
                   {report.personnel.details && report.personnel.details.length > 0 ? (
                     report.personnel.details.map((p) => {
-                      const rowKey = `${(p.discipline || '').trim()}||${(p.contractor || '').trim()}`;
+                      const rowKey = getContractorKey(p.contractor, p.discipline);
                       const prevCum = prevCumulativeMap[rowKey] || 0;
                       return (
                         <div key={p.id} className="flex justify-between items-center p-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 rounded-md transition-colors gap-2">

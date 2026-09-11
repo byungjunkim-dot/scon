@@ -1307,11 +1307,9 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                   const isSelected = isSameDay(day, selectedDate);
                   const isCurrentMonth = isSameMonth(day, calendarMonth);
                   
-                  // Check if any report or production status has photos on this day
+                  // Check if a daily report has been saved for this day
                   const dayStr = format(day, 'yyyy-MM-dd');
-                  const reportPhotos = allReports.find(r => r.date === dayStr)?.photos || [];
-                  const prodPhotos = productionDays[dayStr]?.photos || [];
-                  const hasPhotos = reportPhotos.length > 0 || prodPhotos.length > 0;
+                  const hasReport = allReports.some(r => r.date === dayStr);
                   
                   return (
                     <button
@@ -1331,10 +1329,10 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                       `}
                     >
                       {format(day, 'd')}
-                      {hasPhotos && !isSelected && (
+                      {hasReport && !isSelected && (
                         <span className="absolute bottom-0 w-1 h-1 rounded-full bg-blue-500"></span>
                       )}
-                      {hasPhotos && isSelected && (
+                      {hasReport && isSelected && (
                         <span className="absolute bottom-0 w-1 h-1 rounded-full bg-white"></span>
                       )}
                     </button>

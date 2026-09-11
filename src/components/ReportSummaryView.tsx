@@ -690,11 +690,11 @@ ${workContentStr.trim()}`;
             onClick={() => handleShare(false)}
             disabled={isSharing}
             type="button"
-            className="flex-1 py-3 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            className="flex-1 py-3 px-3 bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             title="텍스트만 공유하기"
           >
-            <Share2 size={15} className="text-slate-500" />
-            <span>텍스트만 공유</span>
+            <Share2 size={15} className="text-white" />
+            <span>텍스트 공유</span>
           </button>
           
           {/* 사진과 같이 공유 버튼 */}
@@ -717,7 +717,7 @@ ${workContentStr.trim()}`;
               <>
                 <ImageIcon size={15} />
                 <span>
-                  사진과 같이 공유 ({selectedPhotoIds.size})
+                  사진 공유 ({selectedPhotoIds.size})
                 </span>
               </>
             )}

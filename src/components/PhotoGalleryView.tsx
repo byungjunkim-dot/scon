@@ -427,27 +427,18 @@ export function PhotoGalleryView({ project }: PhotoGalleryViewProps) {
                     {filteredPhotos.map((photo) => (
                       <div 
                         key={photo.id} 
-                        className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer shadow-sm hover:shadow-md transition-all"
+                        className="group flex flex-col gap-2 cursor-pointer"
                         onClick={() => setSelectedPhoto(photo)}
                       >
-                        <img 
-                          src={photo.url} 
-                          alt={photo.title || '현장 사진'} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                          <div className="text-white text-xs font-bold truncate">
-                            {photo.title || '제목 없음'}
-                          </div>
-                          <div className="flex items-center gap-1 mt-1">
-                            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded backdrop-blur-sm text-white">
-                              {photo.category || '분류 없음'}
-                            </span>
-                            <span className="text-[10px] bg-blue-500/80 px-1.5 py-0.5 rounded backdrop-blur-sm text-white">
-                              {photo.sourceLocalName}
-                            </span>
-                          </div>
+                        <div className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm group-hover:shadow-md transition-shadow">
+                          <img 
+                            src={photo.url} 
+                            alt={photo.title || '현장 사진'} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        </div>
+                        <div className="text-xs font-semibold text-gray-700 truncate text-center px-1">
+                          {photo.title || '제목 없음'}
                         </div>
                       </div>
                     ))}

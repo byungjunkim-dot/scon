@@ -35,9 +35,10 @@ import {
   Camera,
   RotateCcw,
   SlidersHorizontal,
-  Sparkles
+  Sparkles,
+  Building
 } from 'lucide-react';
-import { Project, AppSettings, User, ProductionPhoto, ProductionBreakdown, ProductionDayData, ProductionConfig } from '../types';
+import { Project, AppSettings, User, ProductionPhoto, ProductionBreakdown, ProductionDayData, ProductionConfig, FactoryTarget } from '../types';
 import { compressImage } from '../utils/image';
 import { exportProductionStatusToExcel } from '../utils/productionExcelExport';
 import { supabaseService } from '../services/supabaseService';
@@ -191,13 +192,17 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       try {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object') {
+          const total = Number(parsed.total) || 5000;
+          const steel = Number(parsed.steel) || total;
+          const steelTon = Number(parsed.steelTon) || (steel > 0 ? Math.round(steel * 0.25) : 1250);
           return {
-            total: Number(parsed.total) || 5000,
-            steel: Number(parsed.steel) || 5000,
-            single: Number(parsed.single) || 5000,
-            moduleFrame: Number(parsed.moduleFrame) || 5000,
-            finished: Number(parsed.finished) || 5000,
-            shipped: Number(parsed.shipped) || 5000,
+            total,
+            steel,
+            steelTon,
+            single: Number(parsed.single) || total,
+            moduleFrame: Number(parsed.moduleFrame) || total,
+            finished: Number(parsed.finished) || total,
+            shipped: Number(parsed.shipped) || total,
           };
         }
       } catch (e) {}
@@ -205,6 +210,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     return {
       total: 5000,
       steel: 5000,
+      steelTon: 1250,
       single: 5000,
       moduleFrame: 5000,
       finished: 5000,
@@ -212,8 +218,21 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     };
   });
 
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [tempPlannedInput, setTempPlannedInput] = useState<string>('');
+  // 공장별 계획 물량 (철골 Ton, 계획 모듈 총 개수)
+  const [factoryTargets, setFactoryTargets] = useState<Record<string, { steelTon: number; plannedModules: number }>>(() => {
+    const saved = localStorage.getItem(`cp_factory_targets_${projectId}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      '진천공장': {
+        steelTon: 1250,
+        plannedModules: 5000,
+      }
+    };
+  });
 
   // 전체 날짜별 데이터 딕셔너리 ({ "YYYY-MM-DD": ProductionDayData })
   const [allDaysData, setAllDaysData] = useState<Record<string, ProductionDayData>>(() => {
@@ -243,8 +262,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         { category: '출고', content: '완성 프레임 24EA 현장 반출 상차 완료' }
       ]),
       breakdowns: [
-        { factory: '진천공장', floor: '1층', steel: 25, single: 20, moduleFrame: 15, finished: 14, shipped: 12 },
-        { factory: '진천공장', floor: '2층', steel: 20, single: 18, moduleFrame: 15, finished: 14, shipped: 12 },
+        { factory: '진천공장', floor: '-', steel: 45, single: 38, moduleFrame: 30, finished: 28, shipped: 24 }
       ]
     };
     return { [dateStr]: initialDay };
@@ -256,21 +274,38 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     return createEmptyDayData(projectId, dateStr);
   });
 
-  // 공장 및 층 설정 상태 선언
+  // 공장 설정 상태 선언 (층수 관리는 생략 및 중복 공장 자동 제거)
   const [activeFactories, setActiveFactories] = useState<string[]>(() => {
     const saved = localStorage.getItem(`cp_factories_${projectId}`);
-    return saved ? JSON.parse(saved) : ['진천공장'];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const cleaned = Array.from(new Set(parsed.map(f => String(f).trim()).filter(Boolean)));
+          if (cleaned.length > 0) return cleaned;
+        }
+      } catch (e) {}
+    }
+    return ['진천공장'];
   });
-  const [activeFloors, setActiveFloors] = useState<string[]>(() => {
-    const saved = localStorage.getItem(`cp_floors_${projectId}`);
-    return saved ? JSON.parse(saved) : ['1층', '2층'];
+
+  // 미발주 물량 상태 (철골 Ton / 계획 모듈 총 개수)
+  const [unallocatedTarget, setUnallocatedTarget] = useState<{ steelTon: number; plannedModules: number }>(() => {
+    const saved = localStorage.getItem(`cp_unallocated_target_${projectId}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return { steelTon: 0, plannedModules: 0 };
   });
 
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [newFactoryInput, setNewFactoryInput] = useState('');
-  const [newFloorInput, setNewFloorInput] = useState('');
+  const [newFactorySteelTon, setNewFactorySteelTon] = useState('');
+  const [newFactoryPlannedModules, setNewFactoryPlannedModules] = useState('');
 
-  // 모바일 전용: 현재 선택된 공장/층 탭 인덱스
+  // 모바일 전용: 현재 선택된 공장 탭 인덱스
   const [selectedMobileLocationIdx, setSelectedMobileLocationIdx] = useState(0);
 
   // 골드 등급 또는 관리자 접근 권한 확인
@@ -281,14 +316,44 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     return isAdmin || isGold;
   }, [currentUser]);
 
-  // 공장/층 변경 자동 저장
+  // 공장 목록 변경 자동 저장
   useEffect(() => {
     localStorage.setItem(`cp_factories_${projectId}`, JSON.stringify(activeFactories));
   }, [activeFactories, projectId]);
 
-  useEffect(() => {
-    localStorage.setItem(`cp_floors_${projectId}`, JSON.stringify(activeFloors));
-  }, [activeFloors, projectId]);
+  // 공장별 계획물량 + 미발주 물량을 합산하여 전체 계획 물량 산출
+  const calculateTotalPlannedFromFactories = (
+    factories: string[],
+    targets: Record<string, { steelTon: number; plannedModules: number }>,
+    unallocated?: { steelTon: number; plannedModules: number }
+  ) => {
+    let sumModules = 0;
+    let sumSteelTon = 0;
+
+    factories.forEach(f => {
+      const t = targets[f];
+      if (t) {
+        sumModules += Number(t.plannedModules) || 0;
+        sumSteelTon += Number(t.steelTon) || 0;
+      }
+    });
+
+    const unalloc = unallocated !== undefined ? unallocated : unallocatedTarget;
+    if (unalloc) {
+      sumModules += Number(unalloc.plannedModules) || 0;
+      sumSteelTon += Number(unalloc.steelTon) || 0;
+    }
+
+    return {
+      total: sumModules,
+      steel: sumModules,
+      steelTon: sumSteelTon,
+      single: sumModules,
+      moduleFrame: sumModules,
+      finished: sumModules,
+      shipped: sumModules,
+    };
+  };
 
   // Supabase 비동기 데이터 로드 (다른 기기/브라우저 동기화)
   useEffect(() => {
@@ -296,21 +361,46 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     const loadSupabaseData = async () => {
       if (!project?.id) return;
       try {
-        // 1. 설정 정보 불러오기 (계획수량, 활성 공장, 활성 층수)
+        // 1. 설정 정보 불러오기 (계획수량, 활성 공장, 공장별 타겟, 미발주 물량)
         const config = await supabaseService.getProductionConfig(project.id);
         if (config && isMounted) {
-          if (config.plannedVolumes) {
-            setPlannedVolumes(config.plannedVolumes);
-            localStorage.setItem(`cp_production_planned_v3_${project.id}`, JSON.stringify(config.plannedVolumes));
+          const rawFactories = config.activeFactories && config.activeFactories.length > 0
+            ? config.activeFactories
+            : activeFactories;
+          const currentFactories = Array.from(new Set(rawFactories.map((f: any) => String(f).trim()).filter(Boolean)));
+
+          let currentTargets: Record<string, { steelTon: number; plannedModules: number }> = {};
+          if (config.factoryTargets && Object.keys(config.factoryTargets).length > 0) {
+            currentTargets = config.factoryTargets;
+          } else {
+            const count = currentFactories.length || 1;
+            const raw = config.plannedVolumes as any;
+            const totalMod = Number(raw?.total) || 5000;
+            const totalSteel = Number(raw?.steelTon) || 1250;
+            currentFactories.forEach(f => {
+              currentTargets[f] = {
+                steelTon: Math.round(totalSteel / count),
+                plannedModules: Math.round(totalMod / count),
+              };
+            });
           }
-          if (config.activeFactories && config.activeFactories.length > 0) {
-            setActiveFactories(config.activeFactories);
-            localStorage.setItem(`cp_factories_${project.id}`, JSON.stringify(config.activeFactories));
-          }
-          if (config.activeFloors && config.activeFloors.length > 0) {
-            setActiveFloors(config.activeFloors);
-            localStorage.setItem(`cp_floors_${project.id}`, JSON.stringify(config.activeFloors));
-          }
+
+          const currentUnallocated = config.unallocatedTarget || {
+            steelTon: 0,
+            plannedModules: 0,
+          };
+
+          setActiveFactories(currentFactories);
+          setFactoryTargets(currentTargets);
+          setUnallocatedTarget(currentUnallocated);
+          localStorage.setItem(`cp_factories_${project.id}`, JSON.stringify(currentFactories));
+          localStorage.setItem(`cp_factory_targets_${project.id}`, JSON.stringify(currentTargets));
+          localStorage.setItem(`cp_unallocated_target_${project.id}`, JSON.stringify(currentUnallocated));
+
+          // 공장별 숫자 + 미발주 물량을 합산하여 전체현황의 ton과 계획 총 개수로 계산
+          const loaded = calculateTotalPlannedFromFactories(currentFactories, currentTargets, currentUnallocated);
+          setPlannedVolumes(loaded);
+          localStorage.setItem(`cp_production_planned_v3_${project.id}`, JSON.stringify(loaded));
         }
 
         // 2. 날짜별 제작/출고 실적 데이터 불러오기
@@ -328,128 +418,183 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     return () => { isMounted = false; };
   }, [project?.id]);
 
-  // 공장 및 층수, 계획수량 설정을 Supabase에 보존
-  const persistConfigToSupabase = async (newFactories?: string[], newFloors?: string[], newPlanned?: Record<string, number>) => {
+  // 공장 및 계획수량 설정을 Supabase에 보존
+  const persistConfigToSupabase = async (
+    newFactories?: string[],
+    newPlanned?: typeof plannedVolumes,
+    newTargets?: Record<string, { steelTon: number; plannedModules: number }>,
+    newUnallocated?: { steelTon: number; plannedModules: number }
+  ) => {
     if (!project?.id) return;
     try {
       await supabaseService.saveProductionConfig(project.id, {
         plannedVolumes: (newPlanned || plannedVolumes) as any,
         activeFactories: newFactories || activeFactories,
-        activeFloors: newFloors || activeFloors,
+        factoryTargets: (newTargets || factoryTargets) as any,
+        unallocatedTarget: (newUnallocated !== undefined ? newUnallocated : unallocatedTarget) as any,
+        activeFloors: [],
       });
     } catch (err) {
       console.warn('Supabase 설정 저장 중 오류 (로컬 캐시 유지):', err);
     }
   };
 
-  const handleOpenPlannedEdit = (field: string) => {
-    if (!hasAdminOrGoldAccess) {
-      showStatus('전체 계획물량 설정은 골드 등급 또는 관리자만 접근 가능합니다.');
-      return;
-    }
-    setEditingField(field);
-    setTempPlannedInput(String(plannedVolumes[field] || 0));
-  };
-
   const handleToggleConfigPanel = () => {
     if (!hasAdminOrGoldAccess) {
-      showStatus('공장 및 층 설정은 골드 등급 또는 관리자만 접근 가능합니다.');
+      showStatus('공장 설정은 골드 등급 또는 관리자만 접근 가능합니다.');
       return;
     }
     setShowConfigPanel(prev => !prev);
   };
 
+  // 신규 공장 추가 시 공장별 철골물량(Ton)과 계획 모듈 총 개수 함께 설정 & 전체 현황 자동 합산
   const handleAddFactory = () => {
     if (!hasAdminOrGoldAccess) {
       showStatus('공장 설정 권한이 없습니다 (골드 등급 및 관리자 전용).');
       return;
     }
-    const val = newFactoryInput.trim();
-    if (!val) return;
-    if (activeFactories.includes(val)) {
+    const name = newFactoryInput.trim();
+    if (!name) {
+      showStatus('공장명을 입력해주세요.');
+      return;
+    }
+    if (activeFactories.includes(name)) {
       showStatus('이미 존재하는 공장명입니다.');
       return;
     }
-    const updated = [...activeFactories, val];
-    setActiveFactories(updated);
-    persistConfigToSupabase(updated, undefined, undefined);
+    const steelTon = Math.max(0, Number(newFactorySteelTon) || 0);
+    const plannedModules = Math.max(0, Number(newFactoryPlannedModules) || 0);
+
+    const updatedFactories = [...activeFactories, name];
+    const updatedTargets = {
+      ...factoryTargets,
+      [name]: {
+        steelTon,
+        plannedModules,
+      }
+    };
+
+    // 공장별 숫자 + 미발주 물량을 합산하여 전체현황의 ton과 계획 총 개수로 계산
+    const updatedPlanned = calculateTotalPlannedFromFactories(updatedFactories, updatedTargets, unallocatedTarget);
+
+    setActiveFactories(updatedFactories);
+    setFactoryTargets(updatedTargets);
+    setPlannedVolumes(updatedPlanned);
+
+    localStorage.setItem(`cp_factories_${projectId}`, JSON.stringify(updatedFactories));
+    localStorage.setItem(`cp_factory_targets_${projectId}`, JSON.stringify(updatedTargets));
+    localStorage.setItem(`cp_production_planned_v3_${projectId}`, JSON.stringify(updatedPlanned));
+
+    persistConfigToSupabase(updatedFactories, updatedPlanned, updatedTargets, unallocatedTarget);
+
     setNewFactoryInput('');
+    setNewFactorySteelTon('');
+    setNewFactoryPlannedModules('');
+
+    showStatus(`'${name}' 공장이 추가되었습니다 (철골: ${steelTon}Ton, 계획 모듈: ${plannedModules.toLocaleString()}개 -> 전체현황 자동 합산).`);
   };
 
+  // 공장별 계획물량 인라인 수정 (실시간 합산 반영)
+  const handleUpdateFactoryTarget = (fact: string, field: 'steelTon' | 'plannedModules', valStr: string) => {
+    if (!hasAdminOrGoldAccess) return;
+    const num = Math.max(0, Number(valStr) || 0);
+    const updatedTargets = {
+      ...factoryTargets,
+      [fact]: {
+        ...(factoryTargets[fact] || { steelTon: 0, plannedModules: 0 }),
+        [field]: num,
+      }
+    };
+
+    const updatedPlanned = calculateTotalPlannedFromFactories(activeFactories, updatedTargets, unallocatedTarget);
+
+    setFactoryTargets(updatedTargets);
+    setPlannedVolumes(updatedPlanned);
+
+    localStorage.setItem(`cp_factory_targets_${projectId}`, JSON.stringify(updatedTargets));
+    localStorage.setItem(`cp_production_planned_v3_${projectId}`, JSON.stringify(updatedPlanned));
+
+    persistConfigToSupabase(activeFactories, updatedPlanned, updatedTargets, unallocatedTarget);
+  };
+
+  // 미발주 물량 인라인 수정 (실시간 합산 반영)
+  const handleUpdateUnallocatedTarget = (field: 'steelTon' | 'plannedModules', valStr: string) => {
+    if (!hasAdminOrGoldAccess) {
+      showStatus('공장 설정 권한이 없습니다 (골드 등급 및 관리자 전용).');
+      return;
+    }
+    const num = Math.max(0, Number(valStr) || 0);
+    const updatedUnallocated = {
+      ...unallocatedTarget,
+      [field]: num,
+    };
+
+    const updatedPlanned = calculateTotalPlannedFromFactories(activeFactories, factoryTargets, updatedUnallocated);
+
+    setUnallocatedTarget(updatedUnallocated);
+    setPlannedVolumes(updatedPlanned);
+
+    localStorage.setItem(`cp_unallocated_target_${projectId}`, JSON.stringify(updatedUnallocated));
+    localStorage.setItem(`cp_production_planned_v3_${projectId}`, JSON.stringify(updatedPlanned));
+
+    persistConfigToSupabase(activeFactories, updatedPlanned, factoryTargets, updatedUnallocated);
+  };
+
+  // 공장 삭제
   const handleRemoveFactory = (fact: string) => {
     if (!hasAdminOrGoldAccess) {
       showStatus('공장 설정 권한이 없습니다 (골드 등급 및 관리자 전용).');
       return;
     }
-    const updated = activeFactories.filter(f => f !== fact);
-    setActiveFactories(updated);
-    persistConfigToSupabase(updated, undefined, undefined);
-  };
-
-  const handleAddFloor = () => {
-    if (!hasAdminOrGoldAccess) {
-      showStatus('층수 설정 권한이 없습니다 (골드 등급 및 관리자 전용).');
+    if (activeFactories.length <= 1) {
+      showStatus('최소 1개 이상의 공장이 필요합니다.');
       return;
     }
-    const val = newFloorInput.trim();
-    if (!val) return;
-    if (activeFloors.includes(val)) {
-      showStatus('이미 존재하는 층명입니다.');
-      return;
-    }
-    const updated = [...activeFloors, val];
-    setActiveFloors(updated);
-    persistConfigToSupabase(undefined, updated, undefined);
-    setNewFloorInput('');
+    const updatedFactories = activeFactories.filter(f => f !== fact);
+    const updatedTargets = { ...factoryTargets };
+    delete updatedTargets[fact];
+
+    const updatedPlanned = calculateTotalPlannedFromFactories(updatedFactories, updatedTargets, unallocatedTarget);
+
+    setActiveFactories(updatedFactories);
+    setFactoryTargets(updatedTargets);
+    setPlannedVolumes(updatedPlanned);
+
+    localStorage.setItem(`cp_factories_${projectId}`, JSON.stringify(updatedFactories));
+    localStorage.setItem(`cp_factory_targets_${projectId}`, JSON.stringify(updatedTargets));
+    localStorage.setItem(`cp_production_planned_v3_${projectId}`, JSON.stringify(updatedPlanned));
+
+    persistConfigToSupabase(updatedFactories, updatedPlanned, updatedTargets, unallocatedTarget);
+    showStatus(`'${fact}' 공장이 삭제되었으며 전체 현황이 재합산되었습니다.`);
   };
 
-  const handleRemoveFloor = (fl: string) => {
-    if (!hasAdminOrGoldAccess) {
-      showStatus('층수 설정 권한이 없습니다 (골드 등급 및 관리자 전용).');
-      return;
-    }
-    const updated = activeFloors.filter(f => f !== fl);
-    setActiveFloors(updated);
-    persistConfigToSupabase(undefined, updated, undefined);
-  };
-
-  // 공장 X 층수 조합 배열 구하기 (useMemo)
-  const activeCombinations = useMemo(() => {
-    const list: { factory: string; floor: string }[] = [];
-    const factories = activeFactories.length > 0 ? activeFactories : ['공장'];
-    const floors = activeFloors.length > 0 ? activeFloors : ['1층'];
-    
-    factories.forEach(fact => {
-      floors.forEach(fl => {
-        list.push({ factory: fact, floor: fl });
-      });
-    });
-    return list;
-  }, [activeFactories, activeFloors]);
-
-  // 현재 날짜의 세부 항목 구하기
+  // 현재 날짜의 세부 항목 구하기 (층수 관리 생략: 고유 공장별 1개 레코드 매핑)
   const currentBreakdowns = useMemo<ProductionBreakdown[]>(() => {
     const list: ProductionBreakdown[] = [];
     const existingBreakdowns = currentDayData.breakdowns || [];
+    // 1. 공장명 중복 제거 및 공백 정제
+    const uniqueFactories = Array.from(
+      new Set((activeFactories.length > 0 ? activeFactories : ['진천공장']).map(f => String(f).trim()).filter(Boolean))
+    );
     
-    activeCombinations.forEach((comb, idx) => {
-      const found: any = existingBreakdowns.find(b => b.factory === comb.factory && b.floor === comb.floor);
-      if (found) {
+    uniqueFactories.forEach((factory, idx) => {
+      // 2. 기존 데이터 중 해당 공장과 일치하는 모든 레코드 찾기 (과거 여러 층 데이터 포함 합산)
+      const matchedRecords = existingBreakdowns.filter(b => String(b.factory).trim() === factory);
+      if (matchedRecords.length > 0) {
         list.push({
-          factory: comb.factory,
-          floor: comb.floor,
-          steel: Number(found.steel) || 0,
-          single: Number(found.single) || 0,
-          moduleFrame: Number(found.moduleFrame ?? found.module_frame) || 0,
-          finished: Number(found.finished) || 0,
-          shipped: Number(found.shipped) || 0,
+          factory,
+          floor: '-',
+          steel: matchedRecords.reduce((s, b) => s + (Number(b.steel) || 0), 0),
+          single: matchedRecords.reduce((s, b) => s + (Number(b.single) || 0), 0),
+          moduleFrame: matchedRecords.reduce((s, b) => s + (Number(b.moduleFrame ?? (b as any).module_frame) || 0), 0),
+          finished: matchedRecords.reduce((s, b) => s + (Number(b.finished) || 0), 0),
+          shipped: matchedRecords.reduce((s, b) => s + (Number(b.shipped) || 0), 0),
         });
       } else {
-        // 하위 호환성: 만약 첫 번째 조합이고, 이전 legacy 데이터가 존재하는 경우 여기에 매핑해줍니다.
         const isFirst = idx === 0;
         list.push({
-          factory: comb.factory,
-          floor: comb.floor,
+          factory,
+          floor: '-',
           steel: isFirst ? (Number(currentDayData.steel) || 0) : 0,
           single: isFirst ? (Number(currentDayData.single) || 0) : 0,
           moduleFrame: isFirst ? (Number(currentDayData.moduleFrame) || 0) : 0,
@@ -460,14 +605,14 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     });
     
     return list;
-  }, [currentDayData, activeCombinations]);
+  }, [currentDayData, activeFactories]);
 
-  // 특정 공장/층의 특정 필드 수치 업데이트 함수
-  const updateBreakdownValue = (factory: string, floor: string, field: keyof Omit<ProductionBreakdown, 'factory' | 'floor'>, valStr: string) => {
+  // 특정 공장의 특정 필드 수치 업데이트 함수
+  const updateBreakdownValue = (factory: string, _floor: string, field: keyof Omit<ProductionBreakdown, 'factory' | 'floor'>, valStr: string) => {
     const numVal = Math.max(0, Number(valStr) || 0);
     
     const updatedBreakdowns = currentBreakdowns.map(b => {
-      if (b.factory === factory && b.floor === floor) {
+      if (b.factory === factory) {
         return { ...b, [field]: numVal };
       }
       return b;
@@ -586,9 +731,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
 
     const totalCum = steelCum + singleCum + moduleFrameCum + finishedCum + shippedCum;
 
+    const steelPlan = (plannedVolumes.steelTon && plannedVolumes.steelTon > 0)
+      ? plannedVolumes.steelTon
+      : (plannedVolumes.steel || 0);
+
     const rates = {
       total: plannedVolumes.total > 0 ? (totalCum / plannedVolumes.total) * 100 : 0,
-      steel: plannedVolumes.steel > 0 ? (steelCum / plannedVolumes.steel) * 100 : 0,
+      steel: steelPlan > 0 ? (steelCum / steelPlan) * 100 : 0,
       single: plannedVolumes.single > 0 ? (singleCum / plannedVolumes.single) * 100 : 0,
       moduleFrame: plannedVolumes.moduleFrame > 0 ? (moduleFrameCum / plannedVolumes.moduleFrame) * 100 : 0,
       finished: plannedVolumes.finished > 0 ? (finishedCum / plannedVolumes.finished) * 100 : 0,
@@ -690,34 +839,6 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     }));
   };
 
-  // 계획 수량 세팅 저장
-  const handleSavePlanned = (key: string) => {
-    if (!hasAdminOrGoldAccess) {
-      showStatus('전체 계획물량 설정은 골드 등급 또는 관리자만 가능합니다.');
-      setEditingField(null);
-      return;
-    }
-    const val = Number(tempPlannedInput) || 0;
-    if (val >= 0) {
-      const updated = { ...plannedVolumes, [key]: val };
-      
-      // 전체 계획물량 설정시 하위 항목들도 따라서 자동 셋팅되도록 지원
-      if (key === 'total') {
-        updated.steel = val;
-        updated.single = val;
-        updated.moduleFrame = val;
-        updated.finished = val;
-        updated.shipped = val;
-      }
-      
-      setPlannedVolumes(updated);
-      localStorage.setItem(`cp_production_planned_v3_${projectId}`, JSON.stringify(updated));
-      persistConfigToSupabase(undefined, undefined, updated);
-      setEditingField(null);
-      showStatus(`${getCategoryLabel(key)} 계획물량이 정상 반영되었습니다 (클라우드 동기화).`);
-    }
-  };
-
   // 5. 오늘의 데이터 저장 기능 (Supabase 클라우드 동기화 + 로컬스토리지 백업)
   const handleSaveCurrentDay = async () => {
     const updatedAll = {
@@ -816,6 +937,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         plannedVolumes: {
           total: plannedVolumes.total || 0,
           steel: plannedVolumes.steel || 0,
+          steelTon: plannedVolumes.steelTon || 0,
           single: plannedVolumes.single || 0,
           moduleFrame: plannedVolumes.moduleFrame || 0,
           finished: plannedVolumes.finished || 0,
@@ -836,10 +958,10 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     }
   };
 
-  // 모바일 활성 공장/층 선택
+  // 모바일 활성 공장 선택
   const activeMobileLocation = useMemo(() => {
     if (currentBreakdowns.length === 0) {
-      return { factory: '진천공장', floor: '1층', steel: 0, single: 0, moduleFrame: 0, finished: 0, shipped: 0 };
+      return { factory: '진천공장', floor: '-', steel: 0, single: 0, moduleFrame: 0, finished: 0, shipped: 0 };
     }
     const safeIdx = Math.min(Math.max(0, selectedMobileLocationIdx), currentBreakdowns.length - 1);
     return currentBreakdowns[safeIdx];
@@ -883,19 +1005,34 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-sm font-black text-slate-900">전체 현황</h2>
-            <span className="text-xs text-slate-500">( 총 {(plannedVolumes.total || 0).toLocaleString()}개 )</span>
+            <div className="text-right">
+              <span className="text-[11px] text-slate-500 font-medium">
+                총 {(plannedVolumes.total || 0).toLocaleString()}개 · 철골 {(plannedVolumes.steelTon || 0).toLocaleString()}Ton
+              </span>
+              {(unallocatedTarget.plannedModules > 0 || unallocatedTarget.steelTon > 0) && (
+                <span className="block text-[9px] text-amber-600 font-bold">
+                  (미발주 {unallocatedTarget.plannedModules.toLocaleString()}개 / {unallocatedTarget.steelTon.toLocaleString()}Ton 포함)
+                </span>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-5 gap-1.5 text-center">
             {['steel', 'single', 'moduleFrame', 'finished', 'shipped'].map((key) => {
-              const label = getCategoryLabel(key);
-              const totalVolume = plannedVolumes[key as keyof typeof plannedVolumes] || 0;
+              const isSteel = key === 'steel';
+              const label = isSteel ? '철골(Ton)' : getCategoryLabel(key);
+              const totalVolume = isSteel 
+                ? (plannedVolumes.steelTon || 0) 
+                : (plannedVolumes[key as keyof typeof plannedVolumes] || 0);
               const cumulative = (cumulativeStats[key as 'steel' | 'single' | 'moduleFrame' | 'finished' | 'shipped'] as number) || 0;
-              const percent = totalVolume > 0 ? Math.round((cumulative / totalVolume) * 100) : 0;
+              const percent = cumulativeStats.rates[key as keyof typeof cumulativeStats.rates] || (totalVolume > 0 ? Math.round((cumulative / totalVolume) * 100) : 0);
               
               return (
                 <div key={key} className="flex flex-col items-center">
                   <p className="text-xs text-slate-500 mb-1">{label}</p>
-                  <p className="text-xs font-black text-slate-900 leading-none">{cumulative.toLocaleString()}</p>
+                  <p className={`text-xs font-black leading-none ${isSteel ? 'text-indigo-700' : 'text-slate-900'}`}>
+                    {cumulative.toLocaleString()}
+                    {isSteel && <span className="text-[9px] font-normal text-slate-400 ml-0.5">Ton</span>}
+                  </p>
                   <p className="text-xs text-slate-400 mt-1">{percent}%</p>
                 </div>
               );
@@ -960,9 +1097,10 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           {/* 통합된 5대 공정 합계 (바탕색 없이 심플하고 정돈된 그리드) */}
           <div className="grid grid-cols-5 pt-2.5 mt-1.5 text-center">
             <div className="flex flex-col items-center">
-              <span className="text-xs text-slate-500">철골</span>
-              <span className="text-xs font-black text-slate-900 mt-0.5">
+              <span className="text-xs font-bold text-indigo-700">철골</span>
+              <span className="text-xs font-black text-indigo-700 mt-0.5">
                 {(currentDayData.steel || 0).toLocaleString()}
+                <span className="text-[9px] font-normal text-slate-400 ml-0.5">Ton</span>
               </span>
             </div>
             <div className="flex flex-col items-center border-l border-slate-100">
@@ -994,9 +1132,186 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
 
         {/* [모바일 통합 카드] 공장 선택 + 공정별 간편 수량 입력 */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs space-y-3">
-          {/* 공장 선택 영역 (철골 입력란 상단 배치) */}
+          {/* 공장 선택 및 공장 설정 토글 영역 */}
           <div className="space-y-2">
-            <h3 className="text-sm font-black text-slate-800">수량 입력(신규)</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-800">수량 입력(신규)</h3>
+              <button
+                onClick={handleToggleConfigPanel}
+                className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold border rounded-lg transition-colors cursor-pointer ${
+                  showConfigPanel 
+                    ? 'bg-blue-600 text-white border-blue-600' 
+                    : hasAdminOrGoldAccess
+                      ? 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      : 'bg-slate-50 text-slate-400 border-slate-200'
+                }`}
+                title={hasAdminOrGoldAccess ? `공장 설정 ${showConfigPanel ? '닫기' : '열기'}` : '골드 등급 및 관리자만 접근 가능'}
+              >
+                {hasAdminOrGoldAccess ? <Settings size={12} /> : <Lock size={12} className="text-slate-400" />}
+                <span>공장 설정 {showConfigPanel ? '닫기' : '열기'}</span>
+              </button>
+            </div>
+
+            {/* 모바일 공장 설정 접이식 패널 */}
+            <AnimatePresence>
+              {showConfigPanel && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 my-2"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Building size={14} className="text-blue-600" />
+                      <span>공장별 계획물량 설정</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      공장별 철골(Ton)과 계획 모듈 개수를 입력하면 상단 전체 현황에 자동 합산됩니다.
+                    </p>
+                  </div>
+
+                  {/* 신규 공장 추가 */}
+                  <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-2">
+                    <div className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                      <Plus size={12} className="text-blue-600" />
+                      <span>새 공장 추가</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        value={newFactoryInput}
+                        onChange={(e) => setNewFactoryInput(e.target.value)}
+                        placeholder="공장명 (예: 안성 1공장)"
+                        className="w-full text-xs border border-slate-200 bg-white rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="any"
+                            value={newFactorySteelTon}
+                            onChange={(e) => setNewFactorySteelTon(e.target.value)}
+                            placeholder="철골 Ton"
+                            className="w-full text-xs border border-indigo-200 bg-indigo-50/40 rounded-md px-2 py-1.5 pr-8 text-right font-bold text-indigo-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                          <span className="absolute right-1.5 top-1.5 text-[10px] text-indigo-500 font-bold">Ton</span>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={newFactoryPlannedModules}
+                            onChange={(e) => setNewFactoryPlannedModules(e.target.value)}
+                            placeholder="모듈 총 개수"
+                            className="w-full text-xs border border-slate-200 bg-slate-50/50 rounded-md px-2 py-1.5 pr-6 text-right font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <span className="absolute right-1.5 top-1.5 text-[10px] text-slate-400 font-bold">개</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleAddFactory}
+                        className="w-full bg-blue-600 text-white text-xs font-bold py-1.5 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Plus size={13} />
+                        <span>공장 추가 및 합산 반영</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 미발주 물량 (철골 / 계획 모듈) 설정 카드 */}
+                  <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-2.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] font-bold text-amber-950 flex items-center gap-1.5">
+                        <Package size={13} className="text-amber-600" />
+                        <span>미발주 물량 (미계약 / 미발주)</span>
+                      </div>
+                      <span className="text-[10px] text-amber-800 font-bold bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-200">
+                        전체 현황에 자동 합산
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <span className="text-[10px] font-bold text-amber-900 block mb-0.5">미발주 철골 (Ton)</span>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="any"
+                            value={unallocatedTarget.steelTon === 0 ? '' : unallocatedTarget.steelTon}
+                            onChange={(e) => handleUpdateUnallocatedTarget('steelTon', e.target.value)}
+                            placeholder="0.0"
+                            className="w-full text-xs border border-amber-300 bg-white rounded-md px-2 py-1.5 pr-8 text-right font-bold text-indigo-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          />
+                          <span className="absolute right-1.5 top-1.5 text-[10px] text-amber-700 font-bold">Ton</span>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-amber-900 block mb-0.5">미발주 계획 모듈 (개)</span>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={unallocatedTarget.plannedModules === 0 ? '' : unallocatedTarget.plannedModules}
+                            onChange={(e) => handleUpdateUnallocatedTarget('plannedModules', e.target.value)}
+                            placeholder="0"
+                            className="w-full text-xs border border-amber-300 bg-white rounded-md px-2 py-1.5 pr-6 text-right font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          />
+                          <span className="absolute right-1.5 top-1.5 text-[10px] text-amber-700 font-bold">개</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 등록된 공장 목록 */}
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-bold text-slate-600 flex justify-between items-center">
+                      <span>공장별 목록 및 배분 물량</span>
+                      <span className="text-blue-600 font-bold">
+                        총 계획: {(plannedVolumes.total || 0).toLocaleString()}개 / {(plannedVolumes.steelTon || 0).toLocaleString()}Ton
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {activeFactories.map((fact) => {
+                        const target = factoryTargets[fact] || { steelTon: 0, plannedModules: 0 };
+                        return (
+                          <div key={fact} className="bg-white border border-slate-200 rounded-lg p-2 flex items-center justify-between gap-2 text-xs">
+                            <span className="font-bold text-slate-800 shrink-0">{fact}</span>
+                            <div className="flex items-center gap-1">
+                              <div className="flex items-center bg-indigo-50/60 border border-indigo-100 rounded px-1.5 py-0.5">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={target.steelTon === 0 ? '' : target.steelTon}
+                                  onChange={(e) => handleUpdateFactoryTarget(fact, 'steelTon', e.target.value)}
+                                  placeholder="0"
+                                  className="w-14 text-right text-[11px] font-bold text-indigo-700 bg-transparent focus:outline-none"
+                                />
+                                <span className="text-[9px] font-bold text-indigo-500 ml-0.5">Ton</span>
+                              </div>
+                              <div className="flex items-center bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
+                                <input
+                                  type="number"
+                                  value={target.plannedModules === 0 ? '' : target.plannedModules}
+                                  onChange={(e) => handleUpdateFactoryTarget(fact, 'plannedModules', e.target.value)}
+                                  placeholder="0"
+                                  className="w-14 text-right text-[11px] font-bold text-slate-800 bg-transparent focus:outline-none"
+                                />
+                                <span className="text-[9px] font-bold text-slate-400 ml-0.5">개</span>
+                              </div>
+                              <button
+                                onClick={() => handleRemoveFactory(fact)}
+                                className="p-1 text-slate-400 hover:text-red-600"
+                                title="삭제"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* 공장 탭 바 (가로 스크롤 - 공장명만 표기) */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar py-0.5">
@@ -1005,7 +1320,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                 const totalSum = (b.steel || 0) + (b.single || 0) + (b.moduleFrame || 0) + (b.finished || 0) + (b.shipped || 0);
                 return (
                   <button
-                    key={`${b.factory}-${b.floor}`}
+                    key={b.factory}
                     onClick={() => setSelectedMobileLocationIdx(idx)}
                     className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-0.5 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                       isSelected
@@ -1032,15 +1347,15 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             <div className="grid grid-cols-5 gap-1">
               {/* 1. 철골 */}
               <div className="flex flex-col items-center">
-                <label className="text-xs text-slate-600 mb-1">철골</label>
+                <label className="text-xs font-bold text-indigo-700 mb-1">철골(Ton)</label>
                 <input
                   type="number"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
+                  step="any"
+                  inputMode="decimal"
                   value={activeMobileLocation.steel === 0 ? '' : activeMobileLocation.steel}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'steel', e.target.value)}
-                  placeholder="0"
-                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  placeholder="0.0"
+                  className="w-full text-center text-sm font-black text-indigo-900 bg-indigo-50/40 border border-indigo-100/60 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all"
                 />
               </div>
 
@@ -1248,53 +1563,24 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
               </h2>
             </div>
             
-            {/* 전체 계획물량 설정 및 엑셀 내보내기 그룹 */}
+            {/* 전체 계획물량 요약 및 엑셀 내보내기 그룹 */}
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2.5 text-xs bg-slate-50 px-3 py-1.5 rounded-lg ">
-                <span className="text-slate-600 font-semibold">전체 계획물량 설정:</span>
-                {editingField === 'total' ? (
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      value={tempPlannedInput}
-                      onChange={(e) => setTempPlannedInput(e.target.value)}
-                      className="w-20 px-2 py-0.5 border border-gray-300 rounded text-xs text-right font-bold focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSavePlanned('total');
-                        if (e.key === 'Escape') setEditingField(null);
-                      }}
-                      autoFocus
-                    />
-                    <button 
-                      onClick={() => handleSavePlanned('total')}
-                      className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-bold hover:bg-blue-700 cursor-pointer"
-                    >
-                      확인
-                    </button>
-                    <button 
-                      onClick={() => setEditingField(null)}
-                      className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-bold hover:bg-gray-300 cursor-pointer"
-                    >
-                      취소
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <strong className="text-slate-900 font-extrabold">{(plannedVolumes.total || 0).toLocaleString()} 개</strong>
-                    <button 
-                      onClick={() => handleOpenPlannedEdit('total')}
-                      className={`font-bold hover:underline cursor-pointer flex items-center gap-1 transition-colors ${
-                        hasAdminOrGoldAccess 
-                          ? 'text-blue-600 hover:text-blue-800' 
-                          : 'text-gray-400 hover:text-gray-600'
-                      }`}
-                      title={hasAdminOrGoldAccess ? '전체 계획물량 설정' : '골드 등급 및 관리자만 설정 가능'}
-                    >
-                      {!hasAdminOrGoldAccess && <Lock size={11} className="text-gray-400 inline" />}
-                      <span>[설정]</span>
-                    </button>
-                  </div>
-                )}
+              <div className="flex items-center gap-2.5 text-xs bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/70">
+                <span className="text-slate-600 font-semibold">전체 계획물량:</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-slate-900">{(plannedVolumes.total || 0).toLocaleString()}개</span>
+                  <span className="text-slate-300">|</span>
+                  <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100/80">
+                    철골 {(plannedVolumes.steelTon || 0).toLocaleString()}Ton
+                  </span>
+                  {(unallocatedTarget.plannedModules > 0 || unallocatedTarget.steelTon > 0) ? (
+                    <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                      (미발주 {unallocatedTarget.plannedModules.toLocaleString()}개 / {unallocatedTarget.steelTon.toLocaleString()}Ton )
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-medium">(공장별 합산)</span>
+                  )}
+                </div>
               </div>
 
               {/* 엑셀 내보내기 버튼 */}
@@ -1313,8 +1599,11 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           {/* 5분할 격자 레이아웃 (철골 / 단품 / 프레임 / 완성품 / 출고) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
             {['steel', 'single', 'moduleFrame', 'finished', 'shipped'].map((key) => {
-              const label = getCategoryLabel(key);
-              const totalVolume = plannedVolumes[key] || 0;
+              const isSteel = key === 'steel';
+              const label = isSteel ? '철골 (Ton)' : getCategoryLabel(key);
+              const totalVolume = isSteel 
+                ? (plannedVolumes.steelTon || 0) 
+                : (plannedVolumes[key] || 0);
               const cumulativeVolume = cumulativeStats[key === 'total' ? 'total' : key as keyof typeof cumulativeStats] as number || 0;
               const progressRate = cumulativeStats.rates[key === 'total' ? 'total' : key as keyof typeof cumulativeStats.rates] || 0;
               
@@ -1375,12 +1664,19 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                     {/* 1 & 2 누계 및 총 수량 2줄 분리 표시 */}
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
-                        <span className="text-[10px] text-gray-400 font-medium">누계수량</span>
-                        <span className={`text-xs font-black ${textClass}`}>{cumulativeVolume.toLocaleString()}개</span>
+                        <span className="text-[10px] text-gray-400 font-medium">누계 실적</span>
+                        <span className={`text-xs font-black ${textClass}`}>
+                          {cumulativeVolume.toLocaleString()}{isSteel ? ' Ton' : '개'}
+                        </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-[10px] text-gray-400 font-medium">총 수량</span>
-                        <span className="text-[10px] text-gray-500 font-bold">{totalVolume.toLocaleString()}개</span>
+                        <span className="text-[10px] text-gray-400 font-medium">총 계획</span>
+                        <span className="text-[10px] text-gray-500 font-bold">
+                          {isSteel 
+                            ? `${totalVolume.toLocaleString()} Ton`
+                            : `${totalVolume.toLocaleString()}개`
+                          }
+                        </span>
                       </div>
                     </div>
 
@@ -1452,10 +1748,10 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           {/* 전체 합계 현황 요약 보드 */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
             <div className="bg-indigo-50/30 rounded-lg p-2.5 text-center border border-indigo-100/50">
-              <span className="text-[12px] font-bold text-indigo-500 block mb-0.5">철골</span>
+              <span className="text-[12px] font-bold text-indigo-600 block mb-0.5">철골 (Ton)</span>
               <span className="text-sm font-extrabold text-indigo-700 block">
                 {(currentDayData.steel || 0).toLocaleString()}
-                <span className="text-[9px] font-normal text-slate-400 ml-0.5">개</span>
+                <span className="text-[10px] font-normal text-slate-400 ml-0.5">Ton</span>
               </span>
             </div>
             <div className="bg-emerald-50/30 rounded-lg p-2.5 text-center border border-emerald-100/50">
@@ -1488,7 +1784,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </div>
           </div>
 
-          {/* 데스크톱: 금일 제작 및 출고 수량 입력 (공장별/층별 스프레드시트) */}
+          {/* 데스크톱: 금일 제작 및 출고 수량 입력 (공장별 세부 실적) */}
           <div className="mb-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
               <h3 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
@@ -1504,10 +1800,10 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                       ? 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                       : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
                 }`}
-                title={hasAdminOrGoldAccess ? `공장 및 층 설정 ${showConfigPanel ? '닫기' : '열기'}` : '골드 등급 및 관리자만 접근 가능'}
+                title={hasAdminOrGoldAccess ? `공장 설정 ${showConfigPanel ? '닫기' : '열기'}` : '골드 등급 및 관리자만 접근 가능'}
               >
                 {hasAdminOrGoldAccess ? <Settings size={12} /> : <Lock size={12} className="text-gray-400" />}
-                <span>공장 및 층 설정 {showConfigPanel ? '닫기' : '열기'}</span>
+                <span>공장 설정 {showConfigPanel ? '닫기' : '열기'}</span>
                 {!hasAdminOrGoldAccess && (
                   <span className="text-[9px] px-1 py-0.2 bg-amber-50 text-amber-700 border border-amber-200/60 rounded font-medium ml-0.5">
                     골드/관리자
@@ -1516,86 +1812,219 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
               </button>
             </div>
 
-            {/* 공장 및 층 설정 접이식 패널 */}
+            {/* 공장 설정 접이식 패널 */}
             <AnimatePresence>
               {showConfigPanel && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4"
+                  className="overflow-hidden bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 space-y-4"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* 공장 설정 */}
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-800">공장 리스트</span>
-                        <span className="text-[10px] text-slate-400">설정이 없을 경우 빈 칸으로 표시됩니다</span>
-                      </div>
-                      <div className="flex gap-1.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-200/70 pb-2.5">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Building size={14} className="text-blue-600" />
+                        <span>공장별 생산 계획물량 및 미발주 물량 설정</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        각 공장별 물량과 미발주 물량(철골 Ton / 계획 모듈 총 개수)을 설정하면 모두 합산되어 상단 전체 현황에 실시간 반영됩니다.
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[11px] text-slate-600 font-semibold bg-white border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                        총 계획 합계: <b className="text-slate-900">{(plannedVolumes.total || 0).toLocaleString()}개</b> / <b className="text-indigo-700">{(plannedVolumes.steelTon || 0).toLocaleString()}Ton</b>
+                        {(unallocatedTarget.plannedModules > 0 || unallocatedTarget.steelTon > 0) && (
+                          <span className="ml-1 text-[10px] text-amber-700 font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                            (미발주 {unallocatedTarget.plannedModules.toLocaleString()}개 / {unallocatedTarget.steelTon.toLocaleString()}Ton 포함)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 신규 공장 추가 폼 */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs">
+                    <div className="text-[11px] font-bold text-slate-700 mb-2 flex items-center gap-1">
+                      <Plus size={13} className="text-blue-600" />
+                      <span>새 공장 추가 및 계획물량 배분</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                      <div className="sm:col-span-4">
+                        <label className="text-[10px] font-bold text-slate-600 block mb-1">공장명</label>
                         <input
                           type="text"
                           value={newFactoryInput}
                           onChange={(e) => setNewFactoryInput(e.target.value)}
-                          placeholder="새 공장명 (예: 진천공장)"
-                          className="flex-1 text-xs border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          placeholder="예: 안성 1공장"
+                          className="w-full text-xs border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                         />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <label className="text-[10px] font-bold text-indigo-700 block mb-1">철골물량 (Ton)</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="any"
+                            value={newFactorySteelTon}
+                            onChange={(e) => setNewFactorySteelTon(e.target.value)}
+                            placeholder="0.0"
+                            className="w-full text-xs border border-indigo-200 bg-indigo-50/30 rounded-lg px-2.5 py-1.5 pr-8 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-right font-bold text-indigo-900"
+                          />
+                          <span className="absolute right-2 top-1.5 text-[10px] text-indigo-500 font-bold">Ton</span>
+                        </div>
+                      </div>
+                      <div className="sm:col-span-3">
+                        <label className="text-[10px] font-bold text-slate-700 block mb-1">계획 모듈 총 개수 (개)</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={newFactoryPlannedModules}
+                            onChange={(e) => setNewFactoryPlannedModules(e.target.value)}
+                            placeholder="0"
+                            className="w-full text-xs border border-gray-200 bg-slate-50/50 rounded-lg px-2.5 py-1.5 pr-7 focus:outline-none focus:ring-1 focus:ring-blue-500 text-right font-bold text-slate-900"
+                          />
+                          <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-bold">개</span>
+                        </div>
+                      </div>
+                      <div className="sm:col-span-2">
                         <button
                           onClick={handleAddFactory}
-                          className="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-blue-700 cursor-pointer"
+                          className="w-full bg-blue-600 text-white text-xs font-bold py-1.5 px-3 rounded-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-1 cursor-pointer"
                         >
-                          추가
+                          <Plus size={14} />
+                          <span>공장 추가</span>
                         </button>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-white rounded-lg border border-slate-100">
-                        {activeFactories.map(fact => (
-                          <span key={fact} className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded border border-slate-200">
-                            <span>{fact}</span>
-                            <button
-                              onClick={() => handleRemoveFactory(fact)}
-                              className="text-slate-400 hover:text-red-600 cursor-pointer"
-                            >
-                              <X size={10} />
-                            </button>
-                          </span>
-                        ))}
                       </div>
                     </div>
+                  </div>
 
-                    {/* 층 설정 */}
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-800">층수 리스트</span>
-                        <span className="text-[10px] text-slate-400">설정이 없을 경우 빈 칸으로 표시됩니다</span>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="text"
-                          value={newFloorInput}
-                          onChange={(e) => setNewFloorInput(e.target.value)}
-                          placeholder="새 층명 (예: 1층)"
-                          className="flex-1 text-xs border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                        <button
-                          onClick={handleAddFloor}
-                          className="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-blue-700 cursor-pointer"
-                        >
-                          추가
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-white rounded-lg border border-slate-100">
-                        {activeFloors.map(fl => (
-                          <span key={fl} className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded border border-slate-200">
-                            <span>{fl}</span>
-                            <button
-                              onClick={() => handleRemoveFloor(fl)}
-                              className="text-slate-400 hover:text-red-600 cursor-pointer"
-                            >
-                              <X size={10} />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
+                  {/* 등록된 공장 목록 테이블 & 인라인 수정 */}
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="px-3.5 py-2 bg-slate-100/70 border-b border-slate-200 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-700">공장별 계획물량 및 미발주 물량 관리 (실시간 전체 합산)</span>
+                      <span className="text-[10px] text-slate-400">수량 변경 시 상단 전체현황에 즉시 자동 합산 반영됩니다</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left text-slate-600">
+                        <thead className="text-[10px] uppercase bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                          <tr>
+                            <th className="px-3 py-2 w-48">구분 (공장 / 미발주)</th>
+                            <th className="px-3 py-2 text-right">철골 물량 (Ton)</th>
+                            <th className="px-3 py-2 text-right">계획 모듈 수량 (개)</th>
+                            <th className="px-3 py-2 text-center w-24">관리 / 상태</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {activeFactories.map((fact) => {
+                            const target = factoryTargets[fact] || { steelTon: 0, plannedModules: 0 };
+                            return (
+                              <tr key={fact} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="px-3 py-2 font-bold text-slate-800 flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                  <span>{fact}</span>
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <div className="inline-flex items-center gap-1 justify-end">
+                                    <input
+                                      type="number"
+                                      step="any"
+                                      value={target.steelTon === 0 ? '' : target.steelTon}
+                                      onChange={(e) => handleUpdateFactoryTarget(fact, 'steelTon', e.target.value)}
+                                      placeholder="0.0"
+                                      className="w-24 text-right text-xs font-bold text-indigo-700 bg-indigo-50/50 border border-indigo-100 rounded px-2 py-1 focus:bg-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                                    />
+                                    <span className="text-[10px] font-bold text-indigo-500">Ton</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <div className="inline-flex items-center gap-1 justify-end">
+                                    <input
+                                      type="number"
+                                      value={target.plannedModules === 0 ? '' : target.plannedModules}
+                                      onChange={(e) => handleUpdateFactoryTarget(fact, 'plannedModules', e.target.value)}
+                                      placeholder="0"
+                                      className="w-24 text-right text-xs font-bold text-slate-900 bg-slate-50 border border-slate-200 rounded px-2 py-1 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                    />
+                                    <span className="text-[10px] font-bold text-slate-400">개</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <button
+                                    onClick={() => handleRemoveFactory(fact)}
+                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                                    title={`${fact} 삭제`}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {/* 미발주 물량 전용 행 (수정 시 전체 합산 반영) */}
+                          <tr className="bg-amber-50/50 hover:bg-amber-50/80 transition-colors border-t-2 border-amber-200/80">
+                            <td className="px-3 py-2.5 font-bold text-amber-950 flex items-center gap-1.5">
+                              <Package size={14} className="text-amber-600 shrink-0" />
+                              <span className="font-bold">미발주 물량</span>
+                              <span className="text-[10px] text-amber-700 font-semibold bg-amber-100/90 px-1.5 py-0.2 rounded border border-amber-200">
+                                미계약/미발주
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <div className="inline-flex items-center gap-1 justify-end">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={unallocatedTarget.steelTon === 0 ? '' : unallocatedTarget.steelTon}
+                                  onChange={(e) => handleUpdateUnallocatedTarget('steelTon', e.target.value)}
+                                  placeholder="0.0"
+                                  className="w-24 text-right text-xs font-bold text-indigo-900 bg-white border border-amber-300 rounded px-2 py-1 focus:bg-white focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                />
+                                <span className="text-[10px] font-bold text-amber-700">Ton</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <div className="inline-flex items-center gap-1 justify-end">
+                                <input
+                                  type="number"
+                                  value={unallocatedTarget.plannedModules === 0 ? '' : unallocatedTarget.plannedModules}
+                                  onChange={(e) => handleUpdateUnallocatedTarget('plannedModules', e.target.value)}
+                                  placeholder="0"
+                                  className="w-24 text-right text-xs font-bold text-slate-900 bg-white border border-amber-300 rounded px-2 py-1 focus:bg-white focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                />
+                                <span className="text-[10px] font-bold text-amber-700">개</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className="text-[10px] text-amber-700 font-bold bg-amber-100/80 border border-amber-200/80 px-2 py-0.5 rounded">
+                                합산 적용
+                              </span>
+                            </td>
+                          </tr>
+                        </tbody>
+                        <tfoot className="bg-slate-50/90 border-t-2 border-slate-200 font-extrabold text-[11px] text-slate-800">
+                          <tr>
+                            <td className="px-3 py-2 text-blue-900">
+                              <div>전체 합산 계획</div>
+                              {(unallocatedTarget.plannedModules > 0 || unallocatedTarget.steelTon > 0) && (
+                                <div className="text-[9px] text-amber-700 font-medium">
+                                  (공장 {activeFactories.reduce((acc, f) => acc + (factoryTargets[f]?.plannedModules || 0), 0).toLocaleString()}개 + 미발주 {unallocatedTarget.plannedModules.toLocaleString()}개)
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-indigo-700 font-black">
+                              {(plannedVolumes.steelTon || 0).toLocaleString()} <span className="text-[9px] font-normal text-slate-500">Ton</span>
+                            </td>
+                            <td className="px-3 py-2 text-right text-slate-900 font-black">
+                              {(plannedVolumes.total || 0).toLocaleString()} <span className="text-[9px] font-normal text-slate-500">개</span>
+                            </td>
+                            <td className="px-3 py-2 text-center text-[10px] text-emerald-600 font-bold">
+                              연동완료
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
                   </div>
                 </motion.div>
@@ -1608,7 +2037,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                 <thead className="text-[11px] uppercase text-gray-700 bg-slate-100 border-b border-slate-200">
                   <tr>
                     <th scope="col" className="px-3 py-2.5 font-bold text-gray-700 w-28 text-center">공장</th>
-                    <th scope="col" className="px-3 py-2.5 font-bold text-indigo-700 text-right">철골</th>
+                    <th scope="col" className="px-3 py-2.5 font-bold text-indigo-700 text-right">철골 (Ton)</th>
                     <th scope="col" className="px-3 py-2.5 font-bold text-emerald-700 text-right">단품</th>
                     <th scope="col" className="px-3 py-2.5 font-bold text-sky-700 text-right">프레임</th>
                     <th scope="col" className="px-3 py-2.5 font-bold text-teal-700 text-right">완성품</th>
@@ -1617,17 +2046,19 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                 </thead>
                 <tbody>
                   {currentBreakdowns.map((b) => (
-                    <tr key={`${b.factory}-${b.floor}`} className="bg-white border-b border-gray-100 hover:bg-slate-50/50 transition-colors">
+                    <tr key={b.factory} className="bg-white border-b border-gray-100 hover:bg-slate-50/50 transition-colors">
                       <td className="px-3 py-2 text-center font-bold text-gray-700 bg-slate-50/30">
                         {b.factory}
                       </td>
                       <td className="px-3 py-1.5 text-right">
                         <input
                           type="number"
-                          value={b.steel || ''}
+                          step="any"
+                          value={b.steel === 0 ? '' : b.steel}
                           onChange={(e) => updateBreakdownValue(b.factory, b.floor, 'steel', e.target.value)}
-                          placeholder="0"
-                          className="w-full text-xs text-right border-0 bg-slate-50/40 hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-indigo-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold"
+                          placeholder="0.0"
+                          title="철골 중량 (Ton)"
+                          className="w-full text-xs text-right border-0 bg-indigo-50/30 hover:bg-indigo-50/50 focus:bg-white text-indigo-800 focus:ring-1 focus:ring-indigo-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold"
                         />
                       </td>
                       <td className="px-3 py-1.5 text-right">
