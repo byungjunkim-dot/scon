@@ -918,6 +918,8 @@ async saveQuickMemo(memo: any) {
       return {
         plannedVolumes: settingsConfig.plannedVolumes || dedicatedConfig.plannedVolumes || { total: 5000, steel: 5000, single: 5000, moduleFrame: 5000, finished: 5000, shipped: 5000 },
         activeFactories: settingsConfig.activeFactories || dedicatedConfig.activeFactories || ['진천공장'],
+        factoryTargets: settingsConfig.factoryTargets || (dedicatedConfig as any).factoryTargets || undefined,
+        unallocatedTarget: settingsConfig.unallocatedTarget || (dedicatedConfig as any).unallocatedTarget || undefined,
         activeFloors: settingsConfig.activeFloors || dedicatedConfig.activeFloors || ['1층', '2층'],
       };
     }
