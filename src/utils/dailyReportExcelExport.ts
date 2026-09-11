@@ -48,14 +48,18 @@ const TOTAL_FILL: ExcelJS.FillPattern = {
 };
 
 /**
- * Converts image URL to base64 with original aspect ratio preserved (contained in a white canvas box matching cell bounds)
+ * Converts image URL to base64 resized and compressed to match the actual Excel cell attachment size (~400x248).
+ * Downscales large original photos and compresses with optimal JPEG ratio (0.74) to prevent huge workbook
+ * file sizes during monthly multi-day exports while maintaining crisp visual clarity in Excel.
  */
 async function fetchImageWithPreservedAspect(
   url: string,
-  targetWidth = 870,
-  targetHeight = 400
+  targetWidth = 400,
+  targetHeight = 248,
+  quality = 0.74
 ): Promise<{ base64: string; extension: 'jpeg' | 'png' } | null> {
   if (!url) return null;
+  let objectUrlToRevoke: string | null = null;
   try {
     let finalSrc = url;
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -64,6 +68,7 @@ async function fetchImageWithPreservedAspect(
         if (res.ok) {
           const blob = await res.blob();
           finalSrc = URL.createObjectURL(blob);
+          objectUrlToRevoke = finalSrc;
         }
       } catch {
         // use url directly if blob conversion fails
@@ -74,26 +79,37 @@ async function fetchImageWithPreservedAspect(
     img.crossOrigin = 'anonymous';
 
     await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('Image failed to load'));
+      const timer = setTimeout(() => reject(new Error('Image load timeout')), 8000);
+      img.onload = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error('Image failed to load'));
+      };
       img.src = finalSrc;
     });
 
     const canvas = document.createElement('canvas');
     canvas.width = targetWidth;
     canvas.height = targetHeight;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return null;
 
     // Fill clean white background to blend seamlessly with Excel cell area
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetWidth, targetHeight);
 
+    // High quality bicubic downscaling for crisp clarity at cell resolution
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
     const imgWidth = img.naturalWidth || img.width || 1;
     const imgHeight = img.naturalHeight || img.height || 1;
     const imgAspect = imgWidth / imgHeight;
 
-    const pad = 4; // 4px subtle inner padding
+    const pad = 2; // subtle 2px inner padding
     const maxDrawWidth = targetWidth - pad * 2;
     const maxDrawHeight = targetHeight - pad * 2;
     const maxAspect = maxDrawWidth / maxDrawHeight;
@@ -119,12 +135,20 @@ async function fetchImageWithPreservedAspect(
 
     ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.94);
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
     const base64Data = dataUrl.split(',')[1];
     return { base64: base64Data, extension: 'jpeg' };
   } catch (err) {
     console.warn('Failed to load & process photo for Excel export:', url, err);
     return null;
+  } finally {
+    if (objectUrlToRevoke) {
+      try {
+        URL.revokeObjectURL(objectUrlToRevoke);
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 
@@ -301,13 +325,13 @@ export async function exportDailyReportsToExcel(
     worksheet.getCell(`B${currentRow}`).border = BORDER_STYLE;
 
     const weather = report.weather;
-    const weatherText = weather
-      ? `${weather.status || '맑음'} (최고: ${weather.maxTemp || '-'}, 최저: ${weather.minTemp || '-'}, 강수: ${weather.precipitation || '0mm'}, 풍속: ${weather.windSpeed || '-'})`
-      : '맑음';
+    const weatherStatus = weather?.status || '맑음';
+    const weatherDetails = `최고: ${weather?.maxTemp || '-'}, 최저: ${weather?.minTemp || '-'}, 강수: ${weather?.precipitation || '0mm'}, 풍속: ${weather?.windSpeed || '-'}`;
+    const weatherText = `${weatherStatus}\n${weatherDetails}`;
     worksheet.mergeCells(`C${currentRow}:F${currentRow}`);
     worksheet.getCell(`C${currentRow}`).value = weatherText;
     worksheet.getCell(`C${currentRow}`).font = { name: 'Malgun Gothic', size: 9 };
-    worksheet.getCell(`C${currentRow}`).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    worksheet.getCell(`C${currentRow}`).alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
     ['C', 'D', 'E', 'F'].forEach(col => { worksheet.getCell(`${col}${currentRow}`).border = BORDER_STYLE; });
 
     worksheet.getCell(`G${currentRow}`).value = '공 정 률';
@@ -321,10 +345,10 @@ export async function exportDailyReportsToExcel(
     worksheet.mergeCells(`H${currentRow}:J${currentRow}`);
     worksheet.getCell(`H${currentRow}`).value = `계획: ${plannedRate}% / 실행: ${actualRate}%`;
     worksheet.getCell(`H${currentRow}`).font = { name: 'Malgun Gothic', size: 9, bold: true, color: { argb: '1D4ED8' } };
-    worksheet.getCell(`H${currentRow}`).alignment = { vertical: 'middle', horizontal: 'center' };
+    worksheet.getCell(`H${currentRow}`).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     ['H', 'I', 'J'].forEach(col => { worksheet.getCell(`${col}${currentRow}`).border = BORDER_STYLE; });
 
-    worksheet.getRow(currentRow).height = 20;
+    worksheet.getRow(currentRow).height = 30;
     currentRow++;
     worksheet.getRow(currentRow).height = 19;
     currentRow++; // Blank row separator
@@ -440,27 +464,43 @@ export async function exportDailyReportsToExcel(
           }]
         : [];
 
-    // Calculate previous cumulative personnel map
+    // Helper to get contractor identification key for personnel accumulation (업체 기준 합산)
+    const getPersonnelContractorKey = (contractor?: string, discipline?: string): string => {
+      const c = (contractor || '').trim();
+      const d = (discipline || '').trim();
+      if (c === '공통관리' || c === '삼우' || (!c && (d === '공통관리' || d === '직영' || d.includes('공통관리')))) {
+        return '공통관리';
+      }
+      if (c) {
+        return c;
+      }
+      return d || '기타';
+    };
+
+    // Calculate previous cumulative personnel map (업체 기준)
     const prevCumMap: Record<string, number> = {};
     const pastReports = referenceReports.filter(r => r.date < report.date && r.id !== report.id);
     pastReports.forEach(r => {
       if (r.personnel?.details && Array.isArray(r.personnel.details) && r.personnel.details.length > 0) {
         r.personnel.details.forEach(d => {
-          const key = `${(d.discipline || '').trim()}||${(d.contractor || '').trim()}`;
-          const discKey = (d.discipline || '').trim();
+          const key = getPersonnelContractorKey(d.contractor, d.discipline);
           const count = (Number(d.direct) || 0) + (Number(d.outsourced) || 0) + (Number(d.other) || 0);
           prevCumMap[key] = (prevCumMap[key] || 0) + count;
-          if (discKey) {
-            prevCumMap[`DISC::${discKey}`] = (prevCumMap[`DISC::${discKey}`] || 0) + count;
-          }
         });
       } else {
         const direct = Number(r.personnel?.direct) || 0;
         const outsourced = Number(r.personnel?.outsourced) || 0;
         const other = Number(r.personnel?.other) || 0;
+        prevCumMap['공통관리'] = (prevCumMap['공통관리'] || 0) + direct;
+        if (outsourced + other > 0) {
+          prevCumMap['기타'] = (prevCumMap['기타'] || 0) + (outsourced + other);
+        }
         prevCumMap['legacy'] = (prevCumMap['legacy'] || 0) + (direct + outsourced + other);
       }
     });
+
+    // 업체별 금일 누적 진행 계산용 맵 (동일 일보 내 동일 업체 복수 행 존재 시 연속 누계 처리)
+    const runningPrevCumByContractor: Record<string, number> = { ...prevCumMap };
 
     // Calculate total previous cumulative personnel across ALL past reports (date < report.date)
     let totalPrevCumPersonnel = 0;
@@ -531,13 +571,13 @@ export async function exportDailyReportsToExcel(
         const other = Number(p.other) || 0;
         const rowTotal = direct + outsourced + other; // 금일 인원 '계'
 
-        const key = `${(p.discipline || '').trim()}||${(p.contractor || '').trim()}`;
-        const discKey = `DISC::${(p.discipline || '').trim()}`;
-        const prevCum = prevCumMap[key] !== undefined
-          ? prevCumMap[key]
-          : (prevCumMap[discKey] !== undefined ? prevCumMap[discKey] : (p.id === 'legacy' ? (prevCumMap['legacy'] || 0) : 0));
+        const key = p.id === 'legacy' ? 'legacy' : getPersonnelContractorKey(p.contractor, p.discipline);
+        const prevCum = runningPrevCumByContractor[key] !== undefined
+          ? runningPrevCumByContractor[key]
+          : (prevCumMap[key] || 0);
         
-        const rowGrandTotal = prevCum + rowTotal; // 전일누계 + 금일 계 = 금일 누계 인원
+        const rowGrandTotal = prevCum + rowTotal; // 전일누계 + 금일 계 = 누계합계
+        runningPrevCumByContractor[key] = rowGrandTotal;
 
         sumPrevCum += prevCum;
         sumDirect += direct;
@@ -909,9 +949,9 @@ export async function exportDailyReportsToExcel(
           // Merge Right Image Box (F~J)
           worksheet.mergeCells(`F${imageStartRowNumber}:J${imageEndRowNumber}`);
 
-          // 3) Fetch & Embed Left Image (Preserve Aspect Ratio: 800x480 matches cell bounds)
+          // 3) Fetch & Embed Left Image (Preserve Aspect Ratio: 400x248 matches cell bounds)
           if (leftPhoto) {
-            const leftImgData = await fetchImageWithPreservedAspect(leftPhoto.url, 800, 480);
+            const leftImgData = await fetchImageWithPreservedAspect(leftPhoto.url, 400, 248, 0.74);
             if (leftImgData) {
               const leftImgId = workbook.addImage({
                 base64: leftImgData.base64,
@@ -926,9 +966,9 @@ export async function exportDailyReportsToExcel(
             }
           }
 
-          // 4) Fetch & Embed Right Image (Preserve Aspect Ratio: 800x480 matches cell bounds)
+          // 4) Fetch & Embed Right Image (Preserve Aspect Ratio: 400x248 matches cell bounds)
           if (rightPhoto) {
-            const rightImgData = await fetchImageWithPreservedAspect(rightPhoto.url, 800, 480);
+            const rightImgData = await fetchImageWithPreservedAspect(rightPhoto.url, 400, 248, 0.74);
             if (rightImgData) {
               const rightImgId = workbook.addImage({
                 base64: rightImgData.base64,
