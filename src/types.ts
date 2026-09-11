@@ -631,16 +631,24 @@ export interface ProductionDayData {
   breakdowns?: ProductionBreakdown[];
 }
 
+export interface FactoryTarget {
+  steelTon: number;
+  plannedModules: number;
+}
+
 export interface ProductionConfig {
   plannedVolumes: {
     total: number;
     steel: number;
+    steelTon?: number;
     single: number;
     moduleFrame: number;
     finished: number;
     shipped: number;
   };
   activeFactories: string[];
+  factoryTargets?: Record<string, FactoryTarget>;
+  unallocatedTarget?: FactoryTarget;
   activeFloors: string[];
 }
 
