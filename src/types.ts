@@ -119,6 +119,7 @@ export interface DailyIssue {
     | '민원'
     | '기타';
   description: string;
+  isClientReport?: boolean; // '발주처 보고' 여부 (기본 true, false인 경우 내부 기록용)
 }
 
 export interface DailyPhoto {
