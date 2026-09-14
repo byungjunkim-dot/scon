@@ -164,6 +164,12 @@ function formatPhotoCaption(photo: DailyPhoto, index: number): string {
   return parts.join(' / ');
 }
 
+export type DailyReportExportMode = 'client' | 'internal';
+
+export interface DailyReportExcelExportOptions {
+  mode?: DailyReportExportMode;
+}
+
 /**
  * Export daily reports of a selected month into a single Excel file with a sheet for each day
  */
@@ -172,8 +178,12 @@ export async function exportDailyReportsToExcel(
   project: Project | null,
   selectedYearMonth: string,
   settings?: AppSettings,
-  allReports?: DailyReport[]
+  allReports?: DailyReport[],
+  options?: DailyReportExcelExportOptions
 ): Promise<void> {
+  const mode: DailyReportExportMode = options?.mode || 'client';
+  const isClientMode = mode === 'client';
+
   // Sort reports ascending by date for a natural calendar order in sheets
   const sortedReports = [...reports].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
@@ -245,7 +255,7 @@ export async function exportDailyReportsToExcel(
     // Title: merge A1:G2 (Col 1~7)
     worksheet.mergeCells(`A${currentRow}:G${currentRow + 1}`);
     const titleCell = worksheet.getCell(`A${currentRow}`);
-    titleCell.value = '공  사  일  보';
+    titleCell.value = isClientMode ? '공  사  일  보' : '공  사  일  보 (내부 기록용)';
     titleCell.font = { name: 'Malgun Gothic', size: 16, bold: true, color: { argb: '0F172A' } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
@@ -733,14 +743,19 @@ export async function exportDailyReportsToExcel(
     pageEstimatedRows += sec3Needed;
 
     // 7. Section 4: 특기사항 (No, 구분, 내용 - 기본 5행 표시)
-    const sec4DataRowsCount = Math.max(report.issues?.length || 0, 5);
+    const allIssues = report.issues || [];
+    const filteredIssues = isClientMode
+      ? allIssues.filter(issue => issue.isClientReport !== false)
+      : allIssues;
+
+    const sec4DataRowsCount = Math.max(filteredIssues.length, 5);
     const sec4Needed = 2 + sec4DataRowsCount + 1;
     checkAndAddPageBreak(sec4Needed);
-    addSectionTitle('4. 특기사항');
+    addSectionTitle(isClientMode ? '4. 특기사항' : '4. 특기사항 (전체/내부기록 포함)');
 
     worksheet.mergeCells(`C${currentRow}:J${currentRow}`);
     worksheet.getCell(`A${currentRow}`).value = 'No';
-    worksheet.getCell(`B${currentRow}`).value = '구분';
+    worksheet.getCell(`B${currentRow}`).value = isClientMode ? '구분' : '구분';
     worksheet.getCell(`C${currentRow}`).value = '내용';
 
     for (let c = 1; c <= 10; c++) {
@@ -753,17 +768,22 @@ export async function exportDailyReportsToExcel(
     worksheet.getRow(currentRow).height = 19;
     currentRow++;
 
-    const issuesList = report.issues || [];
     for (let idx = 0; idx < sec4DataRowsCount; idx++) {
       worksheet.mergeCells(`C${currentRow}:J${currentRow}`);
 
       const row = worksheet.getRow(currentRow);
-      const issue = issuesList[idx];
+      const issue = filteredIssues[idx];
 
       row.getCell(1).value = idx + 1;
       if (issue) {
-        row.getCell(2).value = issue.type || '기타';
-        row.getCell(3).value = issue.description || '-';
+        if (isClientMode) {
+          row.getCell(2).value = issue.type || '기타';
+          row.getCell(3).value = issue.description || '-';
+        } else {
+          const isClientItem = issue.isClientReport !== false;
+          row.getCell(2).value = `${issue.type || '기타'}${isClientItem ? '' : ' [내부]'}`;
+          row.getCell(3).value = `${!isClientItem ? '[내부기록] ' : ''}${issue.description || '-'}`;
+        }
       } else {
         // 빈 행 (기본 5칸 유지)
         row.getCell(2).value = '';
@@ -1009,7 +1029,8 @@ export async function exportDailyReportsToExcel(
   const sanitizedProjName = (project?.name || '프로젝트').replace(/[/\\?%*:|"<>]/g, '_');
   // 시트 기준 최종(가장 최신) 날짜로 파일명 설정 (예: 2026-09-02)
   const lastReportDate = sortedReports[sortedReports.length - 1]?.date || selectedYearMonth;
-  a.download = `공사일보_${sanitizedProjName}_${lastReportDate}.xlsx`;
+  const modePrefix = isClientMode ? '발주처보고용' : '내부기록용';
+  a.download = `공사일보_${modePrefix}_${sanitizedProjName}_${lastReportDate}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

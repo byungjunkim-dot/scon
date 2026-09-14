@@ -996,7 +996,11 @@ export async function exportProductionStatusToExcel({
           doubleBottom: nIdx === parsedNotes.length - 1
         });
 
-        daySheet.getRow(dayRow).height = 22;
+        // 줄바꿈 및 내용 길이에 따른 동적 행 높이 계산 (기본 22pt)
+        const lineCount = (item.content || '').split('\n').length;
+        const approxWrapLines = Math.ceil((item.content || '').length / 45);
+        const effectiveLines = Math.max(lineCount, approxWrapLines, 1);
+        daySheet.getRow(dayRow).height = Math.max(22, effectiveLines * 16 + 6);
         dayRow++;
       });
     }
