@@ -445,19 +445,24 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
           setDisplayProgress({ planned: 0, actual: 0 });
         }
 
-        // Cumulative personnel (split into common management vs other disciplines)
+        // Cumulative personnel (split into 삼우 vs 외주)
         let directCommon = 0, directOther = 0;
         let outsourcedCommon = 0, outsourcedOther = 0;
         let otherCommon = 0, otherOther = 0;
 
+        const isSamooContractor = (contractor?: string) => {
+          const c = (contractor || '').trim();
+          return c === '삼우' || c.includes('삼우');
+        };
+
         reports.forEach(r => {
           if (r.personnel?.details && Array.isArray(r.personnel.details) && r.personnel.details.length > 0) {
             r.personnel.details.forEach(d => {
-              const isCommon = (d.discipline || '').trim() === '공통관리';
+              const isSamoo = isSamooContractor(d.contractor);
               const dDirect = Number(d.direct) || 0;
               const dOutsourced = Number(d.outsourced) || 0;
               const dOther = Number(d.other) || 0;
-              if (isCommon) {
+              if (isSamoo) {
                 directCommon += dDirect;
                 outsourcedCommon += dOutsourced;
                 otherCommon += dOther;

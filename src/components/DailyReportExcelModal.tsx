@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, FileSpreadsheet, Download, Loader2, Calendar, CheckSquare, Square, Info } from 'lucide-react';
+import { X, FileSpreadsheet, Download, Loader2, Calendar, CheckSquare, Square, Info, ShieldCheck, FileText } from 'lucide-react';
 import { DailyReport, Project, AppSettings } from '../types';
-import { exportDailyReportsToExcel } from '../utils/dailyReportExcelExport';
+import { exportDailyReportsToExcel, DailyReportExportMode } from '../utils/dailyReportExcelExport';
 
 interface DailyReportExcelModalProps {
   isOpen: boolean;
@@ -62,6 +62,7 @@ export const DailyReportExcelModal: React.FC<DailyReportExcelModalProps> = ({
 
   const [selectedYearMonth, setSelectedYearMonth] = useState<string>(initialMonth);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [exportMode, setExportMode] = useState<DailyReportExportMode>('client');
   const [isExporting, setIsExporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -104,7 +105,9 @@ export const DailyReportExcelModal: React.FC<DailyReportExcelModalProps> = ({
     try {
       setIsExporting(true);
       setErrorMessage(null);
-      await exportDailyReportsToExcel(targetReports, project, selectedYearMonth, settings, allReports);
+      await exportDailyReportsToExcel(targetReports, project, selectedYearMonth, settings, allReports, {
+        mode: exportMode
+      });
       onClose();
     } catch (err: any) {
       console.error('Excel Export Error:', err);
@@ -194,6 +197,71 @@ export const DailyReportExcelModal: React.FC<DailyReportExcelModalProps> = ({
                   선택 월: <strong className="text-gray-800">{formatMonthDisplay(selectedYearMonth)}</strong>
                   {' '}(총 <strong>{monthReports.length}</strong>개 일보 데이터)
                 </span>
+              </div>
+            </div>
+
+            {/* Export Mode Selection (발주처 보고용 vs 내부 기록용) */}
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200/80 space-y-2.5">
+              <label className="text-xs font-bold text-gray-700 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck size={15} className="text-emerald-600" />
+                  다운로드 구분 (출력 범위)
+                </span>
+                <span className="text-[11px] font-normal text-gray-500">
+                  특기사항 포함 여부 구분
+                </span>
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setExportMode('client')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    exportMode === 'client'
+                      ? 'bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      발주처 보고용
+                    </span>
+                    {exportMode === 'client' && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-600 text-white">
+                        선택됨
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-600 leading-snug">
+                    ‘발주처 보고’ 체크된 특기사항만 표시 (내부용 메모는 제외되어 안전합니다)
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExportMode('internal')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    exportMode === 'internal'
+                      ? 'bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20 shadow-xs'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                      내부 기록용
+                    </span>
+                    {exportMode === 'internal' && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-600 text-white">
+                        선택됨
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-600 leading-snug">
+                    내부 기록용을 포함한 <strong>모든 특기사항</strong>이 구분 태그와 함께 출력됩니다
+                  </p>
+                </button>
               </div>
             </div>
 
@@ -301,7 +369,11 @@ export const DailyReportExcelModal: React.FC<DailyReportExcelModalProps> = ({
               type="button"
               onClick={handleExport}
               disabled={isExporting || selectedIds.length === 0}
-              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all text-sm font-bold shadow-sm shadow-emerald-700/20"
+              className={`flex items-center gap-2 px-5 py-2 text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed transition-all text-sm font-bold shadow-sm ${
+                exportMode === 'client'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-700/20'
+                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-700/20'
+              }`}
             >
               {isExporting ? (
                 <>
@@ -309,7 +381,7 @@ export const DailyReportExcelModal: React.FC<DailyReportExcelModalProps> = ({
                 </>
               ) : (
                 <>
-                  <Download size={16} /> 엑셀 다운로드 ({selectedIds.length}개 일자)
+                  <Download size={16} /> [{exportMode === 'client' ? '발주처 보고용' : '내부 기록용'}] 다운로드 ({selectedIds.length}개 일자)
                 </>
               )}
             </button>

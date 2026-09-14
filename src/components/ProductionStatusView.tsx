@@ -1433,37 +1433,57 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </button>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {structuredNotes.map((note, index) => (
-              <div key={index} className="flex items-center gap-1.5">
-                {/* 카테고리 선택 풀다운 메뉴 (입력란 좌측 배치) */}
-                <select
-                  value={note.category}
-                  onChange={(e) => updateStructuredNote(index, 'category', e.target.value)}
-                  className="text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none shrink-0 cursor-pointer shadow-2xs"
-                >
-                  {NOTE_CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+              <div key={index} className="p-2.5 border border-slate-100 bg-slate-50/50 rounded-xl space-y-2">
+                {/* 윗줄: 카테고리 선택 풀다운 메뉴 및 삭제 버튼 */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={note.category}
+                      onChange={(e) => updateStructuredNote(index, 'category', e.target.value)}
+                      className="text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-blue-500 focus:outline-none shrink-0 cursor-pointer shadow-2xs"
+                    >
+                      {NOTE_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* 텍스트 인풋 */}
-                <input
-                  type="text"
-                  value={note.content}
-                  onChange={(e) => updateStructuredNote(index, 'content', e.target.value)}
-                  placeholder="특기사항 내용을 입력해 주세요."
-                  className="flex-1 min-w-0 text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                />
+                  {/* 항목 삭제 버튼 */}
+                  <button
+                    onClick={() => handleRemoveStructuredNote(index)}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer shrink-0 transition-colors"
+                    title="항목 삭제"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
 
-                {/* 항목 삭제 버튼 */}
-                <button
-                  onClick={() => handleRemoveStructuredNote(index)}
-                  className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg cursor-pointer shrink-0 transition-colors"
-                  title="항목 삭제"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {/* 아랫줄: 내용 입력 영역 (내용 길이에 따라 2~3줄 이상 자동 확장) */}
+                <div>
+                  <textarea
+                    rows={1}
+                    value={note.content}
+                    onChange={(e) => {
+                      updateStructuredNote(index, 'content', e.target.value);
+                      e.target.style.height = 'auto';
+                      e.target.style.height = `${e.target.scrollHeight}px`;
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.height = 'auto';
+                      e.target.style.height = `${e.target.scrollHeight}px`;
+                    }}
+                    ref={(el) => {
+                      if (el) {
+                        el.style.height = 'auto';
+                        el.style.height = `${el.scrollHeight}px`;
+                      }
+                    }}
+                    placeholder="특기사항 내용을 입력해 주세요."
+                    className="w-full resize-none min-h-[34px] max-h-36 overflow-y-auto text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none leading-relaxed"
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -2123,33 +2143,47 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                 </button>
               </div>
 
-              <div className="flex-1 space-y-1 max-h-[280px] overflow-y-auto pr-1">
+              <div className="flex-1 space-y-2 max-h-[360px] overflow-y-auto pr-1">
                 {structuredNotes.map((note, index) => (
-                  <div key={index} className="flex gap-2 items-center py-1 relative group">
+                  <div key={index} className="flex gap-2 items-start py-1 relative group">
                     <select
                       value={note.category}
                       onChange={(e) => updateStructuredNote(index, 'category', e.target.value)}
-                      className="text-xs font-bold text-gray-700 border-0 bg-slate-50 hover:bg-slate-100 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 focus:outline-none shrink-0 cursor-pointer"
+                      className="text-xs font-bold text-gray-700 border-0 bg-slate-50 hover:bg-slate-100 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none shrink-0 cursor-pointer mt-0.5"
                     >
                       {NOTE_CATEGORIES.map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>
 
-                    <input
-                      type="text"
+                    <textarea
+                      rows={1}
                       value={note.content}
-                      onChange={(e) => updateStructuredNote(index, 'content', e.target.value)}
-                      placeholder="예: 철판 자재 수급 지연으로 절단 공정 2시간 대기"
-                      className="flex-1 text-xs border-0 bg-slate-50/50 hover:bg-slate-100/50 focus:bg-white focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1 focus:outline-none transition-all"
+                      onChange={(e) => {
+                        updateStructuredNote(index, 'content', e.target.value);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${e.target.scrollHeight}px`;
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${e.target.scrollHeight}px`;
+                      }}
+                      ref={(el) => {
+                        if (el) {
+                          el.style.height = 'auto';
+                          el.style.height = `${el.scrollHeight}px`;
+                        }
+                      }}
+                      placeholder="예: 철판 자재 수급 지연으로 절단 공정 2시간 대기 (줄바꿈 가능)"
+                      className="flex-1 resize-none min-h-[32px] max-h-36 overflow-y-auto text-xs border-0 bg-slate-50/50 hover:bg-slate-100/50 focus:bg-white focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 focus:outline-none transition-all leading-relaxed"
                     />
 
                     <button
                       onClick={() => handleRemoveStructuredNote(index)}
-                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0 cursor-pointer"
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0 cursor-pointer mt-0.5 opacity-60 group-hover:opacity-100"
                       title="항목 삭제"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 ))}

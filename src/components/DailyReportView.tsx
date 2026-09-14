@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, Trash2, Download, Upload, Loader2, Save, FileText, Edit2, AlertTriangle, Sparkles, FileSpreadsheet } from 'lucide-react';
+import { X, Plus, Trash2, Download, Upload, Loader2, Save, FileText, Edit2, AlertTriangle, Sparkles, FileSpreadsheet, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { DailyReport, DailyTask, DailyEquipment, DailyIssue, DailyPhoto, Project, AppSettings, ApprovalRecord, User } from '../types';
 import { compressImage } from '../utils/image';
 import * as htmlToImage from 'html-to-image';
@@ -54,6 +54,16 @@ export const DailyReportView: React.FC<DailyReportViewProps> = ({ project, setti
   const formatMultiValue = (value?: string | string[]) => {
     if (Array.isArray(value)) return value.join(', ');
     return value || '';
+  };
+
+  const handleMoveDate = (days: number) => {
+    if (!report.date) return;
+    const parts = report.date.split('-');
+    if (parts.length !== 3) return;
+    const currentDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    currentDate.setDate(currentDate.getDate() + days);
+    const newDateStr = format(currentDate, 'yyyy-MM-dd');
+    setReport(prev => ({ ...prev, date: newDateStr }));
   };
 
   const [report, setReport] = useState<DailyReport>(initialReport(project?.id || ''));
@@ -474,6 +484,7 @@ const handleImportQuickMemos = async () => {
         description:
           memo.dailyIssueText ||
           `[${memo.category || '기타'}] ${memo.aiSummary || memo.rawText || ''}`,
+        isClientReport: true,
       }))
       .filter((issue) => issue.description.trim().length > 0);
 
@@ -696,6 +707,7 @@ const handleImportQuickMemos = async () => {
               .pdf-export-mode { box-shadow: none !important; border: none !important; }
               .pdf-export-mode input[type="date"]::-webkit-calendar-picker-indicator { display: none !important; }
               .pdf-export-mode input { border: none !important; }
+              .pdf-export-mode textarea { border: none !important; resize: none !important; }
             `}</style>
           )}
             
@@ -843,13 +855,33 @@ const handleImportQuickMemos = async () => {
                 </div>
                 <div className="md:col-span-4 flex items-center gap-3">
                   <span className="text-xs font-bold text-gray-400 w-16 shrink-0">일자</span>
-                  <input 
-                    type="date" 
-                    value={report.date} 
-                    onChange={e => setReport({...report, date: e.target.value})} 
-                    disabled={isReadOnly} 
-                    className="text-sm font-bold text-gray-900 focus:outline-none bg-transparent disabled:text-gray-500" 
-                  />
+                  <div className="flex items-center gap-1 bg-gray-50 border border-gray-200/80 rounded-lg p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveDate(-1)}
+                      disabled={isReadOnly}
+                      className="p-1 text-gray-500 hover:text-blue-600 hover:bg-white rounded transition-all active:scale-95 disabled:opacity-40 disabled:hover:text-gray-500 cursor-pointer"
+                      title="전일 (1일 전)"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <input 
+                      type="date" 
+                      value={report.date} 
+                      onChange={e => setReport({...report, date: e.target.value})} 
+                      disabled={isReadOnly} 
+                      className="text-sm font-bold text-gray-900 focus:outline-none bg-transparent px-1 cursor-pointer disabled:text-gray-500" 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleMoveDate(1)}
+                      disabled={isReadOnly}
+                      className="p-1 text-gray-500 hover:text-blue-600 hover:bg-white rounded transition-all active:scale-95 disabled:opacity-40 disabled:hover:text-gray-500 cursor-pointer"
+                      title="다음날 (1일 후)"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1206,78 +1238,136 @@ const handleImportQuickMemos = async () => {
               </button>
               
               <button 
-                onClick={() => setReport({...report, issues: [...report.issues, { id: Date.now().toString(), type: '안전', description: '' }]})} 
+                onClick={() => setReport({...report, issues: [...report.issues, { id: Date.now().toString(), type: '안전', description: '', isClientReport: true }]})} 
                 disabled={isReadOnly}
-                className="text-xs font-bold flex items-center gap-1 px-1 py-1 text-blue-600 hover:text-blue-700 hover:underline transition-all disabled:opacity-50"
+                className="text-xs font-bold flex items-center gap-1 px-1 py-1 text-blue-600 hover:text-blue-700 hover:underline transition-all disabled:opacity-50 cursor-pointer"
               >
                 <Plus size={14} /> 사항 추가
               </button>
               </div>
             </div>
             
-              <div className="space-y-1">
-                {report.issues.map((issue, idx) => (
-                  <div key={issue.id} className="flex items-center p-1.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 rounded-md transition-colors gap-4 group">
-                    <div className="shrink-0 w-16">
-                      <select
-  value={issue.type}
-  onChange={(e) => {
-    const newIssues = [...report.issues];
-    newIssues[idx].type = e.target.value as DailyIssue['type'];
-    setReport({ ...report, issues: newIssues });
-  }}
-  disabled={isReadOnly}
-  className={`w-full px-1 py-1 bg-white border border-gray-200 rounded text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all ${getDailyIssueTypeTextClass(issue.type)}`}
->
-  <option value="안전" className="text-red-600 font-bold">
-    안전
-  </option>
-  <option value="품질" className="text-blue-600 font-bold">
-    품질
-  </option>
-  <option value="공정" className="text-blue-600 font-bold">
-    공정
-  </option>
-  <option value="설계" className="text-blue-600 font-bold">
-    설계
-  </option>
-  <option value="자재" className="text-blue-600 font-bold">
-    자재
-  </option>
-  <option value="장비" className="text-blue-600 font-bold">
-    장비
-  </option>
-  <option value="민원" className="text-orange-500 font-bold">
-    민원
-  </option>
-  <option value="기타" className="text-gray-500 font-bold">
-    기타
-  </option>
-</select>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <input 
-                        type="text" 
-                        value={issue.description} 
-                        onChange={e => { const newIssues = [...report.issues]; newIssues[idx].description = e.target.value; setReport({...report, issues: newIssues}); }} 
-                        disabled={isReadOnly}
-                        placeholder="특기사항 내용을 입력하세요." 
-                        className="w-full bg-transparent focus:outline-none text-xs text-gray-700 placeholder:text-gray-400 disabled:placeholder-transparent" 
-                      />
-                    </div>
-                    {!isReadOnly && (
-                      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => setReport({...report, issues: report.issues.filter(i => i.id !== issue.id)})} 
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all"
-                          title="삭제"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+              <div className="space-y-2">
+                {report.issues.map((issue, idx) => {
+                  const isClient = issue.isClientReport !== false;
+                  return (
+                    <div key={issue.id} className="p-2.5 sm:p-2 border border-gray-100 sm:border-0 sm:border-b sm:border-gray-50 last:border-0 bg-gray-50/40 sm:bg-transparent hover:bg-gray-50/70 rounded-xl sm:rounded-md transition-colors group">
+                      {/* 모바일: 윗줄 (카테고리 + 발주처 보고 체크 + 삭제버튼) / 데스크탑: flex 한 줄의 앞부분 */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                        <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* 카테고리 셀렉트 */}
+                            <div className="w-20 sm:w-16 shrink-0">
+                              <select
+                                value={issue.type}
+                                onChange={(e) => {
+                                  const newIssues = [...report.issues];
+                                  newIssues[idx].type = e.target.value as DailyIssue['type'];
+                                  setReport({ ...report, issues: newIssues });
+                                }}
+                                disabled={isReadOnly}
+                                className={`w-full px-2 py-1 sm:px-1 bg-white border border-gray-200 rounded-lg sm:rounded text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs sm:shadow-none transition-all ${getDailyIssueTypeTextClass(issue.type)}`}
+                              >
+                                <option value="안전" className="text-red-600 font-bold">안전</option>
+                                <option value="품질" className="text-blue-600 font-bold">품질</option>
+                                <option value="공정" className="text-blue-600 font-bold">공정</option>
+                                <option value="설계" className="text-blue-600 font-bold">설계</option>
+                                <option value="자재" className="text-blue-600 font-bold">자재</option>
+                                <option value="장비" className="text-blue-600 font-bold">장비</option>
+                                <option value="민원" className="text-orange-500 font-bold">민원</option>
+                                <option value="기타" className="text-gray-500 font-bold">기타</option>
+                              </select>
+                            </div>
+
+                            {/* 발주처 보고 여부 토글 뱃지 */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isReadOnly) return;
+                                const newIssues = [...report.issues];
+                                newIssues[idx].isClientReport = !isClient;
+                                setReport({ ...report, issues: newIssues });
+                              }}
+                              disabled={isReadOnly}
+                              title={isClient ? "발주처 보고 대상 (클릭시 내부 기록용으로 변경)" : "내부 기록용 (클릭시 발주처 보고용으로 변경)"}
+                              className={`flex items-center gap-1 px-2.5 py-1 sm:px-2 sm:py-0.5 rounded-lg sm:rounded text-[11px] font-bold border transition-all cursor-pointer disabled:cursor-default shadow-2xs sm:shadow-none ${
+                                isClient
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                  : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                              }`}
+                            >
+                              {isClient ? (
+                                <>
+                                  <Check size={12} className="text-emerald-600" />
+                                  <span>발주처 보고</span>
+                                </>
+                              ) : (
+                                <span>내부 기록</span>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* 모바일에서 우측 상단 삭제 버튼 */}
+                          {!isReadOnly && (
+                            <div className="sm:hidden">
+                              <button 
+                                onClick={() => setReport({...report, issues: report.issues.filter(i => i.id !== issue.id)})} 
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all cursor-pointer"
+                                title="삭제"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 내용 입력 영역: 모바일에서는 아랫줄로 100% 폭, 내용 길이에 따라 2~4줄 유연 확장 */}
+                        <div className="flex-1 min-w-0 w-full flex items-center gap-2">
+                          <textarea 
+                            rows={1}
+                            value={issue.description} 
+                            onChange={e => { 
+                              const newIssues = [...report.issues]; 
+                              newIssues[idx].description = e.target.value; 
+                              setReport({...report, issues: newIssues});
+                              // 자동 높이 조절
+                              e.target.style.height = 'auto';
+                              e.target.style.height = `${e.target.scrollHeight}px`;
+                            }} 
+                            onFocus={e => {
+                              e.target.style.height = 'auto';
+                              e.target.style.height = `${e.target.scrollHeight}px`;
+                            }}
+                            ref={el => {
+                              if (el) {
+                                el.style.height = 'auto';
+                                el.style.height = `${el.scrollHeight}px`;
+                              }
+                            }}
+                            disabled={isReadOnly}
+                            placeholder={isClient ? "특기사항 내용 (발주처 보고서에 포함)" : "내부 기록용 특기사항 내용 (발주처 보고서에서 제외)"} 
+                            className={`w-full resize-none min-h-[34px] max-h-36 overflow-y-auto bg-white sm:bg-transparent border border-gray-200/80 sm:border-0 rounded-lg sm:rounded-none px-2.5 py-1.5 sm:px-0 sm:py-0 focus:outline-none text-xs placeholder:text-gray-400 disabled:placeholder-transparent leading-relaxed ${
+                              isClient ? 'text-gray-800' : 'text-slate-600 italic'
+                            }`} 
+                          />
+
+                          {/* 데스크탑 마우스오버 삭제 버튼 */}
+                          {!isReadOnly && (
+                            <div className="hidden sm:block shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={() => setReport({...report, issues: report.issues.filter(i => i.id !== issue.id)})} 
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all cursor-pointer"
+                                title="삭제"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
                 {report.issues.length === 0 && (
                   <div className="text-center py-8 text-gray-400 text-sm bg-gray-50/50 rounded-lg border border-dashed border-gray-200">등록된 특기사항이 없습니다.</div>
                 )}
@@ -1498,11 +1588,20 @@ const handleImportQuickMemos = async () => {
       )}
 
       {/* 모바일 하단 고정 플로팅 저장 바 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/90 p-3 z-40 shadow-xl md:hidden">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/90 p-3 z-40 shadow-xl md:hidden flex gap-2">
+        <button
+          type="button"
+          onClick={() => setIsExcelModalOpen(true)}
+          className="flex items-center justify-center gap-1.5 px-3 py-3 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-all shrink-0"
+          title="엑셀 다운로드"
+        >
+          <FileSpreadsheet size={16} className="text-emerald-600" />
+          <span>엑셀</span>
+        </button>
         <button
           onClick={handleSave}
           disabled={isReadOnly}
-          className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all shadow-md ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-98 shadow-blue-500/25'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all shadow-md ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-98 shadow-blue-500/25'}`}
         >
           <Save size={16} />
           <span>일보 저장</span>
