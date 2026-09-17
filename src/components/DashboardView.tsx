@@ -849,7 +849,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
             {isMobile && !isOverviewExpandedMobile && !isEditing && (
               <div 
                 onClick={() => setIsOverviewExpandedMobile(true)}
-                className="pt-2.5 mt-1 border-t border-gray-100 flex items-center justify-between gap-3 cursor-pointer select-none hover:bg-gray-50/60 rounded-lg -mx-1 px-1 transition-colors"
+                className="pt-2.5 mt-1 border-t border-gray-100 flex items-center gap-3 cursor-pointer select-none hover:bg-gray-50/60 rounded-lg -mx-1 px-1 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   {/* 작은 썸네일 이미지 */}
@@ -864,7 +864,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                       <Building2 size={20} className="text-gray-400 opacity-60" />
                     )}
                   </div>
-                  {/* 공사기간 및 D-day 정보 */}
+                  {/* 현장명 및 공사기간 정보 */}
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold text-gray-800 truncate mb-0.5">
                       {project.name}
@@ -874,10 +874,6 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                     </div>
                   </div>
                 </div>
-                <span className="text-[11px] font-medium text-blue-600 flex-shrink-0 flex items-center">
-                  상세보기
-                  <ChevronDown size={14} className="ml-0.5" />
-                </span>
               </div>
             )}
             
