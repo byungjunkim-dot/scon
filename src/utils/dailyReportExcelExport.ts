@@ -216,13 +216,19 @@ export async function exportDailyReportsToExcel(
           left: 0.3,
           right: 0.3,
           top: 0.35,
-          bottom: 0.35,
+          bottom: 0.55,
           header: 0.2,
-          footer: 0.2
+          footer: 0.25
         },
         showGridLines: false, // Do not print cell gridlines outside defined tables
       }
     });
+
+    // Native Excel print footer (바닥글):
+    // Left: SAMOO 영문 로고 (Bahnschrift Condensed Bold, 삼우 블루 #004EA2)
+    // Right: (주)삼우종합건축사사무소 한글 로고 (볼드 맑은고딕, 삼우 블루 #004EA2)
+    // 주의: 엑셀 바닥글 서식 코드에서 폰트 크기(&fontSize)는 반드시 정수여야 하며(예: &9), 소수점(예: &8.5) 사용 시 '.5'가 텍스트로 오인쇄됨
+    worksheet.headerFooter.oddFooter = '&L&"Bahnschrift Condensed,Bold"&16&K004EA2SAMOO&R&"Malgun Gothic,Bold"&9&K004EA2(주)삼우종합건축사사무소';
 
     // 1. Set column widths (10 columns: A to J)
     worksheet.columns = [
@@ -880,6 +886,13 @@ export async function exportDailyReportsToExcel(
       currentRow++;
     }
 
+    // Pad rows so the page content fills Page 1 cleanly (standard A4 ~45-48 content rows)
+    const TARGET_PAGE1_ROWS = 46;
+    while (currentRow < TARGET_PAGE1_ROWS) {
+      worksheet.getRow(currentRow).height = 18;
+      currentRow++;
+    }
+
     // 9. Section 6: 현장사진 (항상 별도 페이지로 출력, A4 1페이지 2*4 = 8장 배치)
     const photos = report.photos || [];
 
@@ -901,6 +914,12 @@ export async function exportDailyReportsToExcel(
         }
       }
       currentRow += 4;
+
+      // Pad rows to bottom of page
+      for (let pad = 0; pad < 25; pad++) {
+        worksheet.getRow(currentRow).height = 20;
+        currentRow++;
+      }
     } else {
       // Chunk photos into pages of 8 photos (2 cols * 4 rows = 8 photos)
       const PHOTOS_PER_PAGE = 8;
