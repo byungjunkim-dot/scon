@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Project, DailyReport, Category, AppSettings, ScheduleItem, User } from '../types';
-import { Building2, Edit2, Save, X, Upload, Loader2, CloudSun, ChevronLeft, ChevronRight, Thermometer, TrendingUp, Trash2 } from 'lucide-react';
+import { Building2, Edit2, Save, X, Upload, Loader2, CloudSun, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Thermometer, TrendingUp, Trash2 } from 'lucide-react';
 import { compressImage } from '../utils/image';
 import { fetchWeather } from '../services/weatherService';
 import { supabaseService } from '../services/supabaseService';
@@ -82,6 +82,8 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
   const [selectedPhoto, setSelectedPhoto] = useState<{url: string, title?: string} | null>(null);
   const [productionDays, setProductionDays] = useState<Record<string, any>>({});
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; event?: { type: string, id: string } }>({ open: false });
+  // 모바일 화면에서 프로젝트 개요 접기/펼치기 (기본값: 평소에는 접힘)
+  const [isOverviewExpandedMobile, setIsOverviewExpandedMobile] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -771,39 +773,116 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
         {/* Top Section */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3">
           
-          {/* 프로젝트 개요 및 대표이미지 통합 영역 */}
-          <div className="col-span-1 md:col-span-12 lg:col-span-9 bg-white rounded-xl shadow-sm border border-gray-200 p-4 lg:p-6 flex flex-col">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-sm font-bold text-gray-900">프로젝트 개요</h2>
-              {(currentUser?.userRole === '골드' || currentUser?.role === 'admin') && !isEditing && (
-                <button
-                  onClick={handleEditClick}
-                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                  title="개요 수정"
-                >
-                  <Edit2 size={18} />
-                </button>
-              )}
-              {isEditing && (
-                <div className="flex items-center gap-2">
+          {/* 프로젝트 개요 및 대표이미지 통합 영역 (모바일에서는 접기/펼치기 가능) */}
+          <div className="col-span-1 md:col-span-12 lg:col-span-9 bg-white rounded-xl shadow-sm border border-gray-200 p-3.5 md:p-4 lg:p-6 flex flex-col transition-all">
+            {/* Header: Desktop always normal, Mobile clickable accordion when not editing */}
+            <div 
+              onClick={() => {
+                if (isMobile && !isEditing) {
+                  setIsOverviewExpandedMobile(!isOverviewExpandedMobile);
+                }
+              }}
+              className={`flex justify-between items-center ${
+                !isMobile || isOverviewExpandedMobile ? 'mb-4 md:mb-6' : 'mb-0'
+              } ${isMobile && !isEditing ? 'cursor-pointer select-none' : ''}`}
+            >
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-gray-900">프로젝트 개요</h2>
+                {/* 모바일에서 접혔을 때 표시되는 축약 배지 (공사기간/D-day) */}
+                {isMobile && !isOverviewExpandedMobile && !isEditing && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {project.endDate && (
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded">
+                        {calculateRemainingDays(project.endDate)}일 남음
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5" onClick={(e) => isMobile && isEditing && e.stopPropagation()}>
+                {(currentUser?.userRole === '골드' || currentUser?.role === 'admin') && !isEditing && (
                   <button
-                    onClick={handleCancelEdit}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all text-sm font-medium"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsOverviewExpandedMobile(true);
+                      handleEditClick();
+                    }}
+                    className="p-1.5 md:p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                    title="개요 수정"
                   >
-                    <X size={16} />
-                    취소
+                    <Edit2 size={16} className="md:w-[18px] md:h-[18px]" />
                   </button>
+                )}
+                {isEditing && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCancelEdit}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all text-sm font-medium"
+                    >
+                      <X size={16} />
+                      취소
+                    </button>
+                    <button
+                      onClick={handleSaveEdit}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all text-sm font-medium shadow-sm"
+                    >
+                      <Save size={16} />
+                      저장
+                    </button>
+                  </div>
+                )}
+                {/* 모바일 전용 접기/펼치기 토글 화살표 */}
+                {isMobile && !isEditing && (
                   <button
-                    onClick={handleSaveEdit}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all text-sm font-medium shadow-sm"
+                    type="button"
+                    aria-label={isOverviewExpandedMobile ? '개요 접기' : '개요 펼치기'}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded-md transition-colors ml-0.5"
                   >
-                    <Save size={16} />
-                    저장
+                    {isOverviewExpandedMobile ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
+
+            {/* 모바일에서 접혀있을 때 표시되는 요약 바 (작은 썸네일 이미지 + 공사기간 정보) */}
+            {isMobile && !isOverviewExpandedMobile && !isEditing && (
+              <div 
+                onClick={() => setIsOverviewExpandedMobile(true)}
+                className="pt-2.5 mt-1 border-t border-gray-100 flex items-center justify-between gap-3 cursor-pointer select-none hover:bg-gray-50/60 rounded-lg -mx-1 px-1 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  {/* 작은 썸네일 이미지 */}
+                  <div className="w-12 h-12 rounded-lg bg-gray-100 border border-gray-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    {project.imageUrl ? (
+                      <img 
+                        src={project.imageUrl} 
+                        alt={project.name} 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Building2 size={20} className="text-gray-400 opacity-60" />
+                    )}
+                  </div>
+                  {/* 공사기간 및 D-day 정보 */}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-gray-800 truncate mb-0.5">
+                      {project.name}
+                    </div>
+                    <div className="text-[11px] text-gray-500 flex items-center gap-1.5 truncate">
+                      <span>공사기간: {project.startDate || '-'} ~ {project.endDate || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[11px] font-medium text-blue-600 flex-shrink-0 flex items-center">
+                  상세보기
+                  <ChevronDown size={14} className="ml-0.5" />
+                </span>
+              </div>
+            )}
             
+            {/* 전체 상세 내용: 데스크톱이거나 모바일에서 펼쳐졌을 때(또는 수정 중일 때) 표시 */}
+            {(!isMobile || isOverviewExpandedMobile || isEditing) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* 프로젝트 정보 */}
               <div className="flex-1">
@@ -1095,6 +1174,7 @@ export function DashboardView({ project, onUpdateProject, settings, currentUser 
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           {/* Right Part: 3 Cards */}
