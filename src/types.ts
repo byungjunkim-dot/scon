@@ -34,8 +34,21 @@ export interface ScheduleItem {
   contractor: string;
   memo: string;
   isBaseline?: boolean; // For comparison
+  baselineRound?: number; // 차수 (0: 최초, 1: 1차, 2: 2차 ...)
+  baselineRevisionId?: string;
   sortOrder?: number;
   sourceScheduleId?: string | null;
+}
+
+export interface BaselineRevision {
+  id: string;
+  projectId: string;
+  round: number; // 0: 최초 계획, 1: 1차 변경, 2: 2차 변경 ...
+  name: string;  // e.g. "최초 계획", "1차 변경", "2차 변경"
+  description?: string;
+  createdAt: string;
+  updatedAt?: string;
+  items: ScheduleItem[];
 }
 
 export interface Drawing {
@@ -140,6 +153,7 @@ export interface User {
   affiliation: string;
   discipline: string;
   signupCode: string;
+  allowedProjectCodes?: string[];
   role: 'admin' | 'user';
   userRole: '골드' | '실버' | '브론즈';
   createdAt: string;
@@ -611,20 +625,24 @@ export interface ProductionPhoto {
 export interface ProductionBreakdown {
   factory: string;
   floor: string;
-  steel: number;
-  single: number;
-  moduleFrame: number;
-  finished: number;
-  shipped: number;
+  steel: number;        // 철골 (레거시/숨김 보존)
+  single: number;       // 단품 (레거시/숨김 보존)
+  moduleFrame: number;  // 프레임
+  slab?: number;        // 슬라브 (신규)
+  interiorExterior?: number; // 내외장 (신규)
+  finished: number;     // 완성품
+  shipped: number;      // 출고
 }
 
 export interface ProductionDayData {
   id: string; // "YYYY-MM-DD"
   projectId: string;
   date: string;
-  steel: number;        // 철골
-  single: number;       // 단품
+  steel: number;        // 철골 (레거시/숨김 보존)
+  single: number;       // 단품 (레거시/숨김 보존)
   moduleFrame: number;  // 프레임
+  slab?: number;        // 슬라브 (신규)
+  interiorExterior?: number; // 내외장 (신규)
   finished: number;     // 완성품
   shipped: number;      // 출고
   photos: ProductionPhoto[];
@@ -644,6 +662,8 @@ export interface ProductionConfig {
     steelTon?: number;
     single: number;
     moduleFrame: number;
+    slab?: number;
+    interiorExterior?: number;
     finished: number;
     shipped: number;
   };
@@ -652,4 +672,5 @@ export interface ProductionConfig {
   unallocatedTarget?: FactoryTarget;
   activeFloors: string[];
 }
+
 

@@ -31,7 +31,8 @@ import {
   Image as ImageIcon,
   DollarSign,
   Clipboard,
-  Package
+  Package,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExcelJS from 'exceljs';
@@ -65,10 +66,11 @@ import { QuickMemoView } from './components/QuickMemoView';
 import { BillingAndSubcontractorView } from './components/BillingAndSubcontractorView';
 import { ReportSummaryView } from './components/ReportSummaryView';
 import { ProductionStatusView } from './components/ProductionStatusView';
+import { ModularProductionView } from './components/ModularProductionView';
 import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
 
-import { Project, ScheduleItem, Category, Status, AppSettings, User } from './types';
+import { Project, ScheduleItem, Category, Status, AppSettings, User, BaselineRevision } from './types';
 import {
   SAMPLE_SCHEDULES,
   CATEGORIES,
@@ -101,9 +103,9 @@ const LogoIcon = ({ size = 20, className = "" }: { size?: number, className?: st
 );
 
 type ViewMode = 'auth' | 'projects' | 'project-detail' | 'user-management';
-type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'daily-report' | 'ai-diagnosis' | 'billing' | 'report' | 'production';
+type MainMenu = 'dashboard' | 'schedule' | 'documents' | 'drawings' | 'photo-gallery' | 'quick-memo' | 'daily-report' | 'ai-diagnosis' | 'billing' | 'report' | 'production' | 'modular-production';
 type TabMode = 'gantt' | 'table' | 'comparison' | 'baseline';
-type DocumentTab = 'daily-report' | 'inspection' | 'material' | 'concrete';
+type DocumentTab = 'daily-report' | 'inspection' | 'material' | 'concrete' | 'modular-production';
 type AiDiagnosisTab = 'ai-risk' | 'ai-report';
 
 const INITIAL_SETTINGS: AppSettings = {
@@ -140,7 +142,9 @@ export default function App() {
     return (localStorage.getItem('cp_tab_mode') as TabMode) || 'gantt';
   });
   const [documentTab, setDocumentTab] = useState<DocumentTab>(() => {
-    return (localStorage.getItem('cp_document_tab') as DocumentTab) || 'daily-report';
+    const saved = localStorage.getItem('cp_document_tab') as DocumentTab;
+    if (saved === 'inspection' || saved === 'concrete') return 'daily-report';
+    return saved || 'daily-report';
   });
   const [aiDiagnosisTab, setAiDiagnosisTab] = useState<AiDiagnosisTab>(() => {
     return (localStorage.getItem('cp_ai_diagnosis_tab') as AiDiagnosisTab) || 'ai-risk';
@@ -160,9 +164,12 @@ export default function App() {
   // 6. 기타 필수 상태 변수들 (★이 부분들도 모두 살아있어야 합니다)
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [baselineSchedules, setBaselineSchedules] = useState<ScheduleItem[]>([]);
+  const [baselineRevisions, setBaselineRevisions] = useState<BaselineRevision[]>([]);
+  const [selectedBaselineRevisionId, setSelectedBaselineRevisionId] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isSyncConfirmModalOpen, setSyncConfirmModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDailyReportDirty, setIsDailyReportDirty] = useState(false);
   const [autoOpenQuickMemo, setAutoOpenQuickMemo] = useState(false);
@@ -183,6 +190,16 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState<Status | '전체'>('전체');
   const [searchTerm, setSearchTerm] = useState('');
   const [zoom, setZoom] = useState<'day' | 'week' | 'month'>('day');
+
+  const [autoScheduleLink, setAutoScheduleLink] = useState<boolean>(() => {
+    const saved = localStorage.getItem('cp_auto_schedule_link');
+    return saved !== 'false';
+  });
+
+  const handleToggleAutoScheduleLink = (enabled: boolean) => {
+    setAutoScheduleLink(enabled);
+    localStorage.setItem('cp_auto_schedule_link', String(enabled));
+  };
 
   useEffect(() => {
     console.log('App: isDailyReportDirty changed to:', isDailyReportDirty);
@@ -324,6 +341,8 @@ export default function App() {
       if (!currentProjectId) {
         setSchedules([]);
         setBaselineSchedules([]);
+        setBaselineRevisions([]);
+        setSelectedBaselineRevisionId(null);
         setSettings(INITIAL_SETTINGS);
         return;
       }
@@ -340,7 +359,8 @@ export default function App() {
           const data = await supabaseService.getSchedules(currentProjectId);
           if (data && data.length > 0) {
             setSchedules(data.filter(s => !s.isBaseline));
-            setBaselineSchedules(data.filter(s => s.isBaseline));
+            const baseItems = data.filter(s => s.isBaseline);
+            loadRevisions(baseItems);
           } else {
             loadSchedulesFromLocalStorage();
           }
@@ -353,27 +373,62 @@ export default function App() {
       }
     };
 
+    const loadRevisions = (fallbackBaseItems: ScheduleItem[] = []) => {
+      const savedRevisions = localStorage.getItem(`cp_baseline_revisions_${currentProjectId}`);
+      let revs: BaselineRevision[] = [];
+
+      if (savedRevisions) {
+        revs = safeJsonParse<BaselineRevision[]>(savedRevisions, []);
+      }
+
+      // 기존 단일 baseline이 있거나 fallback이 있을 때 0차로 자동 마이그레이션
+      if (revs.length === 0 && fallbackBaseItems.length > 0) {
+        const initRev: BaselineRevision = {
+          id: `rev-${currentProjectId}-0`,
+          projectId: currentProjectId,
+          round: 0,
+          name: '최초 계획',
+          description: '프로젝트 초기 기준 계획',
+          createdAt: format(new Date(), 'yyyy-MM-dd'),
+          items: fallbackBaseItems
+        };
+        revs = [initRev];
+        localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(revs));
+      }
+
+      setBaselineRevisions(revs);
+      if (revs.length > 0) {
+        const latestRev = revs[revs.length - 1];
+        setSelectedBaselineRevisionId(latestRev.id);
+        setBaselineSchedules(latestRev.items);
+      } else {
+        setSelectedBaselineRevisionId(null);
+        setBaselineSchedules([]);
+      }
+    };
+
     const loadSchedulesFromLocalStorage = () => {
       const savedSchedules = localStorage.getItem(`cp_schedules_${currentProjectId}`);
       const savedBaseline = localStorage.getItem(`cp_baseline_${currentProjectId}`);
 
+      let loadedSchedules: ScheduleItem[] = [];
       if (!savedSchedules && localStorage.getItem('cp_schedules')) {
         const oldSchedules = localStorage.getItem('cp_schedules');
-        setSchedules(safeJsonParse(oldSchedules, []));
+        loadedSchedules = safeJsonParse(oldSchedules, []);
       } else if (savedSchedules) {
-        setSchedules(safeJsonParse(savedSchedules, []));
-      } else {
-        setSchedules([]);
+        loadedSchedules = safeJsonParse(savedSchedules, []);
       }
+      setSchedules(loadedSchedules);
 
+      let loadedBaseline: ScheduleItem[] = [];
       if (!savedBaseline && localStorage.getItem('cp_baseline')) {
         const oldBaseline = localStorage.getItem('cp_baseline');
-        setBaselineSchedules(safeJsonParse(oldBaseline, []));
+        loadedBaseline = safeJsonParse(oldBaseline, []);
       } else if (savedBaseline) {
-        setBaselineSchedules(safeJsonParse(savedBaseline, []));
-      } else {
-        setBaselineSchedules([]);
+        loadedBaseline = safeJsonParse(savedBaseline, []);
       }
+
+      loadRevisions(loadedBaseline);
     };
 
     loadProjectData();
@@ -675,50 +730,66 @@ export default function App() {
     setMainMenu(initialMenu);
   };
 
-  const handleAddSchedule = async (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
-  if (!currentProjectId) return;
+  const handleAddSchedule = async (item: Omit<ScheduleItem, 'id' | 'projectId'>, cascadeUpdates?: ScheduleItem[]) => {
+    if (!currentProjectId) return;
 
-  const newItem: ScheduleItem = {
-    ...item,
-    id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    projectId: currentProjectId,
-    sortOrder: schedules.length
-  };
+    const newItem: ScheduleItem = {
+      ...item,
+      id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      projectId: currentProjectId,
+      sortOrder: schedules.length
+    };
 
-  const updatedSchedules = [...schedules, newItem];
-  setSchedules(updatedSchedules);
-  localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
-  setIsFormOpen(false);
-
-  if (isSupabaseConfigured) {
-    try {
-      await supabaseService.saveSchedule(newItem);
-    } catch (error) {
-      console.error('Error saving schedule to Supabase:', error);
-      alert('공정은 화면에는 추가되었지만 Supabase 저장은 실패했습니다. 콘솔 에러를 확인해주세요.');
+    let updatedSchedules = [...schedules, newItem];
+    if (cascadeUpdates && cascadeUpdates.length > 0) {
+      const updateMap = new Map(cascadeUpdates.map(u => [u.id, u]));
+      updatedSchedules = updatedSchedules.map(s => updateMap.get(s.id) || s);
     }
-  }
-  };
-
-const handleUpdateSchedule = async (item: ScheduleItem) => {
-  const updatedSchedules = schedules.map(s => s.id === item.id ? item : s);
-  setSchedules(updatedSchedules);
-
-  if (currentProjectId) {
+    setSchedules(updatedSchedules);
     localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
-  }
+    setIsFormOpen(false);
 
-  setSelectedItemId(null);
-  setIsFormOpen(false);
-
-  if (isSupabaseConfigured) {
-    try {
-      await supabaseService.saveSchedule(item);
-    } catch (error) {
-      console.error('Error saving schedule to Supabase:', error);
-      alert('공정 수정은 화면에 반영되었지만 Supabase 저장은 실패했습니다.');
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.saveSchedule(newItem);
+        if (cascadeUpdates) {
+          for (const cu of cascadeUpdates) {
+            await supabaseService.saveSchedule(cu);
+          }
+        }
+      } catch (error) {
+        console.error('Error saving schedule to Supabase:', error);
+      }
     }
-  }
+  };
+
+  const handleUpdateSchedule = async (item: ScheduleItem, cascadeUpdates?: ScheduleItem[]) => {
+    let updatedSchedules = schedules.map(s => s.id === item.id ? item : s);
+    if (cascadeUpdates && cascadeUpdates.length > 0) {
+      const updateMap = new Map(cascadeUpdates.map(u => [u.id, u]));
+      updatedSchedules = updatedSchedules.map(s => updateMap.get(s.id) || s);
+    }
+    setSchedules(updatedSchedules);
+
+    if (currentProjectId) {
+      localStorage.setItem(`cp_schedules_${currentProjectId}`, JSON.stringify(updatedSchedules));
+    }
+
+    setSelectedItemId(null);
+    setIsFormOpen(false);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.saveSchedule(item);
+        if (cascadeUpdates) {
+          for (const cu of cascadeUpdates) {
+            await supabaseService.saveSchedule(cu);
+          }
+        }
+      } catch (error) {
+        console.error('Error saving schedule to Supabase:', error);
+      }
+    }
   };
 
   const handleDeleteSchedule = async (id: string) => {
@@ -805,6 +876,26 @@ const handleUpdateSchedule = async (item: ScheduleItem) => {
 
       setBaselineSchedules(baselineItems);
       localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(baselineItems));
+
+      let updatedRevs = [...baselineRevisions];
+      if (updatedRevs.length === 0) {
+        const initRev: BaselineRevision = {
+          id: `rev-${currentProjectId}-0`,
+          projectId: currentProjectId,
+          round: 0,
+          name: '최초 계획',
+          description: '프로젝트 초기 기준 계획',
+          createdAt: format(new Date(), 'yyyy-MM-dd'),
+          items: baselineItems
+        };
+        updatedRevs = [initRev];
+        setSelectedBaselineRevisionId(initRev.id);
+      } else {
+        const targetId = selectedBaselineRevisionId || updatedRevs[updatedRevs.length - 1].id;
+        updatedRevs = updatedRevs.map(r => r.id === targetId ? { ...r, items: baselineItems, updatedAt: format(new Date(), 'yyyy-MM-dd') } : r);
+      }
+      setBaselineRevisions(updatedRevs);
+      localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevs));
 
       if (isSupabaseConfigured) {
         const allSchedules = await supabaseService.getSchedules(currentProjectId);
@@ -1139,73 +1230,222 @@ const handleUpdateSchedule = async (item: ScheduleItem) => {
     }
   };
 
-const handleAddBaselineSchedule = async (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
-  if (!currentProjectId) return;
-
-  const newItem: ScheduleItem = {
-    ...item,
-    id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    projectId: currentProjectId,
-    isBaseline: true,
-    sourceScheduleId: null,
-    sortOrder: baselineSchedules.length
+  // --- Baseline 차수(Revision) 관리 함수 시작 ---
+  const handleSelectBaselineRevision = (revisionId: string) => {
+    setSelectedBaselineRevisionId(revisionId);
+    const targetRev = baselineRevisions.find(r => r.id === revisionId);
+    if (targetRev) {
+      setBaselineSchedules(targetRev.items);
+      if (currentProjectId) {
+        localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(targetRev.items));
+      }
+    }
   };
 
-  // 여기
-  // 1) 먼저 화면에 바로 반영
-  const updatedBaseline = [...baselineSchedules, newItem];
-  setBaselineSchedules(updatedBaseline);
-  localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+  const handleCreateBaselineRevision = (data: {
+    round: number;
+    name: string;
+    description?: string;
+    source: 'actual' | 'previous' | 'empty';
+    sourceRevisionId?: string;
+  }) => {
+    if (!currentProjectId) return;
 
-  // 2) 그 다음 Supabase 저장
-  if (isSupabaseConfigured) {
-    try {
-      await supabaseService.saveSchedule(newItem);
-    } catch (error) {
-      console.error('Error adding baseline schedule:', error);
-      alert('Baseline 공정은 화면에는 추가되었지만 Supabase 저장은 실패했습니다.');
+    let sourceItems: ScheduleItem[] = [];
+    if (data.source === 'actual') {
+      sourceItems = schedules.map((item, idx) => ({
+        ...item,
+        id: `b-${item.id}-${Date.now()}-${idx}`,
+        isBaseline: true,
+        sourceScheduleId: item.id,
+        baselineRound: data.round,
+        sortOrder: idx
+      }));
+    } else if (data.source === 'previous') {
+      const prevRev = data.sourceRevisionId 
+        ? baselineRevisions.find(r => r.id === data.sourceRevisionId)
+        : (baselineRevisions.length > 0 ? baselineRevisions[baselineRevisions.length - 1] : null);
+      if (prevRev) {
+        sourceItems = prevRev.items.map((item, idx) => ({
+          ...item,
+          id: `b-${item.id}-${Date.now()}-${idx}`,
+          baselineRound: data.round,
+          sortOrder: idx
+        }));
+      }
     }
-  }
-};
 
-const handleDeleteBaselineSchedule = async (id: string) => {
-  if (!currentProjectId) return;
+    const newRevision: BaselineRevision = {
+      id: `rev-${currentProjectId}-${Date.now()}-${data.round}`,
+      projectId: currentProjectId,
+      round: data.round,
+      name: data.name,
+      description: data.description,
+      createdAt: format(new Date(), 'yyyy-MM-dd'),
+      items: sourceItems
+    };
 
-  const updatedBaseline = baselineSchedules.filter(s => s.id !== id);
-  setBaselineSchedules(updatedBaseline);
-  localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
-
-  if (isSupabaseConfigured) {
-    try {
-      await supabaseService.deleteSchedule(id);
-    } catch (error) {
-      console.error('Error deleting baseline schedule:', error);
-      alert('Baseline 공정 삭제는 화면에 반영되었지만 Supabase 삭제는 실패했습니다.');
-    }
-  }
-};
-
-const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
-  if (!currentProjectId) return;
-
-  const updatedItem: ScheduleItem = {
-    ...item,
-    isBaseline: true
+    const updatedRevisions = [...baselineRevisions, newRevision].sort((a, b) => a.round - b.round);
+    setBaselineRevisions(updatedRevisions);
+    setSelectedBaselineRevisionId(newRevision.id);
+    setBaselineSchedules(newRevision.items);
+    localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevisions));
+    localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(newRevision.items));
   };
 
-  const updatedBaseline = baselineSchedules.map(s => s.id === updatedItem.id ? updatedItem : s);
-  setBaselineSchedules(updatedBaseline);
-  localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+  const handleUpdateBaselineRevision = (updated: BaselineRevision) => {
+    if (!currentProjectId) return;
+    const updatedRevisions = baselineRevisions.map(r => r.id === updated.id ? updated : r);
+    setBaselineRevisions(updatedRevisions);
+    localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevisions));
+  };
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabaseService.saveSchedule(updatedItem);
-    } catch (error) {
-      console.error('Error updating baseline schedule in Supabase:', error);
-      alert('Baseline 공정 수정은 화면에 반영되었지만 Supabase 저장은 실패했습니다.');
+  const handleDeleteBaselineRevision = (revisionId: string) => {
+    if (!currentProjectId) return;
+    const updatedRevisions = baselineRevisions.filter(r => r.id !== revisionId);
+    setBaselineRevisions(updatedRevisions);
+    localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevisions));
+
+    const nextActive = updatedRevisions.length > 0 ? updatedRevisions[updatedRevisions.length - 1] : null;
+    setSelectedBaselineRevisionId(nextActive?.id || null);
+    setBaselineSchedules(nextActive?.items || []);
+    if (nextActive) {
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(nextActive.items));
+    } else {
+      localStorage.removeItem(`cp_baseline_${currentProjectId}`);
     }
-  }
-};
+  };
+
+  const handleSyncRevisionFromActual = () => {
+    if (!currentProjectId || baselineRevisions.length === 0) return;
+    
+    // Get the latest revision (highest round)
+    const latestRevision = [...baselineRevisions].sort((a, b) => b.round - a.round)[0];
+    
+    const copiedItems: ScheduleItem[] = schedules.map((item, idx) => ({
+      ...item,
+      id: `b-${item.id}-${Date.now()}-${idx}`,
+      isBaseline: true,
+      sourceScheduleId: item.id,
+      sortOrder: idx
+    }));
+    
+    const updatedRevisions = baselineRevisions.map(r => {
+      if (r.id === latestRevision.id) {
+        return {
+          ...r,
+          items: copiedItems,
+          updatedAt: format(new Date(), 'yyyy-MM-dd')
+        };
+      }
+      return r;
+    });
+    
+    setBaselineRevisions(updatedRevisions);
+    localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevisions));
+    
+    // Also update current active schedules if it's the one we just updated
+    if (selectedBaselineRevisionId === latestRevision.id) {
+      setBaselineSchedules(copiedItems);
+      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(copiedItems));
+    }
+  };
+  // --- Baseline 차수(Revision) 관리 함수 끝 ---
+
+  const handleAddBaselineSchedule = async (item: Omit<ScheduleItem, 'id' | 'projectId'>) => {
+    if (!currentProjectId) return;
+
+    const newItem: ScheduleItem = {
+      ...item,
+      id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      projectId: currentProjectId,
+      isBaseline: true,
+      sourceScheduleId: null,
+      sortOrder: baselineSchedules.length
+    };
+
+    const updatedBaseline = [...baselineSchedules, newItem];
+    setBaselineSchedules(updatedBaseline);
+    localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+
+    // 현재 선택된 차수에도 반영
+    if (selectedBaselineRevisionId) {
+      const updatedRevs = baselineRevisions.map(r => 
+        r.id === selectedBaselineRevisionId 
+          ? { ...r, items: updatedBaseline, updatedAt: format(new Date(), 'yyyy-MM-dd') }
+          : r
+      );
+      setBaselineRevisions(updatedRevs);
+      localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevs));
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.saveSchedule(newItem);
+      } catch (error) {
+        console.error('Error adding baseline schedule:', error);
+      }
+    }
+  };
+
+  const handleDeleteBaselineSchedule = async (id: string) => {
+    if (!currentProjectId) return;
+
+    const updatedBaseline = baselineSchedules.filter(s => s.id !== id);
+    setBaselineSchedules(updatedBaseline);
+    localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+
+    // 현재 선택된 차수에도 반영
+    if (selectedBaselineRevisionId) {
+      const updatedRevs = baselineRevisions.map(r => 
+        r.id === selectedBaselineRevisionId 
+          ? { ...r, items: updatedBaseline, updatedAt: format(new Date(), 'yyyy-MM-dd') }
+          : r
+      );
+      setBaselineRevisions(updatedRevs);
+      localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevs));
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.deleteSchedule(id);
+      } catch (error) {
+        console.error('Error deleting baseline schedule:', error);
+      }
+    }
+  };
+
+  const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
+    if (!currentProjectId) return;
+
+    const updatedItem: ScheduleItem = {
+      ...item,
+      isBaseline: true
+    };
+
+    const updatedBaseline = baselineSchedules.map(s => s.id === updatedItem.id ? updatedItem : s);
+    setBaselineSchedules(updatedBaseline);
+    localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(updatedBaseline));
+
+    // 현재 선택된 차수에도 반영
+    if (selectedBaselineRevisionId) {
+      const updatedRevs = baselineRevisions.map(r => 
+        r.id === selectedBaselineRevisionId 
+          ? { ...r, items: updatedBaseline, updatedAt: format(new Date(), 'yyyy-MM-dd') }
+          : r
+      );
+      setBaselineRevisions(updatedRevs);
+      localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevs));
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseService.saveSchedule(updatedItem);
+      } catch (error) {
+        console.error('Error updating baseline schedule in Supabase:', error);
+      }
+    }
+  };
 
   const handleReorderBaselineSchedules = async (newItems: ScheduleItem[]) => {
     if (!currentProjectId) return;
@@ -1215,18 +1455,28 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
       sortOrder: index
     }));
 
+    setBaselineSchedules(reorderedItems);
+    localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(reorderedItems));
+
+    // 현재 선택된 차수에도 반영
+    if (selectedBaselineRevisionId) {
+      const updatedRevs = baselineRevisions.map(r => 
+        r.id === selectedBaselineRevisionId 
+          ? { ...r, items: reorderedItems, updatedAt: format(new Date(), 'yyyy-MM-dd') }
+          : r
+      );
+      setBaselineRevisions(updatedRevs);
+      localStorage.setItem(`cp_baseline_revisions_${currentProjectId}`, JSON.stringify(updatedRevs));
+    }
+
     try {
       if (isSupabaseConfigured) {
         for (const item of reorderedItems) {
           await supabaseService.saveSchedule(item);
         }
       }
-
-      setBaselineSchedules(reorderedItems);
-      localStorage.setItem(`cp_baseline_${currentProjectId}`, JSON.stringify(reorderedItems));
     } catch (error) {
       console.error('Error reordering baseline schedules:', error);
-      alert('Baseline 순서 저장에 실패했습니다.');
     }
   };
 
@@ -1266,7 +1516,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
   ) : null;
 
   if (viewMode === 'user-management') return (
-    <UserManagement onBack={handleNavToProjectList} />
+    <UserManagement onBack={handleNavToProjectList} projects={projects} />
   );
 
   return (
@@ -1367,10 +1617,17 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
               </button>
               <button
                 onClick={() => checkUnsavedChanges(() => setMainMenu('documents'))}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'documents' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'documents' && documentTab !== 'modular-production' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
               >
-                <FileText size={18} className={mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} />
+                <FileText size={18} className={mainMenu === 'documents' && documentTab !== 'modular-production' ? 'text-blue-600' : 'text-gray-400'} />
                 <span>문서 관리</span>
+              </button>
+              <button
+                onClick={() => checkUnsavedChanges(() => setMainMenu('modular-production'))}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'modular-production' || mainMenu === 'production' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <Package size={18} className={mainMenu === 'modular-production' || mainMenu === 'production' ? 'text-blue-600' : 'text-gray-400'} />
+                <span>제작 관리</span>
               </button>
               <button
                 onClick={() => checkUnsavedChanges(() => setMainMenu('drawings'))}
@@ -1485,6 +1742,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       <FileText size={18} className={documentTab === 'daily-report' ? 'text-blue-600' : 'text-gray-400'} />
                       <span>공사 일보</span>
                     </button>
+                    {/* 필요 시 복구를 위해 당분간 숨김 처리: 검측요청서, 타설계획서
                     <button
                       onClick={() => checkUnsavedChanges(() => setDocumentTab('inspection'))}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'inspection' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
@@ -1493,18 +1751,36 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       <span>검측요청서</span>
                     </button>
                     <button
-                      onClick={() => checkUnsavedChanges(() => setDocumentTab('material'))}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'material' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                    >
-                      <FileText size={18} className={documentTab === 'material' ? 'text-blue-600' : 'text-gray-400'} />
-                      <span>제작 현황</span>
-                    </button>
-                    <button
                       onClick={() => checkUnsavedChanges(() => setDocumentTab('concrete'))}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${documentTab === 'concrete' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                     >
                       <FileText size={18} className={documentTab === 'concrete' ? 'text-blue-600' : 'text-gray-400'} />
                       <span>타설계획서</span>
+                    </button>
+                    */}
+                  </div>
+                </>
+              )}
+
+              {(mainMenu === 'modular-production' || mainMenu === 'production') && (
+                <>
+                  <div className="pt-6 px-3 mb-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">SUB Menu</span>
+                  </div>
+                  <div className="space-y-1 px-1">
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setMainMenu('modular-production'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'modular-production' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <Package size={18} className={mainMenu === 'modular-production' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>모듈러 제작 현황판</span>
+                    </button>
+                    <button
+                      onClick={() => checkUnsavedChanges(() => setMainMenu('production'))}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium ${mainMenu === 'production' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <FileText size={18} className={mainMenu === 'production' ? 'text-blue-600' : 'text-gray-400'} />
+                      <span>제작 현황</span>
                     </button>
                   </div>
                 </>
@@ -1600,11 +1876,12 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                 </button>
                 <button
                   onClick={() => setMainMenu('documents')}
-                  className={`hidden lg:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'documents' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                  className={`hidden lg:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'documents' && documentTab !== 'modular-production' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
-                  <FileText size={16} className={`${mainMenu === 'documents' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <FileText size={16} className={`${mainMenu === 'documents' && documentTab !== 'modular-production' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>문서 관리</span>
                 </button>
+
                 <button
                   onClick={() => setMainMenu('drawings')}
                   className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'drawings' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
@@ -1648,12 +1925,14 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                   <span>공유</span>
                 </button>
                 <button
-                  onClick={() => setMainMenu('production')}
-                  className={`flex-shrink-0 flex items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'production' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                  onClick={() => {
+                    setMainMenu('modular-production');
+                  }}
+                  className={`flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${(mainMenu === 'documents' && documentTab === 'modular-production') || mainMenu === 'modular-production' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
-                  <Package size={16} className={`${mainMenu === 'production' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <Package size={16} className={`${(mainMenu === 'documents' && documentTab === 'modular-production') || mainMenu === 'modular-production' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span className="md:hidden">제작</span>
-                  <span className="hidden md:inline">제작현황</span>
+                  <span className="hidden md:inline">제작 관리</span>
                 </button>
                 <button
                   onClick={() => setMainMenu('ai-diagnosis')}
@@ -1726,16 +2005,23 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     <span>공사 일보</span>
                   </button>
                   <button
+                    onClick={() => setDocumentTab('material')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'material' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <span>제작 현황</span>
+                  </button>
+                  <button
+                    onClick={() => setDocumentTab('modular-production')}
+                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'modular-production' ? 'bg-blue-100 text-blue-800 font-bold' : 'text-gray-600 bg-gray-100'}`}
+                  >
+                    <span>제작 관리</span>
+                  </button>
+                  {/* 필요 시 복구를 위해 당분간 숨김 처리: 검측요청서, 타설계획서
+                  <button
                     onClick={() => setDocumentTab('inspection')}
                     className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'inspection' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
                   >
                     <span>검측요청서</span>
-                  </button>
-                  <button
-                    onClick={() => setDocumentTab('material')}
-                    className={`flex-shrink-0 flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-medium ${documentTab === 'material' ? 'bg-blue-100 text-blue-800' : 'text-gray-600 bg-gray-100'}`}
-                  >
-                    <span>제작/출고 현황</span>
                   </button>
                   <button
                     onClick={() => setDocumentTab('concrete')}
@@ -1743,6 +2029,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                   >
                     <span>타설계획서</span>
                   </button>
+                  */}
                 </div>
               )}
             </div>
@@ -1816,6 +2103,17 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     >
                       <Plus size={16} />
                       <span>신규 공정 등록</span>
+                    </button>
+                  )}
+                  {/* 실행공정 동기화 버튼 추가 */}
+                  {tabMode === 'gantt' && (
+                    <button
+                      onClick={() => setSyncConfirmModalOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-bold transition-all shadow-sm"
+                      title="최신 실행 공정표 데이터를 베이스라인 차수로 동기화합니다"
+                    >
+                      <RefreshCw size={14} />
+                      <span className="hidden sm:inline">실행공정 동기화</span>
                     </button>
                   )}
                   {(tabMode === 'gantt' || tabMode === 'comparison' || tabMode === 'baseline') && (
@@ -1991,7 +2289,23 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     </motion.div>
                   )}
 
-                  {mainMenu === 'documents' && documentTab !== 'daily-report' && documentTab !== 'material' && (
+                  {((mainMenu === 'documents' && documentTab === 'modular-production') || mainMenu === 'modular-production') && (
+                    <motion.div
+                      key="modular-production-view"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+                    >
+                      <ModularProductionView
+                        project={currentProject || null}
+                        settings={settings}
+                        currentUser={currentUser}
+                      />
+                    </motion.div>
+                  )}
+
+                  {mainMenu === 'documents' && documentTab !== 'daily-report' && documentTab !== 'material' && documentTab !== 'modular-production' && (
                     <motion.div
                       key={`doc-${documentTab}`}
                       initial={{ opacity: 0, scale: 0.98 }}
@@ -2022,6 +2336,8 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                         onDelete={handleDeleteSchedule}
                         settings={settings}
                         onReorder={handleReorderSchedules}
+                        autoScheduleLink={autoScheduleLink}
+                        onToggleAutoScheduleLink={handleToggleAutoScheduleLink}
                       />
                     </motion.div>
                   )}
@@ -2054,10 +2370,13 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                     >
                       <BaselineComparison
                         items={filteredSchedules}
+                        baselineRevisions={baselineRevisions}
                         baselineItems={filteredBaselineSchedules}
                         zoom={zoom}
                         categories={settings.categories}
                         settings={settings}
+                        onCreateInitialBaseline={() => handleCreateBaselineRevision({ round: 0, name: '최초 계획', source: schedules.length > 0 ? 'actual' : 'empty' })}
+                        onGoToBaselineTab={() => setTabMode('baseline')}
                       />
                     </motion.div>
                   )}
@@ -2071,6 +2390,12 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       className="h-full"
                     >
                       <BaselineGantt
+                        revisions={baselineRevisions}
+                        activeRevisionId={selectedBaselineRevisionId}
+                        onSelectRevision={handleSelectBaselineRevision}
+                        onCreateRevision={handleCreateBaselineRevision}
+                        onUpdateRevision={handleUpdateBaselineRevision}
+                        onDeleteRevision={handleDeleteBaselineRevision}
                         items={baselineSchedules}
                         onAdd={handleAddBaselineSchedule}
                         onUpdate={handleUpdateBaselineSchedule}
@@ -2078,6 +2403,7 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                         onReorder={handleReorderBaselineSchedules}
                         settings={settings}
                         zoom={zoom}
+                        actualItems={schedules}
                       />
                     </motion.div>
                   )}
@@ -2145,6 +2471,8 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
                       onReset={() => setSelectedItemId(null)}
                       selectedItem={selectedItem}
                       settings={settings}
+                      allSchedules={schedules}
+                      autoScheduleLinkDefault={autoScheduleLink}
                     />
                   </div>
                 </motion.div>
@@ -2179,6 +2507,20 @@ const handleUpdateBaselineSchedule = async (item: ScheduleItem) => {
         onClose={() => setIsDeleteModalOpen(false)}
         projects={projects}
         onDelete={handleDeleteProjects}
+      />
+
+      <ConfirmModal
+        isOpen={isSyncConfirmModalOpen}
+        onClose={() => setSyncConfirmModalOpen(false)}
+        onConfirm={() => {
+          handleSyncRevisionFromActual();
+          setSyncConfirmModalOpen(false);
+        }}
+        title="실행공정 동기화"
+        message="최신 실행 공정표 데이터를 베이스라인 차수로 동기화하시겠습니까?"
+        confirmText="동기화"
+        cancelText="취소"
+        type="info"
       />
 
       <ConfirmModal
