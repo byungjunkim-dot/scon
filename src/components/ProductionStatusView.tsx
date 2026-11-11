@@ -36,7 +36,9 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
-  Building
+  Building,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Project, AppSettings, User, ProductionPhoto, ProductionBreakdown, ProductionDayData, ProductionConfig, FactoryTarget } from '../types';
 import { compressImage } from '../utils/image';
@@ -50,7 +52,7 @@ interface ProductionStatusViewProps {
   currentUser: User | null;
 }
 
-// 초기 레코드 양식 생성
+// 초기 레코드 양식 생성 (프레임, 슬라브, 내외장, 완성품, 출고 + 레거시 철골, 단품)
 const createEmptyDayData = (projectId: string, dateStr: string): ProductionDayData => ({
   id: dateStr,
   projectId,
@@ -58,6 +60,8 @@ const createEmptyDayData = (projectId: string, dateStr: string): ProductionDayDa
   steel: 0,
   single: 0,
   moduleFrame: 0,
+  slab: 0,
+  interiorExterior: 0,
   finished: 0,
   shipped: 0,
   photos: [],
@@ -146,11 +150,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           const dayData = allDaysData[dayStr];
           const hasData = dayData && (
             (dayData.photos && dayData.photos.length > 0) ||
-            (dayData.steel || 0) > 0 ||
-            (dayData.single || 0) > 0 ||
             (dayData.moduleFrame || 0) > 0 ||
+            (dayData.slab || 0) > 0 ||
+            (dayData.interiorExterior || 0) > 0 ||
             (dayData.finished || 0) > 0 ||
-            (dayData.shipped || 0) > 0
+            (dayData.shipped || 0) > 0 ||
+            (dayData.steel || 0) > 0 ||
+            (dayData.single || 0) > 0
           );
 
           return (
@@ -185,7 +191,28 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     </div>
   );
   
-  // 계획 물량 관리 (전체/철골/단품/프레임/완성품/출고)
+  // 레거시 품목(철골, 단품) 숨김 처리 상태 (기본 숨김, 나중에 살릴 수 있음)
+  const [showLegacySteelSingle, setShowLegacySteelSingle] = useState<boolean>(() => {
+    return localStorage.getItem(`cp_show_legacy_steel_single_${projectId}`) === 'true';
+  });
+
+  const toggleLegacySteelSingle = () => {
+    setShowLegacySteelSingle(prev => {
+      const next = !prev;
+      localStorage.setItem(`cp_show_legacy_steel_single_${projectId}`, String(next));
+      return next;
+    });
+  };
+
+  // 현재 화면에 표시할 5대 활성 품목 (프레임/슬라브/내외장/완성품/출고) + 레거시 unhide 시 (철골/단품)
+  const displayedCategoryKeys = useMemo(() => {
+    if (showLegacySteelSingle) {
+      return ['steel', 'single', 'moduleFrame', 'slab', 'interiorExterior', 'finished', 'shipped'];
+    }
+    return ['moduleFrame', 'slab', 'interiorExterior', 'finished', 'shipped'];
+  }, [showLegacySteelSingle]);
+
+  // 계획 물량 관리 (전체/프레임/슬라브/내외장/완성품/출고 + 레거시 철골/단품 보존)
   const [plannedVolumes, setPlannedVolumes] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem(`cp_production_planned_v3_${projectId}`);
     if (saved) {
@@ -201,6 +228,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             steelTon,
             single: Number(parsed.single) || total,
             moduleFrame: Number(parsed.moduleFrame) || total,
+            slab: Number(parsed.slab) || total,
+            interiorExterior: Number(parsed.interiorExterior) || total,
             finished: Number(parsed.finished) || total,
             shipped: Number(parsed.shipped) || total,
           };
@@ -213,6 +242,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       steelTon: 1250,
       single: 5000,
       moduleFrame: 5000,
+      slab: 5000,
+      interiorExterior: 5000,
       finished: 5000,
       shipped: 5000,
     };
@@ -245,7 +276,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       }
     }
     
-    // 샘플/초기 데이터
+    // 샘플/초기 데이터 (프레임, 슬라브, 내외장, 완성품, 출고)
     const dateStr = new Date().toISOString().split('T')[0];
     const initialDay: ProductionDayData = {
       id: dateStr,
@@ -254,15 +285,17 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       steel: 45,
       single: 38,
       moduleFrame: 30,
+      slab: 28,
+      interiorExterior: 25,
       finished: 28,
       shipped: 24,
       photos: [],
       notes: JSON.stringify([
-        { category: '용접', content: '1차 조립 용접 검사 완료 및 결함부 수정 조치' },
-        { category: '출고', content: '완성 프레임 24EA 현장 반출 상차 완료' }
+        { category: '프레임', content: '1차 조립 용접 검사 완료 및 결함부 수정 조치' },
+        { category: '출고', content: '완성 모듈 24EA 현장 반출 상차 완료' }
       ]),
       breakdowns: [
-        { factory: '진천공장', floor: '-', steel: 45, single: 38, moduleFrame: 30, finished: 28, shipped: 24 }
+        { factory: '진천공장', floor: '-', steel: 45, single: 38, moduleFrame: 30, slab: 28, interiorExterior: 25, finished: 28, shipped: 24 }
       ]
     };
     return { [dateStr]: initialDay };
@@ -350,6 +383,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       steelTon: sumSteelTon,
       single: sumModules,
       moduleFrame: sumModules,
+      slab: sumModules,
+      interiorExterior: sumModules,
       finished: sumModules,
       shipped: sumModules,
     };
@@ -417,6 +452,28 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     loadSupabaseData();
     return () => { isMounted = false; };
   }, [project?.id]);
+
+  // 다른 화면(제작관리 등)에서 데이터가 변경되었을 때 실시간 동기화
+  useEffect(() => {
+    const handleSync = () => {
+      const saved = localStorage.getItem(`cp_production_data_${projectId}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setAllDaysData(parsed);
+        } catch (err) {
+          console.error('제작현황 데이터 동기화 파싱 오류:', err);
+        }
+      }
+    };
+
+    window.addEventListener('production_data_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('production_data_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [projectId]);
 
   // 공장 및 계획수량 설정을 Supabase에 보존
   const persistConfigToSupabase = async (
@@ -587,6 +644,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           steel: matchedRecords.reduce((s, b) => s + (Number(b.steel) || 0), 0),
           single: matchedRecords.reduce((s, b) => s + (Number(b.single) || 0), 0),
           moduleFrame: matchedRecords.reduce((s, b) => s + (Number(b.moduleFrame ?? (b as any).module_frame) || 0), 0),
+          slab: matchedRecords.reduce((s, b) => s + (Number(b.slab) || 0), 0),
+          interiorExterior: matchedRecords.reduce((s, b) => s + (Number(b.interiorExterior ?? (b as any).interior_exterior) || 0), 0),
           finished: matchedRecords.reduce((s, b) => s + (Number(b.finished) || 0), 0),
           shipped: matchedRecords.reduce((s, b) => s + (Number(b.shipped) || 0), 0),
         });
@@ -598,6 +657,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           steel: isFirst ? (Number(currentDayData.steel) || 0) : 0,
           single: isFirst ? (Number(currentDayData.single) || 0) : 0,
           moduleFrame: isFirst ? (Number(currentDayData.moduleFrame) || 0) : 0,
+          slab: isFirst ? (Number(currentDayData.slab) || 0) : 0,
+          interiorExterior: isFirst ? (Number(currentDayData.interiorExterior) || 0) : 0,
           finished: isFirst ? (Number(currentDayData.finished) || 0) : 0,
           shipped: isFirst ? (Number(currentDayData.shipped) || 0) : 0,
         });
@@ -622,15 +683,19 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     let sumSteel = 0;
     let sumSingle = 0;
     let sumModuleFrame = 0;
+    let sumSlab = 0;
+    let sumInteriorExterior = 0;
     let sumFinished = 0;
     let sumShipped = 0;
     
     updatedBreakdowns.forEach(b => {
-      sumSteel += b.steel;
-      sumSingle += b.single;
-      sumModuleFrame += b.moduleFrame;
-      sumFinished += b.finished;
-      sumShipped += b.shipped;
+      sumSteel += Number(b.steel) || 0;
+      sumSingle += Number(b.single) || 0;
+      sumModuleFrame += Number(b.moduleFrame) || 0;
+      sumSlab += Number(b.slab) || 0;
+      sumInteriorExterior += Number(b.interiorExterior) || 0;
+      sumFinished += Number(b.finished) || 0;
+      sumShipped += Number(b.shipped) || 0;
     });
     
     setCurrentDayData(prev => ({
@@ -638,6 +703,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       steel: sumSteel,
       single: sumSingle,
       moduleFrame: sumModuleFrame,
+      slab: sumSlab,
+      interiorExterior: sumInteriorExterior,
       finished: sumFinished,
       shipped: sumShipped,
       breakdowns: updatedBreakdowns
@@ -704,6 +771,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       case 'steel': return '철골';
       case 'single': return '단품';
       case 'moduleFrame': return '프레임';
+      case 'slab': return '슬라브';
+      case 'interiorExterior': return '내외장';
       case 'finished': return '완성품';
       case 'shipped': return '출고';
       default: return key;
@@ -715,6 +784,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     let steelCum = 0;
     let singleCum = 0;
     let moduleFrameCum = 0;
+    let slabCum = 0;
+    let interiorExteriorCum = 0;
     let finishedCum = 0;
     let shippedCum = 0;
 
@@ -724,24 +795,28 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         steelCum += Number(day.steel) || 0;
         singleCum += Number(day.single) || 0;
         moduleFrameCum += Number(day.moduleFrame) || 0;
+        slabCum += Number(day.slab) || 0;
+        interiorExteriorCum += Number(day.interiorExterior) || 0;
         finishedCum += Number(day.finished) || 0;
         shippedCum += Number(day.shipped) || 0;
       }
     });
 
-    const totalCum = steelCum + singleCum + moduleFrameCum + finishedCum + shippedCum;
+    const totalCum = moduleFrameCum + slabCum + interiorExteriorCum + finishedCum + shippedCum;
 
     const steelPlan = (plannedVolumes.steelTon && plannedVolumes.steelTon > 0)
       ? plannedVolumes.steelTon
       : (plannedVolumes.steel || 0);
 
     const rates = {
-      total: plannedVolumes.total > 0 ? (totalCum / plannedVolumes.total) * 100 : 0,
+      total: plannedVolumes.total > 0 ? (totalCum / (plannedVolumes.total * 5)) * 100 : 0,
       steel: steelPlan > 0 ? (steelCum / steelPlan) * 100 : 0,
       single: plannedVolumes.single > 0 ? (singleCum / plannedVolumes.single) * 100 : 0,
       moduleFrame: plannedVolumes.moduleFrame > 0 ? (moduleFrameCum / plannedVolumes.moduleFrame) * 100 : 0,
-      finished: plannedVolumes.finished > 0 ? (finishedCum / plannedVolumes.finished) * 100 : 0,
-      shipped: plannedVolumes.shipped > 0 ? (shippedCum / plannedVolumes.shipped) * 100 : 0,
+      slab: (plannedVolumes.slab || plannedVolumes.total) > 0 ? (slabCum / (plannedVolumes.slab || plannedVolumes.total)) * 100 : 0,
+      interiorExterior: (plannedVolumes.interiorExterior || plannedVolumes.total) > 0 ? (interiorExteriorCum / (plannedVolumes.interiorExterior || plannedVolumes.total)) * 100 : 0,
+      finished: (plannedVolumes.finished || plannedVolumes.total) > 0 ? (finishedCum / (plannedVolumes.finished || plannedVolumes.total)) * 100 : 0,
+      shipped: (plannedVolumes.shipped || plannedVolumes.total) > 0 ? (shippedCum / (plannedVolumes.shipped || plannedVolumes.total)) * 100 : 0,
     };
 
     return {
@@ -749,6 +824,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       steel: steelCum,
       single: singleCum,
       moduleFrame: moduleFrameCum,
+      slab: slabCum,
+      interiorExterior: interiorExteriorCum,
       finished: finishedCum,
       shipped: shippedCum,
       rates: {
@@ -756,6 +833,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
         steel: Math.min(100, Math.round(rates.steel * 10) / 10),
         single: Math.min(100, Math.round(rates.single * 10) / 10),
         moduleFrame: Math.min(100, Math.round(rates.moduleFrame * 10) / 10),
+        slab: Math.min(100, Math.round(rates.slab * 10) / 10),
+        interiorExterior: Math.min(100, Math.round(rates.interiorExterior * 10) / 10),
         finished: Math.min(100, Math.round(rates.finished * 10) / 10),
         shipped: Math.min(100, Math.round(rates.shipped * 10) / 10),
       }
@@ -847,6 +926,9 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
     };
     setAllDaysData(updatedAll);
     localStorage.setItem(`cp_production_data_${projectId}`, JSON.stringify(updatedAll));
+    window.dispatchEvent(new CustomEvent('production_data_updated', {
+      detail: { projectId, date: selectedDate, dayData: currentDayData }
+    }));
 
     if (project?.id) {
       try {
@@ -940,6 +1022,8 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
           steelTon: plannedVolumes.steelTon || 0,
           single: plannedVolumes.single || 0,
           moduleFrame: plannedVolumes.moduleFrame || 0,
+          slab: plannedVolumes.slab || plannedVolumes.total || 0,
+          interiorExterior: plannedVolumes.interiorExterior || plannedVolumes.total || 0,
           finished: plannedVolumes.finished || 0,
           shipped: plannedVolumes.shipped || 0,
         },
@@ -961,14 +1045,14 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
   // 모바일 활성 공장 선택
   const activeMobileLocation = useMemo(() => {
     if (currentBreakdowns.length === 0) {
-      return { factory: '진천공장', floor: '-', steel: 0, single: 0, moduleFrame: 0, finished: 0, shipped: 0 };
+      return { factory: '진천공장', floor: '-', steel: 0, single: 0, moduleFrame: 0, slab: 0, interiorExterior: 0, finished: 0, shipped: 0 };
     }
     const safeIdx = Math.min(Math.max(0, selectedMobileLocationIdx), currentBreakdowns.length - 1);
     return currentBreakdowns[safeIdx];
   }, [currentBreakdowns, selectedMobileLocationIdx]);
 
   // 카테고리 프리셋 리스트 for 특기사항
-  const NOTE_CATEGORIES = ['기타', '절단', '용접', '도장', '누락', '자재', '출고', '포장', '보양', '위치', '고정', '부착', '치수'];
+  const NOTE_CATEGORIES = ['기타', '프레임', '슬라브', '내외장', '절단', '용접', '도장', '누락', '자재', '출고', '포장', '보양', '위치', '고정', '부착', '치수'];
 
   return (
     <div className="flex flex-col h-full bg-slate-50/50">
@@ -1001,39 +1085,58 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
       {/* ========================================================================= */}
       <div className="block md:hidden flex-1 overflow-y-auto pb-24 p-2 space-y-2">
         
-        {/* [모바일 통합 카드] 전체 현황 요약 (철골/단품/프레임/완성품/출고 누계 및 진행률) */}
+        {/* [모바일 통합 카드] 전체 현황 요약 (프레임/슬라브/내외장/완성품/출고 누계 및 진행률) */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs">
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-sm font-black text-slate-900">전체 현황</h2>
-            <div className="text-right">
-              <span className="text-[11px] text-slate-500 font-medium">
-                총 {(plannedVolumes.total || 0).toLocaleString()}개 · 철골 {(plannedVolumes.steelTon || 0).toLocaleString()}Ton
-              </span>
-              {(unallocatedTarget.plannedModules > 0 || unallocatedTarget.steelTon > 0) && (
-                <span className="block text-[9px] text-amber-600 font-bold">
-                  (미발주 {unallocatedTarget.plannedModules.toLocaleString()}개 / {unallocatedTarget.steelTon.toLocaleString()}Ton 포함)
-                </span>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-black text-slate-900">전체 현황</h2>
+              {hasAdminOrGoldAccess && (
+                <button
+                  onClick={toggleLegacySteelSingle}
+                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition-colors cursor-pointer ${
+                    showLegacySteelSingle
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                  title={showLegacySteelSingle ? "기존 품목(철골/단품) 숨기기" : "기존 품목(철골/단품) 표시하기"}
+                >
+                  {showLegacySteelSingle ? '구항목 표시 중' : '구항목 숨김'}
+                </button>
               )}
             </div>
+            <div className="text-right">
+              <span className="text-[11px] text-slate-700 font-bold">
+                전체 계획물량 : {(plannedVolumes.total || 0).toLocaleString()}개
+              </span>
+            </div>
           </div>
-          <div className="grid grid-cols-5 gap-1.5 text-center">
-            {['steel', 'single', 'moduleFrame', 'finished', 'shipped'].map((key) => {
+          <div className={`grid ${showLegacySteelSingle ? 'grid-cols-7' : 'grid-cols-5'} gap-1.5 text-center`}>
+            {displayedCategoryKeys.map((key) => {
               const isSteel = key === 'steel';
               const label = isSteel ? '철골(Ton)' : getCategoryLabel(key);
               const totalVolume = isSteel 
                 ? (plannedVolumes.steelTon || 0) 
-                : (plannedVolumes[key as keyof typeof plannedVolumes] || 0);
-              const cumulative = (cumulativeStats[key as 'steel' | 'single' | 'moduleFrame' | 'finished' | 'shipped'] as number) || 0;
+                : (plannedVolumes[key as keyof typeof plannedVolumes] || plannedVolumes.total || 0);
+              const cumulative = (cumulativeStats[key as 'steel' | 'single' | 'moduleFrame' | 'slab' | 'interiorExterior' | 'finished' | 'shipped'] as number) || 0;
               const percent = cumulativeStats.rates[key as keyof typeof cumulativeStats.rates] || (totalVolume > 0 ? Math.round((cumulative / totalVolume) * 100) : 0);
               
+              let colorClass = 'text-slate-900';
+              if (key === 'moduleFrame') colorClass = 'text-sky-700';
+              else if (key === 'slab') colorClass = 'text-indigo-700';
+              else if (key === 'interiorExterior') colorClass = 'text-purple-700';
+              else if (key === 'finished') colorClass = 'text-teal-700';
+              else if (key === 'shipped') colorClass = 'text-amber-700';
+              else if (key === 'steel') colorClass = 'text-slate-600';
+              else if (key === 'single') colorClass = 'text-zinc-600';
+
               return (
                 <div key={key} className="flex flex-col items-center">
-                  <p className="text-xs text-slate-500 mb-1">{label}</p>
-                  <p className={`text-xs font-black leading-none ${isSteel ? 'text-indigo-700' : 'text-slate-900'}`}>
+                  <p className="text-[11px] text-slate-500 mb-1 font-semibold truncate w-full">{label}</p>
+                  <p className={`text-xs font-black leading-none ${colorClass}`}>
                     {cumulative.toLocaleString()}
                     {isSteel && <span className="text-[9px] font-normal text-slate-400 ml-0.5">Ton</span>}
                   </p>
-                  <p className="text-xs text-slate-400 mt-1">{percent}%</p>
+                  <p className="text-[10px] text-slate-400 mt-1">{percent}%</p>
                 </div>
               );
             })}
@@ -1065,7 +1168,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </div>
           </div>
 
-          {/* 날짜 선택 버튼 그룹 (바탕색 제거 및 깔끔한 배치) */}
+          {/* 날짜 선택 버튼 그룹 */}
           <div className="flex items-center justify-between py-1">
             <button 
               onClick={() => handleMoveDate(-1)}
@@ -1094,36 +1197,52 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </button>
           </div>
 
-          {/* 통합된 5대 공정 합계 (바탕색 없이 심플하고 정돈된 그리드) */}
-          <div className="grid grid-cols-5 pt-2.5 mt-1.5 text-center">
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-bold text-indigo-700">철골</span>
-              <span className="text-xs font-black text-indigo-700 mt-0.5">
-                {(currentDayData.steel || 0).toLocaleString()}
-                <span className="text-[9px] font-normal text-slate-400 ml-0.5">Ton</span>
-              </span>
-            </div>
-            <div className="flex flex-col items-center border-l border-slate-100">
-              <span className="text-xs text-slate-500">단품</span>
-              <span className="text-xs font-black text-slate-900 mt-0.5">
-                {(currentDayData.single || 0).toLocaleString()}
-              </span>
-            </div>
-            <div className="flex flex-col items-center border-l border-slate-100">
-              <span className="text-xs text-slate-500">프레임</span>
-              <span className="text-xs font-black text-slate-900 mt-0.5">
+          {/* 통합된 5대 공정 합계 (프레임 / 슬라브 / 내외장 / 완성품 / 출고) */}
+          <div className={`grid ${showLegacySteelSingle ? 'grid-cols-7' : 'grid-cols-5'} pt-2.5 mt-1.5 text-center`}>
+            {showLegacySteelSingle && (
+              <>
+                <div className="flex flex-col items-center">
+                  <span className="text-xs font-bold text-slate-500">철골</span>
+                  <span className="text-xs font-black text-slate-700 mt-0.5">
+                    {(currentDayData.steel || 0).toLocaleString()}
+                    <span className="text-[9px] font-normal text-slate-400 ml-0.5">T</span>
+                  </span>
+                </div>
+                <div className="flex flex-col items-center border-l border-slate-100">
+                  <span className="text-xs font-bold text-zinc-500">단품</span>
+                  <span className="text-xs font-black text-zinc-700 mt-0.5">
+                    {(currentDayData.single || 0).toLocaleString()}
+                  </span>
+                </div>
+              </>
+            )}
+            <div className={`flex flex-col items-center ${showLegacySteelSingle ? 'border-l border-slate-100' : ''}`}>
+              <span className="text-xs font-bold text-sky-600">프레임</span>
+              <span className="text-xs font-black text-sky-700 mt-0.5">
                 {(currentDayData.moduleFrame || 0).toLocaleString()}
               </span>
             </div>
             <div className="flex flex-col items-center border-l border-slate-100">
-              <span className="text-xs text-slate-500">완성품</span>
-              <span className="text-xs font-black text-slate-900 mt-0.5">
+              <span className="text-xs font-bold text-indigo-600">슬라브</span>
+              <span className="text-xs font-black text-indigo-700 mt-0.5">
+                {(currentDayData.slab || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex flex-col items-center border-l border-slate-100">
+              <span className="text-xs font-bold text-purple-600">내외장</span>
+              <span className="text-xs font-black text-purple-700 mt-0.5">
+                {(currentDayData.interiorExterior || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex flex-col items-center border-l border-slate-100">
+              <span className="text-xs font-bold text-teal-600">완성품</span>
+              <span className="text-xs font-black text-teal-700 mt-0.5">
                 {(currentDayData.finished || 0).toLocaleString()}
               </span>
             </div>
             <div className="flex flex-col items-center border-l border-slate-100">
-              <span className="text-xs text-slate-500">출고</span>
-              <span className="text-xs font-black text-blue-600 mt-0.5">
+              <span className="text-xs font-bold text-amber-600">출고</span>
+              <span className="text-xs font-black text-amber-700 mt-0.5">
                 {(currentDayData.shipped || 0).toLocaleString()}
               </span>
             </div>
@@ -1169,6 +1288,28 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                     <p className="text-[10px] text-slate-500 mt-0.5">
                       공장별 철골(Ton)과 계획 모듈 개수를 입력하면 상단 전체 현황에 자동 합산됩니다.
                     </p>
+                  </div>
+
+                  {/* 레거시 철골/단품 숨김/해제 토글 스위치 */}
+                  <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {showLegacySteelSingle ? <Eye size={15} className="text-indigo-600" /> : <EyeOff size={15} className="text-slate-400" />}
+                      <div>
+                        <span className="text-[11px] font-bold text-slate-800">철골/단품 레거시 항목</span>
+                        <p className="text-[9px] text-slate-400">데이터는 보존되며 필요 시 화면에 표시</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleLegacySteelSingle}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-md transition-colors ${
+                        showLegacySteelSingle
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {showLegacySteelSingle ? '표시중' : '숨김상태'}
+                    </button>
                   </div>
 
                   {/* 신규 공장 추가 */}
@@ -1317,7 +1458,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             <div className="flex gap-2 overflow-x-auto no-scrollbar py-0.5">
               {currentBreakdowns.map((b, idx) => {
                 const isSelected = idx === selectedMobileLocationIdx;
-                const totalSum = (b.steel || 0) + (b.single || 0) + (b.moduleFrame || 0) + (b.finished || 0) + (b.shipped || 0);
+                const totalSum = (b.moduleFrame || 0) + (b.slab || 0) + (b.interiorExterior || 0) + (b.finished || 0) + (b.shipped || 0);
                 return (
                   <button
                     key={b.factory}
@@ -1342,40 +1483,40 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </div>
           </div>
 
-          {/* 공장별 수량 입력 영역 (가로 5개 컬럼 한 행 배치) */}
+          {/* 공장별 수량 입력 영역 (프레임, 슬라브, 내외장, 완성품, 출고 5개 컬럼 + 레거시 토글 시 철골/단품) */}
           <div className="pt-0.5">
-            <div className="grid grid-cols-5 gap-1">
-              {/* 1. 철골 */}
-              <div className="flex flex-col items-center">
-                <label className="text-xs font-bold text-indigo-700 mb-1">철골(Ton)</label>
-                <input
-                  type="number"
-                  step="any"
-                  inputMode="decimal"
-                  value={activeMobileLocation.steel === 0 ? '' : activeMobileLocation.steel}
-                  onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'steel', e.target.value)}
-                  placeholder="0.0"
-                  className="w-full text-center text-sm font-black text-indigo-900 bg-indigo-50/40 border border-indigo-100/60 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all"
-                />
-              </div>
+            <div className={`grid ${showLegacySteelSingle ? 'grid-cols-7' : 'grid-cols-5'} gap-1`}>
+              {showLegacySteelSingle && (
+                <>
+                  <div className="flex flex-col items-center">
+                    <label className="text-[11px] font-bold text-slate-500 mb-1">철골(T)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      value={activeMobileLocation.steel === 0 ? '' : activeMobileLocation.steel}
+                      onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'steel', e.target.value)}
+                      placeholder="0.0"
+                      className="w-full text-center text-xs font-black text-slate-800 bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-0.5 focus:bg-white focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <label className="text-[11px] font-bold text-zinc-500 mb-1">단품</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={activeMobileLocation.single === 0 ? '' : activeMobileLocation.single}
+                      onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'single', e.target.value)}
+                      placeholder="0"
+                      className="w-full text-center text-xs font-black text-zinc-800 bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-0.5 focus:bg-white focus:outline-none"
+                    />
+                  </div>
+                </>
+              )}
 
-              {/* 2. 단품 */}
+              {/* 1. 프레임 */}
               <div className="flex flex-col items-center">
-                <label className="text-xs text-slate-600 mb-1">단품</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={activeMobileLocation.single === 0 ? '' : activeMobileLocation.single}
-                  onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'single', e.target.value)}
-                  placeholder="0"
-                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
-                />
-              </div>
-
-              {/* 3. 프레임 */}
-              <div className="flex flex-col items-center">
-                <label className="text-xs text-slate-600 mb-1">프레임</label>
+                <label className="text-xs font-bold text-sky-700 mb-1">프레임</label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -1383,13 +1524,41 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   value={activeMobileLocation.moduleFrame === 0 ? '' : activeMobileLocation.moduleFrame}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'moduleFrame', e.target.value)}
                   placeholder="0"
-                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  className="w-full text-center text-sm font-black text-sky-900 bg-sky-50/50 border border-sky-100 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-sky-500 focus:ring-2 focus:ring-sky-100 focus:outline-none transition-all"
+                />
+              </div>
+
+              {/* 2. 슬라브 */}
+              <div className="flex flex-col items-center">
+                <label className="text-xs font-bold text-indigo-700 mb-1">슬라브</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={(activeMobileLocation.slab === undefined || activeMobileLocation.slab === 0) ? '' : activeMobileLocation.slab}
+                  onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'slab', e.target.value)}
+                  placeholder="0"
+                  className="w-full text-center text-sm font-black text-indigo-900 bg-indigo-50/50 border border-indigo-100 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all"
+                />
+              </div>
+
+              {/* 3. 내외장 */}
+              <div className="flex flex-col items-center">
+                <label className="text-xs font-bold text-purple-700 mb-1">내외장</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={(activeMobileLocation.interiorExterior === undefined || activeMobileLocation.interiorExterior === 0) ? '' : activeMobileLocation.interiorExterior}
+                  onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'interiorExterior', e.target.value)}
+                  placeholder="0"
+                  className="w-full text-center text-sm font-black text-purple-900 bg-purple-50/50 border border-purple-100 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-100 focus:outline-none transition-all"
                 />
               </div>
 
               {/* 4. 완성품 */}
               <div className="flex flex-col items-center">
-                <label className="text-xs text-slate-600 mb-1">완성품</label>
+                <label className="text-xs font-bold text-teal-700 mb-1">완성품</label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -1397,13 +1566,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   value={activeMobileLocation.finished === 0 ? '' : activeMobileLocation.finished}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'finished', e.target.value)}
                   placeholder="0"
-                  className="w-full text-center text-sm font-black text-slate-900 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  className="w-full text-center text-sm font-black text-teal-900 bg-teal-50/50 border border-teal-100 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 focus:outline-none transition-all"
                 />
               </div>
 
               {/* 5. 출고 */}
               <div className="flex flex-col items-center">
-                <label className="text-xs text-slate-600 mb-1">출고</label>
+                <label className="text-xs font-bold text-amber-700 mb-1">출고</label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -1411,7 +1580,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   value={activeMobileLocation.shipped === 0 ? '' : activeMobileLocation.shipped}
                   onChange={(e) => updateBreakdownValue(activeMobileLocation.factory, activeMobileLocation.floor, 'shipped', e.target.value)}
                   placeholder="0"
-                  className="w-full text-center text-sm font-black text-blue-600 bg-slate-50 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all"
+                  className="w-full text-center text-sm font-black text-amber-900 bg-amber-50/50 border border-amber-100 rounded-lg py-1.5 px-0.5 focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-100 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -1426,16 +1595,16 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </h3>
             <button
               onClick={handleAddStructuredNote}
-              className="flex items-center gap-1 px-2.5 py-1 text-blue-600 bg-blue-50 hover:bg-blue-100 text-[11px] font-bold rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 text-blue-600 text-[11px] font-medium transition-colors cursor-pointer"
             >
               <Plus size={12} />
               <span>항목 추가</span>
             </button>
           </div>
 
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-2">
             {structuredNotes.map((note, index) => (
-              <div key={index} className="p-2.5 border border-slate-100 bg-slate-50/50 rounded-xl space-y-2">
+              <div key={index} className="p-0 border-0 bg-transparent space-y-1.5">
                 {/* 윗줄: 카테고리 선택 풀다운 메뉴 및 삭제 버튼 */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -1460,8 +1629,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                   </button>
                 </div>
 
-                {/* 아랫줄: 내용 입력 영역 (내용 길이에 따라 2~3줄 이상 자동 확장) */}
-                <div>
+                <div className="relative group">
                   <textarea
                     rows={1}
                     value={note.content}
@@ -1481,7 +1649,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                       }
                     }}
                     placeholder="특기사항 내용을 입력해 주세요."
-                    className="w-full resize-none min-h-[34px] max-h-36 overflow-y-auto text-xs text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none leading-relaxed"
+                    className="w-full resize-none min-h-[44px] max-h-48 overflow-y-auto text-xs text-slate-800 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none leading-relaxed transition-all"
                   />
                 </div>
               </div>
@@ -1495,7 +1663,7 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             <h3 className="text-sm font-black text-slate-800">
               현황 사진 ({currentDayData.photos.length}장)
             </h3>
-            <label className="flex items-center gap-1 px-2.5 py-1 text-blue-600 bg-blue-50 hover:bg-blue-100 text-[11px] font-bold rounded-lg transition-colors cursor-pointer">
+            <label className="flex items-center gap-1 px-2.5 py-1 text-blue-600 text-[11px] font-medium transition-colors cursor-pointer">
               <Plus size={12} />
               <span>사진 추가</span>
               <input
@@ -1517,10 +1685,10 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
 
           {/* 사진 썸네일 그리드 */}
           {currentDayData.photos.length > 0 ? (
-            <div className="grid grid-cols-2 gap-2.5 pt-1">
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
               {currentDayData.photos.map((photo) => (
-                <div key={photo.id} className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-2xs flex flex-col">
-                  <div className="relative aspect-video bg-slate-900 overflow-hidden cursor-zoom-in" onClick={() => setPreviewPhoto(photo)}>
+                <div key={photo.id} className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col h-[130px]">
+                  <div className="relative h-[95px] bg-slate-900 overflow-hidden cursor-zoom-in" onClick={() => setPreviewPhoto(photo)}>
                     <img 
                       src={photo.url} 
                       alt={photo.title}
@@ -1537,13 +1705,13 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                       <Trash2 size={11} />
                     </button>
                   </div>
-                  <div className="p-1.5 bg-white">
+                  <div className="flex-1 p-1 bg-white flex items-center">
                     <input
                       type="text"
                       value={photo.title}
                       onChange={(e) => handlePhotoTitleChange(photo.id, e.target.value)}
-                      placeholder="사진 설명 입력"
-                      className="w-full text-[11px] font-bold text-slate-800 border-0 border-b border-slate-100 hover:border-slate-300 focus:border-blue-500 px-1 py-0.5 focus:ring-0 focus:outline-none"
+                      placeholder="사진 설명"
+                      className="w-full text-[10px] font-medium text-slate-800 border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-500 px-1 py-0.5 focus:ring-0 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -1585,22 +1753,25 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             
             {/* 전체 계획물량 요약 및 엑셀 내보내기 그룹 */}
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2.5 text-xs bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/70">
-                <span className="text-slate-600 font-semibold">전체 계획물량:</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-slate-900">{(plannedVolumes.total || 0).toLocaleString()}개</span>
-                  <span className="text-slate-300">|</span>
-                  <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100/80">
-                    철골 {(plannedVolumes.steelTon || 0).toLocaleString()}Ton
-                  </span>
-                  {(unallocatedTarget.plannedModules > 0 || unallocatedTarget.steelTon > 0) ? (
-                    <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                      (미발주 {unallocatedTarget.plannedModules.toLocaleString()}개 / {unallocatedTarget.steelTon.toLocaleString()}Ton )
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-slate-400 font-medium">(공장별 합산)</span>
-                  )}
-                </div>
+              {/* 이전 품목(철골/단품) 숨김/표시 전환 토글 버튼 (골드등급 이상 전용) */}
+              {hasAdminOrGoldAccess && (
+                <button
+                  onClick={toggleLegacySteelSingle}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                    showLegacySteelSingle
+                      ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                  title={showLegacySteelSingle ? "기존 품목(철골/단품) 숨기기" : "기존 품목(철골/단품) 표시하기"}
+                >
+                  {showLegacySteelSingle ? <Eye size={13} className="text-amber-600" /> : <EyeOff size={13} className="text-slate-400" />}
+                  <span>{showLegacySteelSingle ? '구 항목(철골/단품) 표시 중' : '구 항목(철골/단품) 숨김'}</span>
+                </button>
+              )}
+
+              <div className="flex items-center gap-1.5 text-xs bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/70">
+                <span className="text-slate-600 font-semibold">전체 계획물량 :</span>
+                <span className="font-extrabold text-slate-900">{(plannedVolumes.total || 0).toLocaleString()}개</span>
               </div>
 
               {/* 엑셀 내보내기 버튼 */}
@@ -1616,9 +1787,9 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </div>
           </div>
 
-          {/* 5분할 격자 레이아웃 (철골 / 단품 / 프레임 / 완성품 / 출고) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
-            {['steel', 'single', 'moduleFrame', 'finished', 'shipped'].map((key) => {
+          {/* 격자 레이아웃: 기본 5품목(프레임/슬라브/내외장/완성품/출고), 구 항목 활성화 시 7품목 */}
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${showLegacySteelSingle ? 'md:grid-cols-7' : 'md:grid-cols-5'} gap-3 md:gap-4`}>
+            {displayedCategoryKeys.map((key) => {
               const isSteel = key === 'steel';
               const label = isSteel ? '철골 (Ton)' : getCategoryLabel(key);
               const totalVolume = isSteel 
@@ -1635,16 +1806,16 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
               let IconComponent = Package;
               
               if (key === 'steel') {
-                bgClass = 'bg-indigo-50/40 border-indigo-100/70';
-                textClass = 'text-indigo-600';
-                barColor = 'bg-indigo-500';
-                barBg = 'bg-indigo-100';
+                bgClass = 'bg-slate-100/70 border-slate-200/80';
+                textClass = 'text-slate-700';
+                barColor = 'bg-slate-500';
+                barBg = 'bg-slate-200';
                 IconComponent = Layers;
               } else if (key === 'single') {
-                bgClass = 'bg-emerald-50/40 border-emerald-100/70';
-                textClass = 'text-emerald-600';
-                barColor = 'bg-emerald-500';
-                barBg = 'bg-emerald-100';
+                bgClass = 'bg-zinc-100/70 border-zinc-200/80';
+                textClass = 'text-zinc-700';
+                barColor = 'bg-zinc-500';
+                barBg = 'bg-zinc-200';
                 IconComponent = FileText;
               } else if (key === 'moduleFrame') {
                 bgClass = 'bg-sky-50/40 border-sky-100/70';
@@ -1652,6 +1823,18 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                 barColor = 'bg-sky-500';
                 barBg = 'bg-sky-100';
                 IconComponent = Package;
+              } else if (key === 'slab') {
+                bgClass = 'bg-indigo-50/40 border-indigo-100/70';
+                textClass = 'text-indigo-600';
+                barColor = 'bg-indigo-500';
+                barBg = 'bg-indigo-100';
+                IconComponent = Layers;
+              } else if (key === 'interiorExterior') {
+                bgClass = 'bg-purple-50/40 border-purple-100/70';
+                textClass = 'text-purple-600';
+                barColor = 'bg-purple-500';
+                barBg = 'bg-purple-100';
+                IconComponent = SlidersHorizontal;
               } else if (key === 'finished') {
                 bgClass = 'bg-teal-50/40 border-teal-100/70';
                 textClass = 'text-teal-600';
@@ -1765,27 +1948,45 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
             </button>
           </div>
 
-          {/* 전체 합계 현황 요약 보드 */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
-            <div className="bg-indigo-50/30 rounded-lg p-2.5 text-center border border-indigo-100/50">
-              <span className="text-[12px] font-bold text-indigo-600 block mb-0.5">철골 (Ton)</span>
-              <span className="text-sm font-extrabold text-indigo-700 block">
-                {(currentDayData.steel || 0).toLocaleString()}
-                <span className="text-[10px] font-normal text-slate-400 ml-0.5">Ton</span>
-              </span>
-            </div>
-            <div className="bg-emerald-50/30 rounded-lg p-2.5 text-center border border-emerald-100/50">
-              <span className="text-[12px] font-bold text-emerald-500 block mb-0.5">단품</span>
-              <span className="text-sm font-extrabold text-emerald-700 block">
-                {(currentDayData.single || 0).toLocaleString()}
-                <span className="text-[9px] font-normal text-slate-400 ml-0.5">개</span>
-              </span>
-            </div>
+          {/* 전체 합계 현황 요약 보드: 프레임/슬라브/내외장/완성품/출고 (구 항목 활성화 시 철골/단품 포함) */}
+          <div className={`grid grid-cols-2 ${showLegacySteelSingle ? 'sm:grid-cols-7' : 'sm:grid-cols-5'} gap-3 mb-6`}>
+            {showLegacySteelSingle && (
+              <>
+                <div className="bg-slate-100/60 rounded-lg p-2.5 text-center border border-slate-200/70">
+                  <span className="text-[12px] font-bold text-slate-700 block mb-0.5">철골 (Ton)</span>
+                  <span className="text-sm font-extrabold text-slate-800 block">
+                    {(currentDayData.steel || 0).toLocaleString()}
+                    <span className="text-[10px] font-normal text-slate-500 ml-0.5">Ton</span>
+                  </span>
+                </div>
+                <div className="bg-zinc-100/60 rounded-lg p-2.5 text-center border border-zinc-200/70">
+                  <span className="text-[12px] font-bold text-zinc-700 block mb-0.5">단품</span>
+                  <span className="text-sm font-extrabold text-zinc-800 block">
+                    {(currentDayData.single || 0).toLocaleString()}
+                    <span className="text-[9px] font-normal text-zinc-500 ml-0.5">개</span>
+                  </span>
+                </div>
+              </>
+            )}
             <div className="bg-sky-50/30 rounded-lg p-2.5 text-center border border-sky-100/50">
-              <span className="text-[12px] font-bold text-sky-500 block mb-0.5">프레임</span>
+              <span className="text-[12px] font-bold text-sky-600 block mb-0.5">프레임</span>
               <span className="text-sm font-extrabold text-sky-700 block">
                 {(currentDayData.moduleFrame || 0).toLocaleString()}
-                <span className="text-[9px] font-normal text-slate-400 ml-0.5">개</span>
+                <span className="text-[9px] font-normal text-sky-500 ml-0.5">개</span>
+              </span>
+            </div>
+            <div className="bg-indigo-50/30 rounded-lg p-2.5 text-center border border-indigo-100/50">
+              <span className="text-[12px] font-bold text-indigo-600 block mb-0.5">슬라브</span>
+              <span className="text-sm font-extrabold text-indigo-700 block">
+                {(currentDayData.slab || 0).toLocaleString()}
+                <span className="text-[9px] font-normal text-indigo-500 ml-0.5">개</span>
+              </span>
+            </div>
+            <div className="bg-purple-50/30 rounded-lg p-2.5 text-center border border-purple-100/50">
+              <span className="text-[12px] font-bold text-purple-600 block mb-0.5">내외장</span>
+              <span className="text-sm font-extrabold text-purple-700 block">
+                {(currentDayData.interiorExterior || 0).toLocaleString()}
+                <span className="text-[9px] font-normal text-purple-500 ml-0.5">개</span>
               </span>
             </div>
             <div className="bg-teal-50/30 rounded-lg p-2.5 text-center border border-teal-100/50">
@@ -1861,6 +2062,31 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                         )}
                       </span>
                     </div>
+                  </div>
+
+                  {/* 이전 품목 (철골/단품) 보이기/숨기기 관리 설정 */}
+                  <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Layers size={13} className="text-slate-500" />
+                        <span>이전 공정 품목 (철골/단품) 표시 설정</span>
+                      </span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        신규 5개 품목(프레임/슬라브/내외장/완성품/출고) 외에 기존에 입력된 철골 및 단품 데이터를 확인하거나 추가 입력할 때 활성화할 수 있습니다.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleLegacySteelSingle}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                        showLegacySteelSingle
+                          ? 'bg-amber-50 text-amber-800 border-amber-300 shadow-2xs'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {showLegacySteelSingle ? <Eye size={13} className="text-amber-600" /> : <EyeOff size={13} className="text-slate-400" />}
+                      <span>{showLegacySteelSingle ? '철골/단품 표시 중' : '철골/단품 숨김 상태'}</span>
+                    </button>
                   </div>
 
                   {/* 신규 공장 추가 폼 */}
@@ -2057,9 +2283,15 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                 <thead className="text-[11px] uppercase text-gray-700 bg-slate-100 border-b border-slate-200">
                   <tr>
                     <th scope="col" className="px-3 py-2.5 font-bold text-gray-700 w-28 text-center">공장</th>
-                    <th scope="col" className="px-3 py-2.5 font-bold text-indigo-700 text-right">철골 (Ton)</th>
-                    <th scope="col" className="px-3 py-2.5 font-bold text-emerald-700 text-right">단품</th>
+                    {showLegacySteelSingle && (
+                      <>
+                        <th scope="col" className="px-3 py-2.5 font-bold text-slate-700 text-right bg-slate-200/50">철골 (Ton)</th>
+                        <th scope="col" className="px-3 py-2.5 font-bold text-zinc-700 text-right bg-zinc-200/50">단품</th>
+                      </>
+                    )}
                     <th scope="col" className="px-3 py-2.5 font-bold text-sky-700 text-right">프레임</th>
+                    <th scope="col" className="px-3 py-2.5 font-bold text-indigo-700 text-right">슬라브</th>
+                    <th scope="col" className="px-3 py-2.5 font-bold text-purple-700 text-right">내외장</th>
                     <th scope="col" className="px-3 py-2.5 font-bold text-teal-700 text-right">완성품</th>
                     <th scope="col" className="px-3 py-2.5 font-bold text-amber-700 text-right">출고</th>
                   </tr>
@@ -2070,33 +2302,55 @@ export const ProductionStatusView: React.FC<ProductionStatusViewProps> = ({ proj
                       <td className="px-3 py-2 text-center font-bold text-gray-700 bg-slate-50/30">
                         {b.factory}
                       </td>
-                      <td className="px-3 py-1.5 text-right">
-                        <input
-                          type="number"
-                          step="any"
-                          value={b.steel === 0 ? '' : b.steel}
-                          onChange={(e) => updateBreakdownValue(b.factory, b.floor, 'steel', e.target.value)}
-                          placeholder="0.0"
-                          title="철골 중량 (Ton)"
-                          className="w-full text-xs text-right border-0 bg-indigo-50/30 hover:bg-indigo-50/50 focus:bg-white text-indigo-800 focus:ring-1 focus:ring-indigo-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold"
-                        />
-                      </td>
-                      <td className="px-3 py-1.5 text-right">
-                        <input
-                          type="number"
-                          value={b.single || ''}
-                          onChange={(e) => updateBreakdownValue(b.factory, b.floor, 'single', e.target.value)}
-                          placeholder="0"
-                          className="w-full text-xs text-right border-0 bg-slate-50/40 hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-emerald-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold"
-                        />
-                      </td>
+                      {showLegacySteelSingle && (
+                        <>
+                          <td className="px-3 py-1.5 text-right bg-slate-50/30">
+                            <input
+                              type="number"
+                              step="any"
+                              value={b.steel === 0 ? '' : b.steel}
+                              onChange={(e) => updateBreakdownValue(b.factory, b.floor, 'steel', e.target.value)}
+                              placeholder="0.0"
+                              title="철골 중량 (Ton)"
+                              className="w-full text-xs text-right border-0 bg-slate-100/60 hover:bg-slate-200/60 focus:bg-white text-slate-800 focus:ring-1 focus:ring-slate-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold"
+                            />
+                          </td>
+                          <td className="px-3 py-1.5 text-right bg-zinc-50/30">
+                            <input
+                              type="number"
+                              value={b.single || ''}
+                              onChange={(e) => updateBreakdownValue(b.factory, b.floor, 'single', e.target.value)}
+                              placeholder="0"
+                              className="w-full text-xs text-right border-0 bg-zinc-100/60 hover:bg-zinc-200/60 focus:bg-white focus:ring-1 focus:ring-zinc-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold"
+                            />
+                          </td>
+                        </>
+                      )}
                       <td className="px-3 py-1.5 text-right">
                         <input
                           type="number"
                           value={b.moduleFrame || ''}
                           onChange={(e) => updateBreakdownValue(b.factory, b.floor, 'moduleFrame', e.target.value)}
                           placeholder="0"
-                          className="w-full text-xs text-right border-0 bg-slate-50/40 hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-sky-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold"
+                          className="w-full text-xs text-right border-0 bg-sky-50/30 hover:bg-sky-100/50 focus:bg-white focus:ring-1 focus:ring-sky-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold text-sky-900"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <input
+                          type="number"
+                          value={b.slab || ''}
+                          onChange={(e) => updateBreakdownValue(b.factory, b.floor, 'slab', e.target.value)}
+                          placeholder="0"
+                          className="w-full text-xs text-right border-0 bg-indigo-50/30 hover:bg-indigo-100/50 focus:bg-white focus:ring-1 focus:ring-indigo-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold text-indigo-900"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <input
+                          type="number"
+                          value={b.interiorExterior || ''}
+                          onChange={(e) => updateBreakdownValue(b.factory, b.floor, 'interiorExterior', e.target.value)}
+                          placeholder="0"
+                          className="w-full text-xs text-right border-0 bg-purple-50/30 hover:bg-purple-100/50 focus:bg-white focus:ring-1 focus:ring-purple-500 rounded px-2 py-1.5 focus:outline-none transition-all font-semibold text-purple-900"
                         />
                       </td>
                       <td className="px-3 py-1.5 text-right">

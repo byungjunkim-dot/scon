@@ -672,25 +672,25 @@ const handleImportQuickMemos = async () => {
         )}
       </AnimatePresence>
       <div className="border-b border-gray-100 bg-gray-50 flex-shrink-0 hidden md:block">
-        <div className="max-w-4xl mx-auto px-6 py-2 flex justify-end items-center">
+        <div className="max-w-7xl mx-auto px-1 md:px-3 lg:px-8 py-2 flex justify-end items-center">
           <div className="flex items-center gap-2">
             <button onClick={handleSave} disabled={isReadOnly}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-bold ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-bold ${isReadOnly ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100'}`}>
               <Save size={16} /> 저장
             </button>
             <button onClick={() => setIsExcelModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-bold shadow-xs">
-              <FileSpreadsheet size={16} /> 엑셀 다운로드
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs sm:text-sm font-bold shadow-xs">
+              <FileSpreadsheet size={16} className="text-emerald-600" /> 엑셀 다운로드
             </button>
             {(currentUser?.role === 'admin' || currentUser?.userRole === '골드') && (
               <>
                 <button onClick={() => setIsBulkExportModalOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-bold">
-                  <Download size={16} /> 일괄 다운로드
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs sm:text-sm font-bold shadow-xs">
+                  <Download size={16} className="text-blue-600" /> 일괄 다운로드
                 </button>
                 <button onClick={handleExportPDF} disabled={isExporting}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-bold">
-                  {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} PDF 다운로드
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs sm:text-sm font-bold shadow-xs disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} className="text-gray-500" />} PDF 다운로드
                 </button>
               </>
             )}
@@ -1392,7 +1392,7 @@ const handleImportQuickMemos = async () => {
               </div>
               <div className="min-h-[160px] max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
                 {report.photos.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-1">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 p-1">
                     {report.photos.map((photo, index) => (
                       <div key={photo.id} className="relative flex flex-col gap-2 group">
                         <div 
