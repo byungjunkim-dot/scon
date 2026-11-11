@@ -1,0 +1,12 @@
+/* S-CON reference: primary and canvas sampled from the supplied screenshots. */
+.blue {
+  --mm-primary: #155DFC;
+  --mm-primary-hover: #1447E6;
+  --mm-primary-soft: #EFF6FF;
+  --mm-primary-border: #BFDBFE;
+  --mm-focus: #93C5FD;
+  --mm-ink: #0F172A;
+  --mm-muted: #64748B;
+  --mm-line: #E5E7EB;
+  --mm-canvas: #F9FAFB;
+}

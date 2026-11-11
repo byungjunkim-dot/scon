@@ -1,0 +1,25 @@
+{
+  "id": "modular-manager",
+  "label": "모듈러 제작 관리",
+  "version": "0.1.10",
+  "type": "web-template",
+  "navSurface": "insight",
+  "requires": {
+    "dataset": [],
+    "dataProcessing": [],
+    "sharedInfra": [
+      "3_App/shared/frontend",
+      "3_App/shared/host"
+    ]
+  },
+  "subviews": [
+    {
+      "id": "overview",
+      "label": "제작 현황",
+      "route": "/overview",
+      "summary": "프로젝트별 공정을 설정하고, 배치·관리계획·제작 실적과 구성 변경 이력을 관리하세요."
+    }
+  ],
+  "env": [],
+  "db": {}
+}

@@ -1,0 +1,25 @@
+.dialog { width: calc(100vw - 32px); max-width: 1800px; height: calc(100vh - 32px); max-height: none; padding: 0; border: 1px solid #dbe2eb; border-radius: 14px; overflow: hidden; background: #f4f6f9; color: #203047; box-shadow: 0 24px 90px #152a4c42; }
+.dialog::backdrop { background: #11223e80; backdrop-filter: blur(3px); }
+.dialog[open] { display: flex; flex-direction: column; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 15px 20px; background: white; border-bottom: 1px solid #dfe5ee; }
+.header h2 { margin: 0; font-size: 17px; }
+.header p { margin: 5px 0 0; color: #7b889b; font-size: 11px; }
+.actions { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.dialog button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; border: 1px solid #d9e1eb; border-radius: 7px; background: white; color: #42526a; font-size: 12px; font-weight: 650; cursor: pointer; }
+.dialog button:disabled { opacity: .5; cursor: default; }
+.dialog .primary { color: white; background: var(--mm-primary,#155DFC); border-color: var(--mm-primary,#155DFC); }
+.body { display: flex; flex: 1; min-height: 0; }
+.body iframe { flex: 1; min-width: 0; height: 100%; border: 0; }
+.colors { width: 310px; flex-shrink: 0; padding: 18px; overflow-y: auto; background: white; border-left: 1px solid #dfe5ee; }
+.colors h3 { margin: 0; font-size: 15px; }
+.colors p { font-size: 11px; color: #78869a; line-height: 1.6; }
+.colorList { margin: 16px 0; }
+.colorRow { display: grid; grid-template-columns: 1fr 32px 84px; gap: 7px; align-items: center; margin-bottom: 10px; }
+.colorRow > span { min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.colorRow small { display: block; font-size: 10px; color: #929dae; }
+.colorRow input { min-width: 0; height: 30px; border: 1px solid #dbe2eb; border-radius: 5px; background: white; }
+.colorRow input[type=color] { width: 32px; padding: 2px; }
+.colorRow input[type=text] { width: 84px; padding: 5px; font: 11px ui-monospace, monospace; }
+.colorRow input[aria-invalid=true] { border-color: #cb3f3f; }
+.colors .error { color: #bf3636; }
+@media(max-width:800px) { .dialog { width: calc(100vw - 12px); height: calc(100vh - 12px); } .header { flex-wrap: wrap; padding: 12px; gap: 10px; } .body { position: relative; } .colors { position: absolute; right: 0; top: 0; bottom: 0; width: min(310px, 90%); box-shadow: -8px 0 25px #17314e22; } }
