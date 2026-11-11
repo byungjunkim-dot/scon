@@ -13,6 +13,8 @@ export interface ProductionBreakdown {
   steel: number;
   single: number;
   moduleFrame: number;
+  slab?: number;
+  interiorExterior?: number;
   finished: number;
   shipped: number;
 }
@@ -24,6 +26,8 @@ export interface ProductionDayData {
   steel: number;
   single: number;
   moduleFrame: number;
+  slab?: number;
+  interiorExterior?: number;
   finished: number;
   shipped: number;
   photos: ProductionPhoto[];
@@ -36,6 +40,8 @@ export interface CumulativeStats {
   steel: number;
   single: number;
   moduleFrame: number;
+  slab?: number;
+  interiorExterior?: number;
   finished: number;
   shipped: number;
   rates: {
@@ -43,6 +49,8 @@ export interface CumulativeStats {
     steel: number;
     single: number;
     moduleFrame: number;
+    slab?: number;
+    interiorExterior?: number;
     finished: number;
     shipped: number;
   };
@@ -54,6 +62,8 @@ export interface PlannedVolumes {
   steelTon?: number;
   single: number;
   moduleFrame: number;
+  slab?: number;
+  interiorExterior?: number;
   finished: number;
   shipped: number;
 }
@@ -384,9 +394,9 @@ export async function exportProductionStatusToExcel({
   summarySheet.columns = [
     { key: 'colA', width: 13 },  // 제작일
     { key: 'colB', width: 14 },  // 공장
-    { key: 'colC', width: 9 },   // 철골
-    { key: 'colD', width: 9 },   // 단품
-    { key: 'colE', width: 9 },   // 프레임
+    { key: 'colC', width: 9 },   // 프레임
+    { key: 'colD', width: 9 },   // 슬라브
+    { key: 'colE', width: 9 },   // 내외장
     { key: 'colF', width: 9 },   // 완성품
     { key: 'colG', width: 9 },   // 출고
     { key: 'colH', width: 25.5 } // 비고 (특기사항)
@@ -438,12 +448,12 @@ export async function exportProductionStatusToExcel({
   applyOpenTableRow(summarySheet, currentRow, [['A', 'H']], 'A', 'H', { top: false, bottom: true, borderColor: '94A3B8' });
   currentRow++;
 
-  // 전체 제작 현황 헤더 테이블 (A~B: 구분, C: 철골, D: 단품, E: 프레임, F: 완성품, G: 출고, H: 전체 합계)
+  // 전체 제작 현황 헤더 테이블 (A~B: 구분, C: 프레임, D: 슬라브, E: 내외장, F: 완성품, G: 출고, H: 전체 합계)
   summarySheet.mergeCells(`A${currentRow}:B${currentRow}`);
   summarySheet.getCell(`A${currentRow}`).value = '구분';
-  summarySheet.getCell(`C${currentRow}`).value = '철골 (Ton)';
-  summarySheet.getCell(`D${currentRow}`).value = '단품 (개)';
-  summarySheet.getCell(`E${currentRow}`).value = '프레임 (개)';
+  summarySheet.getCell(`C${currentRow}`).value = '프레임 (개)';
+  summarySheet.getCell(`D${currentRow}`).value = '슬라브 (개)';
+  summarySheet.getCell(`E${currentRow}`).value = '내외장 (개)';
   summarySheet.getCell(`F${currentRow}`).value = '완성품 (개)';
   summarySheet.getCell(`G${currentRow}`).value = '출고 (개)';
   summarySheet.getCell(`H${currentRow}`).value = '전체 합계 (개)';
@@ -462,9 +472,9 @@ export async function exportProductionStatusToExcel({
   // 1) 총 계획 행
   summarySheet.mergeCells(`A${currentRow}:B${currentRow}`);
   summarySheet.getCell(`A${currentRow}`).value = '총 계획';
-  summarySheet.getCell(`C${currentRow}`).value = plannedVolumes.steelTon || plannedVolumes.steel || 0;
-  summarySheet.getCell(`D${currentRow}`).value = plannedVolumes.single || 0;
-  summarySheet.getCell(`E${currentRow}`).value = plannedVolumes.moduleFrame || 0;
+  summarySheet.getCell(`C${currentRow}`).value = plannedVolumes.moduleFrame || 0;
+  summarySheet.getCell(`D${currentRow}`).value = plannedVolumes.slab || plannedVolumes.total || 0;
+  summarySheet.getCell(`E${currentRow}`).value = plannedVolumes.interiorExterior || plannedVolumes.total || 0;
   summarySheet.getCell(`F${currentRow}`).value = plannedVolumes.finished || 0;
   summarySheet.getCell(`G${currentRow}`).value = plannedVolumes.shipped || 0;
   summarySheet.getCell(`H${currentRow}`).value = plannedVolumes.total || 0;
@@ -488,9 +498,9 @@ export async function exportProductionStatusToExcel({
   // 2) 누계 실적 행
   summarySheet.mergeCells(`A${currentRow}:B${currentRow}`);
   summarySheet.getCell(`A${currentRow}`).value = '누계 실적';
-  summarySheet.getCell(`C${currentRow}`).value = cumulativeStats.steel || 0;
-  summarySheet.getCell(`D${currentRow}`).value = cumulativeStats.single || 0;
-  summarySheet.getCell(`E${currentRow}`).value = cumulativeStats.moduleFrame || 0;
+  summarySheet.getCell(`C${currentRow}`).value = cumulativeStats.moduleFrame || 0;
+  summarySheet.getCell(`D${currentRow}`).value = cumulativeStats.slab || 0;
+  summarySheet.getCell(`E${currentRow}`).value = cumulativeStats.interiorExterior || 0;
   summarySheet.getCell(`F${currentRow}`).value = cumulativeStats.finished || 0;
   summarySheet.getCell(`G${currentRow}`).value = cumulativeStats.shipped || 0;
   summarySheet.getCell(`H${currentRow}`).value = cumulativeStats.total || 0;
@@ -514,9 +524,9 @@ export async function exportProductionStatusToExcel({
   // 3) 진행률 (%) 행
   summarySheet.mergeCells(`A${currentRow}:B${currentRow}`);
   summarySheet.getCell(`A${currentRow}`).value = '진행률 (%)';
-  summarySheet.getCell(`C${currentRow}`).value = (cumulativeStats.rates.steel || 0) / 100;
-  summarySheet.getCell(`D${currentRow}`).value = (cumulativeStats.rates.single || 0) / 100;
-  summarySheet.getCell(`E${currentRow}`).value = (cumulativeStats.rates.moduleFrame || 0) / 100;
+  summarySheet.getCell(`C${currentRow}`).value = (cumulativeStats.rates.moduleFrame || 0) / 100;
+  summarySheet.getCell(`D${currentRow}`).value = (cumulativeStats.rates.slab || 0) / 100;
+  summarySheet.getCell(`E${currentRow}`).value = (cumulativeStats.rates.interiorExterior || 0) / 100;
   summarySheet.getCell(`F${currentRow}`).value = (cumulativeStats.rates.finished || 0) / 100;
   summarySheet.getCell(`G${currentRow}`).value = (cumulativeStats.rates.shipped || 0) / 100;
   summarySheet.getCell(`H${currentRow}`).value = (cumulativeStats.rates.total || 0) / 100;
@@ -554,7 +564,7 @@ export async function exportProductionStatusToExcel({
   currentRow++;
 
   // 테이블 헤더
-  const tableHeaders = ['제작일', '공장', '철골(Ton)', '단품', '프레임', '완성품', '출고', '비고'];
+  const tableHeaders = ['제작일', '공장', '프레임', '슬라브', '내외장', '완성품', '출고', '비고'];
   tableHeaders.forEach((text, i) => {
     const colLetter = String.fromCharCode(65 + i);
     const c = summarySheet.getCell(`${colLetter}${currentRow}`);
@@ -567,9 +577,9 @@ export async function exportProductionStatusToExcel({
   applyOpenTableRow(summarySheet, currentRow, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'], 'A', 'H');
   currentRow++;
 
-  let sumDetailSteel = 0;
-  let sumDetailSingle = 0;
   let sumDetailFrame = 0;
+  let sumDetailSlab = 0;
+  let sumDetailInteriorExterior = 0;
   let sumDetailFinished = 0;
   let sumDetailShipped = 0;
 
@@ -588,13 +598,15 @@ export async function exportProductionStatusToExcel({
             steel: dayData.steel || 0,
             single: dayData.single || 0,
             moduleFrame: dayData.moduleFrame || 0,
+            slab: dayData.slab || 0,
+            interiorExterior: dayData.interiorExterior || 0,
             finished: dayData.finished || 0,
             shipped: dayData.shipped || 0
           }
         ];
 
     // 공장별 합산 집계 (층 구분 없이 공장 단위로 단일화)
-    const factoryMap = new Map<string, { factory: string; steel: number; single: number; moduleFrame: number; finished: number; shipped: number }>();
+    const factoryMap = new Map<string, { factory: string; steel: number; single: number; moduleFrame: number; slab: number; interiorExterior: number; finished: number; shipped: number }>();
     rawBreakdowns.forEach(bd => {
       const fact = bd.factory || '-';
       const existing = factoryMap.get(fact);
@@ -602,6 +614,8 @@ export async function exportProductionStatusToExcel({
         existing.steel += bd.steel || 0;
         existing.single += bd.single || 0;
         existing.moduleFrame += bd.moduleFrame || 0;
+        existing.slab += bd.slab || 0;
+        existing.interiorExterior += bd.interiorExterior || 0;
         existing.finished += bd.finished || 0;
         existing.shipped += bd.shipped || 0;
       } else {
@@ -610,6 +624,8 @@ export async function exportProductionStatusToExcel({
           steel: bd.steel || 0,
           single: bd.single || 0,
           moduleFrame: bd.moduleFrame || 0,
+          slab: bd.slab || 0,
+          interiorExterior: bd.interiorExterior || 0,
           finished: bd.finished || 0,
           shipped: bd.shipped || 0
         });
@@ -632,23 +648,23 @@ export async function exportProductionStatusToExcel({
       factC.alignment = { vertical: 'middle', horizontal: 'center' };
       factC.font = { name: '맑은 고딕', size: 9.5 };
 
-      const steelC = summarySheet.getCell(`C${currentRow}`);
-      steelC.value = bd.steel || 0;
-      steelC.alignment = { vertical: 'middle', horizontal: 'right' };
-      steelC.numFmt = '#,##0';
-      steelC.font = { name: '맑은 고딕', size: 9.5 };
-
-      const singleC = summarySheet.getCell(`D${currentRow}`);
-      singleC.value = bd.single || 0;
-      singleC.alignment = { vertical: 'middle', horizontal: 'right' };
-      singleC.numFmt = '#,##0';
-      singleC.font = { name: '맑은 고딕', size: 9.5 };
-
-      const frameC = summarySheet.getCell(`E${currentRow}`);
+      const frameC = summarySheet.getCell(`C${currentRow}`);
       frameC.value = bd.moduleFrame || 0;
       frameC.alignment = { vertical: 'middle', horizontal: 'right' };
       frameC.numFmt = '#,##0';
       frameC.font = { name: '맑은 고딕', size: 9.5 };
+
+      const slabC = summarySheet.getCell(`D${currentRow}`);
+      slabC.value = bd.slab || 0;
+      slabC.alignment = { vertical: 'middle', horizontal: 'right' };
+      slabC.numFmt = '#,##0';
+      slabC.font = { name: '맑은 고딕', size: 9.5 };
+
+      const inExC = summarySheet.getCell(`E${currentRow}`);
+      inExC.value = bd.interiorExterior || 0;
+      inExC.alignment = { vertical: 'middle', horizontal: 'right' };
+      inExC.numFmt = '#,##0';
+      inExC.font = { name: '맑은 고딕', size: 9.5 };
 
       const finC = summarySheet.getCell(`F${currentRow}`);
       finC.value = bd.finished || 0;
@@ -669,9 +685,9 @@ export async function exportProductionStatusToExcel({
 
       applyOpenTableRow(summarySheet, currentRow, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'], 'A', 'H');
 
-      sumDetailSteel += bd.steel || 0;
-      sumDetailSingle += bd.single || 0;
       sumDetailFrame += bd.moduleFrame || 0;
+      sumDetailSlab += bd.slab || 0;
+      sumDetailInteriorExterior += bd.interiorExterior || 0;
       sumDetailFinished += bd.finished || 0;
       sumDetailShipped += bd.shipped || 0;
 
@@ -692,9 +708,9 @@ export async function exportProductionStatusToExcel({
   });
 
   const colsValues = [
-    { col: 'C', val: sumDetailSteel },
-    { col: 'D', val: sumDetailSingle },
-    { col: 'E', val: sumDetailFrame },
+    { col: 'C', val: sumDetailFrame },
+    { col: 'D', val: sumDetailSlab },
+    { col: 'E', val: sumDetailInteriorExterior },
     { col: 'F', val: sumDetailFinished },
     { col: 'G', val: sumDetailShipped }
   ];
@@ -802,9 +818,9 @@ export async function exportProductionStatusToExcel({
     // 테이블 헤더 (위치(층) 제외, 공장 A~C 병합)
     daySheet.mergeCells(`A${dayRow}:C${dayRow}`);
     daySheet.getCell(`A${dayRow}`).value = '공장';
-    daySheet.getCell(`D${dayRow}`).value = '철골(Ton)';
-    daySheet.getCell(`E${dayRow}`).value = '단품';
-    daySheet.getCell(`F${dayRow}`).value = '프레임';
+    daySheet.getCell(`D${dayRow}`).value = '프레임';
+    daySheet.getCell(`E${dayRow}`).value = '슬라브';
+    daySheet.getCell(`F${dayRow}`).value = '내외장';
     daySheet.getCell(`G${dayRow}`).value = '완성품';
     daySheet.getCell(`H${dayRow}`).value = '출고';
 
@@ -827,13 +843,15 @@ export async function exportProductionStatusToExcel({
             steel: dayData.steel || 0,
             single: dayData.single || 0,
             moduleFrame: dayData.moduleFrame || 0,
+            slab: dayData.slab || 0,
+            interiorExterior: dayData.interiorExterior || 0,
             finished: dayData.finished || 0,
             shipped: dayData.shipped || 0
           }
         ];
 
     // 공장별 합산 집계 (층 구분 없이 공장 단위로 단일화)
-    const dayFactoryMap = new Map<string, { factory: string; steel: number; single: number; moduleFrame: number; finished: number; shipped: number }>();
+    const dayFactoryMap = new Map<string, { factory: string; steel: number; single: number; moduleFrame: number; slab: number; interiorExterior: number; finished: number; shipped: number }>();
     rawDayBreakdowns.forEach(bd => {
       const fact = bd.factory || '-';
       const existing = dayFactoryMap.get(fact);
@@ -841,6 +859,8 @@ export async function exportProductionStatusToExcel({
         existing.steel += bd.steel || 0;
         existing.single += bd.single || 0;
         existing.moduleFrame += bd.moduleFrame || 0;
+        existing.slab += bd.slab || 0;
+        existing.interiorExterior += bd.interiorExterior || 0;
         existing.finished += bd.finished || 0;
         existing.shipped += bd.shipped || 0;
       } else {
@@ -849,6 +869,8 @@ export async function exportProductionStatusToExcel({
           steel: bd.steel || 0,
           single: bd.single || 0,
           moduleFrame: bd.moduleFrame || 0,
+          slab: bd.slab || 0,
+          interiorExterior: bd.interiorExterior || 0,
           finished: bd.finished || 0,
           shipped: bd.shipped || 0
         });
@@ -856,18 +878,18 @@ export async function exportProductionStatusToExcel({
     });
     const dayBreakdowns = Array.from(dayFactoryMap.values());
 
-    let daySumSteel = 0;
-    let daySumSingle = 0;
     let daySumFrame = 0;
+    let daySumSlab = 0;
+    let daySumInteriorExterior = 0;
     let daySumFin = 0;
     let daySumShip = 0;
 
     dayBreakdowns.forEach(bd => {
       daySheet.mergeCells(`A${dayRow}:C${dayRow}`);
       daySheet.getCell(`A${dayRow}`).value = bd.factory || '-';
-      daySheet.getCell(`D${dayRow}`).value = bd.steel || 0;
-      daySheet.getCell(`E${dayRow}`).value = bd.single || 0;
-      daySheet.getCell(`F${dayRow}`).value = bd.moduleFrame || 0;
+      daySheet.getCell(`D${dayRow}`).value = bd.moduleFrame || 0;
+      daySheet.getCell(`E${dayRow}`).value = bd.slab || 0;
+      daySheet.getCell(`F${dayRow}`).value = bd.interiorExterior || 0;
       daySheet.getCell(`G${dayRow}`).value = bd.finished || 0;
       daySheet.getCell(`H${dayRow}`).value = bd.shipped || 0;
 
@@ -886,9 +908,9 @@ export async function exportProductionStatusToExcel({
 
       applyOpenTableRow(daySheet, dayRow, [['A', 'C'], 'D', 'E', 'F', 'G', 'H'], 'A', 'H');
 
-      daySumSteel += bd.steel || 0;
-      daySumSingle += bd.single || 0;
       daySumFrame += bd.moduleFrame || 0;
+      daySumSlab += bd.slab || 0;
+      daySumInteriorExterior += bd.interiorExterior || 0;
       daySumFin += bd.finished || 0;
       daySumShip += bd.shipped || 0;
 
@@ -899,9 +921,9 @@ export async function exportProductionStatusToExcel({
     // 당일 합계
     daySheet.mergeCells(`A${dayRow}:C${dayRow}`);
     daySheet.getCell(`A${dayRow}`).value = '당일 합계';
-    daySheet.getCell(`D${dayRow}`).value = daySumSteel;
-    daySheet.getCell(`E${dayRow}`).value = daySumSingle;
-    daySheet.getCell(`F${dayRow}`).value = daySumFrame;
+    daySheet.getCell(`D${dayRow}`).value = daySumFrame;
+    daySheet.getCell(`E${dayRow}`).value = daySumSlab;
+    daySheet.getCell(`F${dayRow}`).value = daySumInteriorExterior;
     daySheet.getCell(`G${dayRow}`).value = daySumFin;
     daySheet.getCell(`H${dayRow}`).value = daySumShip;
 
