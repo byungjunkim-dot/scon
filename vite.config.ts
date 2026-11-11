@@ -7,8 +7,24 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss()],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'lucide-react',
+        'exceljs',
+        'jspdf',
+        'html-to-image',
+        'html2canvas',
+        'pdf-lib',
+        'jszip',
+        'date-fns',
+        'motion/react',
+        '@supabase/supabase-js',
+        'recharts',
+        'xlsx',
+      ],
     },
     resolve: {
       alias: {

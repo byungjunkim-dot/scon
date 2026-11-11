@@ -25,5 +25,14 @@
     "types": [
       "vite/client"
     ]
-  }
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "public",
+    "src/modular-manager/3_App/modular-manager/backend"
+  ]
 }
