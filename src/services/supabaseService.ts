@@ -998,6 +998,8 @@ async saveQuickMemo(memo: any) {
             steel: Number(row.steel) || 0,
             single: Number(row.single) || 0,
             moduleFrame: Number(row.module_frame ?? row.moduleFrame) || 0,
+            slab: Number(row.slab) || 0,
+            interiorExterior: Number(row.interior_exterior ?? row.interiorExterior) || 0,
             finished: Number(row.finished) || 0,
             shipped: Number(row.shipped) || 0,
             photos: row.photos || [],
@@ -1008,6 +1010,8 @@ async saveQuickMemo(memo: any) {
               steel: Number(b.steel) || 0,
               single: Number(b.single) || 0,
               moduleFrame: Number(b.moduleFrame ?? b.module_frame) || 0,
+              slab: Number(b.slab) || 0,
+              interiorExterior: Number(b.interiorExterior ?? b.interior_exterior) || 0,
               finished: Number(b.finished) || 0,
               shipped: Number(b.shipped) || 0,
             }))
@@ -1038,6 +1042,8 @@ async saveQuickMemo(memo: any) {
               steel: Number(sDay.steel) || 0,
               single: Number(sDay.single) || 0,
               moduleFrame: Number(sDay.moduleFrame) || 0,
+              slab: Number(sDay.slab) || 0,
+              interiorExterior: Number(sDay.interiorExterior) || 0,
               finished: Number(sDay.finished) || 0,
               shipped: Number(sDay.shipped) || 0,
               breakdowns: (sDay.breakdowns || []).map((b: any) => ({
@@ -1046,6 +1052,8 @@ async saveQuickMemo(memo: any) {
                 steel: Number(b.steel) || 0,
                 single: Number(b.single) || 0,
                 moduleFrame: Number(b.moduleFrame ?? b.module_frame) || 0,
+                slab: Number(b.slab) || 0,
+                interiorExterior: Number(b.interiorExterior ?? b.interior_exterior) || 0,
                 finished: Number(b.finished) || 0,
                 shipped: Number(b.shipped) || 0,
               }))
@@ -1074,19 +1082,24 @@ async saveQuickMemo(memo: any) {
       single: Number(b.single) || 0,
       moduleFrame: Number(b.moduleFrame) || 0,
       module_frame: Number(b.moduleFrame) || 0,
+      slab: Number(b.slab) || 0,
+      interiorExterior: Number(b.interiorExterior) || 0,
+      interior_exterior: Number(b.interiorExterior) || 0,
       finished: Number(b.finished) || 0,
       shipped: Number(b.shipped) || 0,
     }));
 
-    // 1. 전용 테이블 production_reports에 정확한 snake_case 컬럼(module_frame)으로 저장
+    // 1. 전용 테이블 production_reports에 저장 시도
     try {
-      const payload = {
+      const payload: any = {
         id: `${projectId}_${dayData.date}`,
         projectId,
         date: dayData.date,
         steel: Number(dayData.steel) || 0,
         single: Number(dayData.single) || 0,
         module_frame: Number(dayData.moduleFrame) || 0,
+        slab: Number(dayData.slab) || 0,
+        interior_exterior: Number(dayData.interiorExterior) || 0,
         finished: Number(dayData.finished) || 0,
         shipped: Number(dayData.shipped) || 0,
         photos: dayData.photos || [],
@@ -1095,9 +1108,17 @@ async saveQuickMemo(memo: any) {
         updated_at: new Date().toISOString()
       };
 
-      const { error: err } = await supabase
+      let { error: err } = await supabase
         .from('production_reports')
         .upsert(payload);
+
+      // 테이블 스키마에 slab, interior_exterior 컬럼이 아직 없는 경우를 대비한 안전 폴백
+      if (err && (err.message?.includes('slab') || err.message?.includes('interior_exterior') || err.code === '42703')) {
+        delete payload.slab;
+        delete payload.interior_exterior;
+        const retryResult = await supabase.from('production_reports').upsert(payload);
+        err = retryResult.error;
+      }
 
       if (!err) {
         dedicatedSuccess = true;
@@ -1110,7 +1131,7 @@ async saveQuickMemo(memo: any) {
       console.error('[saveProductionDay] production_reports upsert exception:', e);
     }
 
-    // 2. settings 테이블에 동기화 백업 저장
+    // 2. settings 테이블에 동기화 백업 저장 (JSON 형태로 모든 신규 필드 완벽 보존)
     let settingsSuccess = false;
     try {
       let daysMap = allDaysMap;
@@ -1123,6 +1144,8 @@ async saveQuickMemo(memo: any) {
         steel: Number(dayData.steel) || 0,
         single: Number(dayData.single) || 0,
         moduleFrame: Number(dayData.moduleFrame) || 0,
+        slab: Number(dayData.slab) || 0,
+        interiorExterior: Number(dayData.interiorExterior) || 0,
         finished: Number(dayData.finished) || 0,
         shipped: Number(dayData.shipped) || 0,
         breakdowns: normalizedBreakdowns
