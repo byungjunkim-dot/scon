@@ -1918,13 +1918,6 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={() => setMainMenu('report')}
-                  className={`flex md:hidden flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'report' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
-                >
-                  <Clipboard size={16} className={`${mainMenu === 'report' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
-                  <span>공유</span>
-                </button>
-                <button
                   onClick={() => {
                     setMainMenu('modular-production');
                   }}
