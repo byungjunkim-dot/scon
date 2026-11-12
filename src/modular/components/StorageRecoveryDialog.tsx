@@ -36,7 +36,7 @@ export function StorageRecoveryDialog({ onClose, onOpenServer, onProjectDeleted 
           className={styles.button}
           style={{color:'#dc2626',borderColor:'#fca5a5',marginLeft:'auto'}}
           disabled={pending}
-          onClick={()=>setDeleteTarget({row, deleteFromServer: Boolean(row.server && row.local.modules === 0)})}
+          onClick={()=>setDeleteTarget({row, deleteFromServer: false})}
         >
           기록 삭제
         </button>
@@ -60,8 +60,8 @@ export function StorageRecoveryDialog({ onClose, onOpenServer, onProjectDeleted 
               onChange={()=>setDeleteTarget(prev=>prev?{...prev,deleteFromServer:true}:null)}
             />
             <div>
-              <b style={{color:'#dc2626'}}>서버 및 이 PC에서 완전 삭제 (권장)</b>
-              <div style={{fontSize:11,color:'#64748b',marginTop:2}}>서버 데이터베이스와 현재 PC의 로컬 캐시에서 모두 완전히 삭제합니다. 중복 생성된 0개 모듈 프로젝트를 정리할 때 선택하세요.</div>
+              <b style={{color:'#dc2626'}}>서버 및 이 PC에서 완전 삭제</b>
+              <div style={{fontSize:11,color:'#64748b',marginTop:2}}>서버 데이터베이스와 현재 PC의 로컬 캐시에서 모두 완전히 삭제합니다. 복구 불가능하므로 사전에 [양쪽 원본 백업]을 권장합니다.</div>
             </div>
           </label>
         )}
