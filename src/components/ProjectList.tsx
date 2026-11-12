@@ -374,7 +374,13 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
         {activeTab === 'projects' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 xl:gap-6">
             {sortedProjects.map((project, idx) => {
-              const canAccess = currentUser?.userRole !== '브론즈' || currentUser?.signupCode === project.projectCode;
+              const isMaster = currentUser?.role === 'admin' || currentUser?.userRole === '골드';
+              const userAllowedCodes = [
+                ...(currentUser?.allowedProjectCodes || []),
+                ...(currentUser?.signupCode ? currentUser.signupCode.split(',').map(s => s.trim()).filter(Boolean) : [])
+              ];
+              const pCode = project.projectCode?.trim();
+              const canAccess = isMaster || (pCode ? userAllowedCodes.includes(pCode) : userAllowedCodes.includes(project.id));
               const isFav = favorites.includes(project.id);
 
               return (
@@ -393,10 +399,10 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                     if (canAccess) {
                       onSelect(project.id);
                     } else {
-                      alert('접근 권한이 없습니다. 가입코드와 프로젝트 코드가 일치하지 않습니다.');
+                      alert('해당 프로젝트에 대한 접근 권한이 없습니다.\n관리자에게 프로젝트 접근 허용을 요청해주세요.');
                     }
                   }}
-                  className={`bg-white p-3 xl:p-6 rounded-lg border border-gray-100 shadow-sm transition-all group relative overflow-hidden flex flex-row xl:flex-col gap-3 xl:gap-0 items-center xl:items-stretch ${canAccess ? 'hover:shadow-xl hover:-translate-y-1 cursor-pointer' : 'opacity-75 cursor-not-allowed'}`}
+                  className={`bg-white p-3 xl:p-6 rounded-lg border border-gray-100 shadow-sm transition-all group relative overflow-hidden flex flex-row xl:flex-col gap-3 xl:gap-0 items-center xl:items-stretch ${canAccess ? 'hover:shadow-xl hover:-translate-y-1 cursor-pointer' : 'opacity-75 cursor-not-allowed border-dashed'}`}
                 >
                   <div className="w-24 h-24 xl:w-auto xl:h-40 xl:-mx-6 xl:-mt-6 xl:mb-6 relative overflow-hidden flex-shrink-0 rounded-xl xl:rounded-none">
                     {project.imageUrl ? (
@@ -412,6 +418,14 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                       </div>
                     )}
                     {(() => {
+                      if (!canAccess) {
+                        return (
+                          <div className="absolute top-1 xl:top-4 right-1 xl:right-4 z-10 bg-red-600/90 text-white backdrop-blur-sm px-2 py-0.5 xl:py-1 rounded-md xl:rounded-lg text-[8px] xl:text-[10px] font-bold flex items-center gap-1 shadow-sm">
+                            <Lock size={11} />
+                            <span>접근 제한</span>
+                          </div>
+                        );
+                      }
                       const status = project.status || '진행';
                       let statusColors = 'bg-blue-50/90 text-blue-600 border border-blue-100/50';
                       if (status === '준비') {
@@ -450,6 +464,11 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
                     </div>
 
                     <div>
+                      {project.projectCode && (
+                        <div className="text-[11px] font-mono font-bold text-gray-400 group-hover:text-blue-600 transition-colors mb-0.5">
+                          {project.projectCode}
+                        </div>
+                      )}
                       <h3 className="text-sm xl:text-xl font-bold text-gray-900 mb-0.5 xl:mb-1 group-hover:text-blue-600 transition-colors line-clamp-1">{project.name}</h3>
                       <p className="hidden xl:block text-gray-500 text-xs xl:text-sm line-clamp-1 leading-relaxed">{project.description}</p>
                     </div>

@@ -109,7 +109,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
             password: formData.password,
             affiliation: formData.affiliation,
             discipline: formData.discipline,
-            signupCode: formData.signupCode,
+            signupCode: '',
+            allowedProjectCodes: [],
             role: 'user',
             userRole: '브론즈',
             createdAt: new Date().toISOString()
@@ -165,7 +166,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
         password: formData.password,
         affiliation: formData.affiliation,
         discipline: formData.discipline,
-        signupCode: formData.signupCode,
+        signupCode: '',
+        allowedProjectCodes: [],
         role: 'user',
         userRole: '브론즈',
         createdAt: new Date().toISOString()
@@ -326,18 +328,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
                         <option key={cat} value={cat} />
                       ))}
                     </datalist>
-                  </div>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input 
-                      type="text" 
-                      name="signupCode"
-                      placeholder="가입코드" 
-                      required={!isLogin}
-                      value={formData.signupCode}
-                      onChange={handleChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
-                    />
                   </div>
                 </motion.div>
               )}

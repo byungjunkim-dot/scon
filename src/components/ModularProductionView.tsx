@@ -18,7 +18,8 @@ export const ModularProductionView: React.FC<ModularProductionViewProps> = ({
       <div className="max-w-[1850px] mx-auto">
         <ProductionBoard 
           key={project?.id || 'none'} 
-          sconProject={project ? { id: project.id, name: project.name } : null} 
+          sconProject={project ? { id: project.id, name: project.name } : null}
+          currentUser={currentUser}
         />
       </div>
     </div>
