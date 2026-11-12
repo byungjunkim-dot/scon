@@ -32,7 +32,8 @@ import {
   DollarSign,
   Clipboard,
   Package,
-  RefreshCw
+  RefreshCw,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ExcelJS from 'exceljs';
@@ -65,8 +66,8 @@ import { PhotoGalleryView } from './components/PhotoGalleryView';
 import { QuickMemoView } from './components/QuickMemoView';
 import { BillingAndSubcontractorView } from './components/BillingAndSubcontractorView';
 import { ReportSummaryView } from './components/ReportSummaryView';
-import { ProductionStatusView } from './components/ProductionStatusView';
-import { ModularProductionView } from './components/ModularProductionView';
+import { ProductionStatusView } from '@/src/components/ProductionStatusView.tsx';
+import { ModularProductionView } from '@/src/components/ModularProductionView.tsx';
 import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
 
@@ -1867,6 +1868,7 @@ export default function App() {
                   <LayoutDashboard size={16} className={`${mainMenu === 'dashboard' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>대시 보드</span>
                 </button>
+                {/* 공정 관리 (모바일에서는 마지막 제작 메뉴로 이동됨) */}
                 <button
                   onClick={() => setMainMenu('schedule')}
                   className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'schedule' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
@@ -1874,9 +1876,11 @@ export default function App() {
                   <BarChart3 size={16} className={`${mainMenu === 'schedule' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>공정 관리</span>
                 </button>
+                
+                {/* 문서 관리 (태블릿 이상에서만 표시) */}
                 <button
                   onClick={() => setMainMenu('documents')}
-                  className={`hidden lg:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'documents' && documentTab !== 'modular-production' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'documents' && documentTab !== 'modular-production' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
                   <FileText size={16} className={`${mainMenu === 'documents' && documentTab !== 'modular-production' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
                   <span>문서 관리</span>
@@ -1917,29 +1921,22 @@ export default function App() {
                   <span className="hidden md:inline">공사일보</span>
                 </button>
 
+                {/* 공유 (모바일 화면 모드: 공사일보 요약 및 사진 공유 화면 연결) */}
                 <button
-                  onClick={() => {
-                    setMainMenu('modular-production');
-                  }}
-                  className={`flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${(mainMenu === 'documents' && documentTab === 'modular-production') || mainMenu === 'modular-production' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                  onClick={() => setMainMenu('report')}
+                  className={`flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'report' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
-                  <Package size={16} className={`${(mainMenu === 'documents' && documentTab === 'modular-production') || mainMenu === 'modular-production' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
-                  <span className="md:hidden">제작</span>
-                  <span className="hidden md:inline">제작 관리</span>
+                  <Share2 size={16} className={`${mainMenu === 'report' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span>공유</span>
                 </button>
+
+                {/* 제작 (모듈러 제작 현황판 연결) */}
                 <button
-                  onClick={() => setMainMenu('ai-diagnosis')}
-                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'ai-diagnosis' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
+                  onClick={() => { setMainMenu('modular-production'); }}
+                  className={`flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'modular-production' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
                 >
-                  <Sparkles size={16} className={`${mainMenu === 'ai-diagnosis' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
-                  <span>AI 진단</span>
-                </button>
-                <button
-                  onClick={() => setMainMenu('billing')}
-                  className={`hidden md:flex flex-shrink-0 items-center gap-2 px-1 py-2 md:py-3 text-sm font-bold border-b-2 transition-all ${mainMenu === 'billing' ? 'text-blue-600 border-blue-600' : 'text-gray-500 border-transparent'}`}
-                >
-                  <DollarSign size={16} className={`${mainMenu === 'billing' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
-                  <span>기성&외주</span>
+                  <Package size={16} className={`${mainMenu === 'modular-production' ? 'text-blue-600' : 'text-gray-400'} hidden`} />
+                  <span>제작</span>
                 </button>
               </div>
 
@@ -2009,6 +2006,7 @@ export default function App() {
                   >
                     <span>제작 관리</span>
                   </button>
+
                   {/* 필요 시 복구를 위해 당분간 숨김 처리: 검측요청서, 타설계획서
                   <button
                     onClick={() => setDocumentTab('inspection')}
