@@ -146,6 +146,31 @@ export async function restoreLocalProject(token: string): Promise<ProjectDetail>
 export async function deleteRecoveryRecord(token: string, deleteFromServer: boolean = false): Promise<void> {
   const review = reviews.get(token)
   if (!review) fail(404, '삭제할 기록 정보를 찾을 수 없습니다.')
+
+  if (deleteFromServer && review.projectId) {
+    requireCloud()
+    const expectedRevision = review.remote ? revisionOf(review.remote.project) : null
+    const expectedUpdatedAt = review.remote?.databaseUpdatedAt || null
+
+    let query = supabase.from('settings').delete().eq('id', PREFIX + review.projectId)
+    if (expectedRevision !== null) {
+      query = query.eq('settings->>revision', String(expectedRevision))
+    } else {
+      query = query.is('settings->>revision', null)
+    }
+    if (expectedUpdatedAt === null) {
+      query = query.is('updated_at', null)
+    } else {
+      query = query.eq('updated_at', expectedUpdatedAt)
+    }
+
+    const { error, data } = await query.select('id')
+    if (error) remoteError(error)
+    if (!data || data.length === 0) {
+      fail(409, '서버 기록이 그 사이 변경되었거나 이미 삭제되었습니다. 최신 기록을 다시 확인하세요.', 'REVISION_CONFLICT')
+    }
+  }
+
   try {
     localStorage.removeItem(review.key)
     localStorage.removeItem(RECOVERED + review.projectId)
@@ -162,14 +187,6 @@ export async function deleteRecoveryRecord(token: string, deleteFromServer: bool
     }
   } catch (err) {
     console.error('Failed to remove from localStorage', err)
-  }
-
-  if (deleteFromServer && review.projectId) {
-    requireCloud()
-    const { error } = await supabase.from('settings').delete().eq('id', PREFIX + review.projectId)
-    if (error) {
-      remoteError(error)
-    }
   }
 
   reviews.delete(token)
