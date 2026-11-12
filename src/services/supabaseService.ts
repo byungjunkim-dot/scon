@@ -567,8 +567,8 @@ async updateProject(project: Project) {
 
   // Settings
   async getSettings() {
-    const { data, error } = await supabase.from('settings').select('*').single();
-    if (error && error.code !== 'PGRST116') throw error;
+    const { data, error } = await supabase.from('settings').select('*').eq('id', 'global').maybeSingle();
+    if (error) throw error;
     return data?.settings as AppSettings | null;
   },
 
@@ -601,13 +601,18 @@ async updateProject(project: Project) {
         })
   };
 
+  console.log('[saveDailyReport] Attempting upsert to daily_reports:', newReport.id, newReport.date);
   const { data, error } = await supabase
     .from('daily_reports')
     .upsert(newReport)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('[saveDailyReport] Supabase error:', error);
+    throw error;
+  }
+  console.log('[saveDailyReport] Successfully saved to daily_reports');
   return data;
   },
 
@@ -1108,6 +1113,7 @@ async saveQuickMemo(memo: any) {
         updated_at: new Date().toISOString()
       };
 
+      console.log('[saveProductionDay] Attempting upsert to production_reports:', payload);
       let { error: err } = await supabase
         .from('production_reports')
         .upsert(payload);
@@ -1122,6 +1128,7 @@ async saveQuickMemo(memo: any) {
 
       if (!err) {
         dedicatedSuccess = true;
+        console.log('[saveProductionDay] Successfully saved to production_reports');
       } else {
         primaryErr = err;
         console.error('[saveProductionDay] production_reports upsert error:', err);
