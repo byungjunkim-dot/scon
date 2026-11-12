@@ -152,9 +152,9 @@ export function BulkPlanEditor({
   function handleToggleStage(
     stageId: StageId,
     currentlyChecked: boolean,
-    currentDate: string,
+    currentDate: string | undefined,
     isAllDone: boolean,
-    originalDate: string,
+    originalDate: string | undefined,
     completedCount: number
   ) {
     if (locked) return
@@ -191,7 +191,7 @@ export function BulkPlanEditor({
     stageId: StageId,
     newDate: string,
     isAllDone: boolean,
-    originalDate: string,
+    originalDate: string | undefined,
     completedCount: number
   ) {
     if (locked) return

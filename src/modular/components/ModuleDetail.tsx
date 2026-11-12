@@ -1,3 +1,4 @@
+import { ModuleDimensionsEditor } from './ModuleDimensionsEditor'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import {
   IconAlertTriangle, IconArrowBackUp, IconCalendar, IconCheck, IconClipboardCheck,
@@ -12,6 +13,8 @@ import styles from './ModuleDetail.module.css'
 
 interface ModuleDetailProps {
   module: ModuleRecord | null
+  generalHeight?: number
+  onGeometryDirty?: (dirty:boolean)=>void
   config: ProjectConfig
   phase: 'draft' | ManagementPhase
   baselinePlanAt?: string
@@ -67,7 +70,7 @@ function deltaText(delta: number | null, planned?: string, actual?: string) {
   return delta > 0 ? `계획보다 ${delta}일 지연` : delta < 0 ? `계획보다 ${Math.abs(delta)}일 빠름` : '계획일 완료'
 }
 
-function SelectedModule({ record, config, phase, baselinePlanAt, stages, workflowStages, baselineWorkflowStages, busy, onCommand, onDirtyChange, currentTab, onTabChange }: Omit<ModuleDetailProps, 'module'> & { record: ModuleRecord }) {
+function SelectedModule({ onGeometryDirty, generalHeight, record, config, phase, baselinePlanAt, stages, workflowStages, baselineWorkflowStages, busy, onCommand, onDirtyChange, currentTab, onTabChange }: Omit<ModuleDetailProps, 'module'> & { record: ModuleRecord }) {
   const id = useId()
   const [tab, setTab] = useState<DetailTab>(() => currentTab ?? (phase === 'planning' ? 'plan' : 'stages'))
 
@@ -94,7 +97,8 @@ function SelectedModule({ record, config, phase, baselinePlanAt, stages, workflo
   const planDirty = JSON.stringify(plan) !== JSON.stringify(currentPlanOf(record))
   const inspectionDirty = content.length > 0
   const stagesDirty = Object.keys(stageChanges).length > 0
-  const dirty = detailsDirty || planDirty || inspectionDirty || stagesDirty
+  const [geometryDirty, setGeometryDirty] = useState(false)
+  const dirty = detailsDirty || planDirty || inspectionDirty || stagesDirty || geometryDirty
   const locked = busy || pending !== null
   const percentage = progress(record, stages)
   const issues = openIssues(record)
@@ -192,6 +196,7 @@ function SelectedModule({ record, config, phase, baselinePlanAt, stages, workflo
         {issues > 0 && <div className={styles.issueSummary}><IconAlertTriangle size={14} /><span>미해결 이슈 {issues}건</span><button type="button" onClick={() => setTab('inspections')}>확인하기</button></div>}
       </header>
 
+      <ModuleDimensionsEditor module={record} config={config} generalHeight={generalHeight ?? 4} busy={locked} otherDirty={detailsDirty || planDirty || inspectionDirty || stagesDirty} onDirtyChange={value=>{setGeometryDirty(value);onGeometryDirty?.(value)}} onSave={dimensions => execute({ type: 'module-dimensions', key: record.key, dimensions }, 'dimensions')} />
       <div className={styles.tabs} role="tablist" aria-label="모듈 정보 구분">
         {([
           ['plan', '관리계획', IconCalendar],
@@ -279,7 +284,7 @@ function SelectedModule({ record, config, phase, baselinePlanAt, stages, workflo
           <div className={styles.stageGroup}>
               {stages.map(stage => {
                 const stageDate = stageChanges[stage.id] !== undefined ? stageChanges[stage.id] : actualStageDateOf(record, stage.id)
-                const actualIsValid = validActualDate(stageDate)
+                const actualIsValid = validActualDate(stageDate || undefined)
                 const planDate = plannedStageDateOf(currentPlanOf(record), stage.id)
                 const variance = dayDelta(stageDate || undefined, planDate)
                 const delayDays = variance !== null && variance > 0 ? variance : !stageDate && planDate && planDate < today() ? dayDelta(today(), planDate) : null

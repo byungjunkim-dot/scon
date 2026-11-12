@@ -373,9 +373,9 @@ export const ProductionNotesAndPhotos: React.FC<ProductionNotesAndPhotosProps> =
       </div>
 
       {/* Grid: [특기사항] & [현황 사진 업로드] */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4">
         {/* Left Column: 특기사항 */}
-        <div className="flex flex-col">
+        <div className="flex flex-col order-1">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-bold text-gray-900 tracking-tight">특기사항</h3>
@@ -386,7 +386,7 @@ export const ProductionNotesAndPhotos: React.FC<ProductionNotesAndPhotosProps> =
             <button
               type="button"
               onClick={handleAddStructuredNote}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-blue-600 hover:bg-blue-50 text-xs font-semibold transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-blue-600 hover:bg-blue-50 text-xs font-semibold transition-colors cursor-pointer"
             >
               <Plus size={13} />
               <span>항목 추가</span>
@@ -439,7 +439,7 @@ export const ProductionNotesAndPhotos: React.FC<ProductionNotesAndPhotosProps> =
         </div>
 
         {/* Right Column: 현황사진 업로드 */}
-        <div className="flex flex-col">
+        <div className="flex flex-col order-2">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-bold text-gray-900 tracking-tight">현황사진 업로드</h3>
@@ -447,7 +447,7 @@ export const ProductionNotesAndPhotos: React.FC<ProductionNotesAndPhotosProps> =
                 {(currentDayData.photos || []).length}장
               </span>
             </div>
-            <label className="flex items-center gap-0.5 px-2.5 py-1 rounded-md text-blue-600 hover:bg-blue-50 text-xs font-semibold transition-colors cursor-pointer">
+            <label className="flex items-center gap-1 px-2.5 py-1 rounded-md text-blue-600 hover:bg-blue-50 text-xs font-semibold transition-colors cursor-pointer">
               <Plus size={13} />
               <span>사진 추가</span>
               <input
@@ -469,7 +469,7 @@ export const ProductionNotesAndPhotos: React.FC<ProductionNotesAndPhotosProps> =
             )}
 
             {(currentDayData.photos || []).length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[320px] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[160px] lg:max-h-[320px] overflow-y-auto pr-1">
                 {(currentDayData.photos || []).map((photo) => (
                   <div key={photo.id} className="group relative bg-white rounded-lg border border-gray-200 overflow-hidden shadow-2xs flex flex-col justify-between">
                     <div 
@@ -507,10 +507,10 @@ export const ProductionNotesAndPhotos: React.FC<ProductionNotesAndPhotosProps> =
                 ))}
               </div>
             ) : (
-              <div className="p-4 text-center bg-gray-50 rounded-xl flex flex-col items-center justify-center space-y-1 min-h-[90px] border border-dashed border-gray-200">
-                <ImageIcon size={20} className="text-gray-300" />
+              <div className="p-3 text-center bg-gray-50 rounded-xl flex flex-col items-center justify-center space-y-1 min-h-[70px] border border-dashed border-gray-200">
+                <ImageIcon size={18} className="text-gray-300" />
                 <div className="space-y-0.5">
-                  <h4 className="text-[11px] font-bold text-gray-700">업로드된 현황사진이 없습니다</h4>
+                  <h4 className="text-[10px] font-bold text-gray-700">업로드된 현황사진이 없습니다</h4>
                   <p className="text-[9px] text-gray-400">위의 [사진 추가] 버튼을 눌러 촬영 사진을 등록해 주세요.</p>
                 </div>
               </div>

@@ -52,7 +52,7 @@ export function ReportDialog({ project, busy, onSaveColors, onClose }: Props) {
 
   return <dialog ref={ref} className={styles.dialog} onCancel={event => { event.preventDefault(); close() }} aria-labelledby="report-title">
     <header className={styles.header}>
-      <div><h2 id="report-title">제작현황 HTML 보고서</h2><p>저장된 현황 기준입니다. 층과 공정을 선택해 확인하고, 인터넷 없이 열 수 있는 HTML 파일로 전달하세요.</p></div>
+      <div><h2 id="report-title">제작현황 HTML 보고서</h2><p>평면·3D로 층별 공정과 설치 현황을 확인하세요. 다운로드한 HTML도 인터넷 없이 동작합니다.</p></div>
       <div className={styles.actions}>
         <button type="button" aria-pressed={showColors} onClick={() => setShowColors(value => !value)} disabled={locked}><IconPalette size={16} />색상 설정</button>
         <button type="button" className={styles.primary} disabled={locked || dirty} title={dirty ? '변경한 색상을 저장한 뒤 다운로드하세요.' : undefined} onClick={() => downloadReportHtml(project, colors)}><IconDownload size={16} />HTML 다운로드</button>
