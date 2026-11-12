@@ -383,7 +383,9 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
   useEffect(() => {
     const checkView = () => {
       if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-        setView(prev => (prev === '3d' ? 'plan' : prev))
+        if (!heightDirty.current && !geometryDirty.current) {
+          setView(prev => (prev === '3d' ? 'plan' : prev))
+        }
       }
     }
     checkView()
@@ -461,11 +463,11 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
         if (savedKey) {
           try { savedId = localStorage.getItem(savedKey) } catch {}
         }
-        const bySaved = savedId ? list.find(p => p.id === savedId) : null
         const byId = sconProject ? list.find(p => p.id === sconProject.id) : null
+        const bySaved = savedId ? list.find(p => p.id === savedId) : null
         const byName = sconProject ? list.filter(p => p.name === sconProject.name) : []
 
-        let matched = bySaved || byId
+        let matched = byId || bySaved
         if (!matched) {
           if (byName.length === 1) {
             matched = byName[0]
