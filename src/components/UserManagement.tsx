@@ -33,6 +33,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
   const [users, setUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [openDropdownUserId, setOpenDropdownUserId] = useState<string | null>(null);
+  const [pendingUserCodes, setPendingUserCodes] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -157,53 +159,44 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
     saveUserUpdate(updatedUser);
   };
 
-  // Toggle single project code for a user
-  const handleToggleProjectCode = (userId: string, code: string) => {
-    const userToUpdate = users.find(u => u.id === userId);
-    if (!userToUpdate) return;
-
-    const currentCodes = userToUpdate.allowedProjectCodes || (
-      userToUpdate.signupCode ? userToUpdate.signupCode.split(',').map(s => s.trim()).filter(Boolean) : []
+  // Toggle single project code for a user (in pending state)
+  const handleToggleProjectCode = (code: string) => {
+    setPendingUserCodes(prev => 
+      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
     );
-
-    const nextCodes = currentCodes.includes(code)
-      ? currentCodes.filter(c => c !== code)
-      : [...currentCodes, code];
-
-    const updatedUser: User = {
-      ...userToUpdate,
-      allowedProjectCodes: nextCodes,
-      signupCode: nextCodes.join(', ')
-    };
-
-    saveUserUpdate(updatedUser);
   };
 
-  // Select all project codes for a user
-  const handleSelectAllProjects = (userId: string) => {
-    const userToUpdate = users.find(u => u.id === userId);
-    if (!userToUpdate) return;
-
+  // Select all project codes for a user (in pending state)
+  const handleSelectAllProjects = () => {
     const allCodes = availableProjects.map(p => p.code);
-    const updatedUser: User = {
-      ...userToUpdate,
-      allowedProjectCodes: allCodes,
-      signupCode: allCodes.join(', ')
-    };
-    saveUserUpdate(updatedUser);
+    setPendingUserCodes(allCodes);
   };
 
-  // Clear all project codes for a user
-  const handleClearAllProjects = (userId: string) => {
+  // Clear all project codes for a user (in pending state)
+  const handleClearAllProjects = () => {
+    setPendingUserCodes([]);
+  };
+
+  // Explicitly save the pending project selection
+  const handleSaveProjectSelection = async (userId: string) => {
     const userToUpdate = users.find(u => u.id === userId);
     if (!userToUpdate) return;
 
-    const updatedUser: User = {
-      ...userToUpdate,
-      allowedProjectCodes: [],
-      signupCode: ''
-    };
-    saveUserUpdate(updatedUser);
+    setIsSaving(true);
+    try {
+      const updatedUser: User = {
+        ...userToUpdate,
+        allowedProjectCodes: pendingUserCodes,
+        signupCode: pendingUserCodes.join(', ')
+      };
+
+      await saveUserUpdate(updatedUser);
+      setOpenDropdownUserId(null);
+    } catch (error) {
+      console.error('Failed to save project selection:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Save updated user to state, localStorage, and Supabase
@@ -377,9 +370,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
                             if (isDropdownOpen) {
                               setOpenDropdownUserId(null);
                               setProjectSearchTerm('');
+                              setPendingUserCodes([]);
                             } else {
                               setOpenDropdownUserId(user.id);
                               setProjectSearchTerm('');
+                              // Initialize pending codes from current user data
+                              const currentCodes = user.allowedProjectCodes || (
+                                user.signupCode ? user.signupCode.split(',').map(s => s.trim()).filter(Boolean) : []
+                              );
+                              setPendingUserCodes([...currentCodes]);
                             }
                           }}
                           className={`flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
@@ -427,12 +426,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
                             {/* 빠른 전체 선택 / 전체 해제 */}
                             <div className="flex items-center justify-between text-[11px] pt-0.5">
                               <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                                선택: {userCodes.length} / {availableProjects.length}개
+                                선택: {pendingUserCodes.length} / {availableProjects.length}개
                               </span>
                               <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => handleSelectAllProjects(user.id)}
+                                  onClick={() => handleSelectAllProjects()}
                                   className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                                 >
                                   전체 선택
@@ -440,10 +439,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
                                 <span className="text-gray-300">|</span>
                                 <button
                                   type="button"
-                                  onClick={() => handleClearAllProjects(user.id)}
+                                  onClick={() => handleClearAllProjects()}
                                   className="text-[10px] font-bold text-gray-500 hover:text-gray-700 hover:underline cursor-pointer"
                                 >
                                   전체 해제
+                                </button>
+                                <span className="text-gray-300">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveProjectSelection(user.id)}
+                                  disabled={isSaving}
+                                  className="px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors cursor-pointer shadow-sm disabled:bg-blue-300"
+                                >
+                                  {isSaving ? '저장 중...' : '저장'}
                                 </button>
                               </div>
                             </div>
@@ -470,7 +478,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
                                 </p>
                               ) : (
                                 filteredProjectOptions.map(proj => {
-                                  const isChecked = userCodes.includes(proj.code);
+                                  const isChecked = pendingUserCodes.includes(proj.code);
                                   return (
                                     <label
                                       key={proj.id}
@@ -483,7 +491,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
                                       <input
                                         type="checkbox"
                                         checked={isChecked}
-                                        onChange={() => handleToggleProjectCode(user.id, proj.code)}
+                                        onChange={() => handleToggleProjectCode(proj.code)}
                                         className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer shrink-0"
                                       />
                                       <div className="flex flex-col min-w-0 flex-1">
