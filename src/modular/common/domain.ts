@@ -1,6 +1,8 @@
+import { ANCHORS, isDimension, type ModuleDimensions } from './moduleGeometry'
 import { axisNumber, currentPlanOf, defaultWorkflowStages, layoutStatusOf, managementPhaseOf, moduleKey, moduleNumber, today, totalFloorsOf, workflowStagesOf, type HistoryEntry, type LayoutPosition, type ModulePlan, type ModulePlanPatch, type ModuleRecord, type ProjectCommand, type ProjectConfig, type ProjectDetail, type StageId, type WorkflowStage } from './model'
 
 import { isStageColor } from './stageColors'
+import { isModuleHeight } from './installation3d'
 
 export const MAX_PLACED_MODULES = 5000
 export const MAX_MODULE_HISTORY = 1000
@@ -129,11 +131,17 @@ function validatePlanPatch(value: unknown): ModulePlanPatch {
 export function validateCommand(value: unknown): ProjectCommand {
   const obj = record(value)
   const layouts: Record<string, readonly string[]> = {
+    'module-dimensions': ['type', 'key', 'dimensions'],
+    'installation-3d': ['type', 'moduleHeight'],
     settings: ['type', 'config'], place: ['type', 'floor', 'x', 'y', 'active'], fill: ['type', 'floor'], 'reset-floor': ['type', 'floor'], copy: ['type', 'sourceFloor', 'targetFloor'], 'confirm-layout': ['type'], plan: ['type', 'key', 'plan'], 'bulk-plan': ['type', 'moduleKeys', 'patch'], 'bulk-stage': ['type', 'moduleKeys', 'stages'], installation: ['type', 'key', 'date'], 'establish-baseline': ['type'], 'start-production': ['type'],
     workflow: ['type', 'stages', 'reason'], 'stage-colors': ['type', 'colors'], stage: ['type', 'key', 'stage', 'date'], notes: ['type', 'key', 'notes', 'targetDate'], inspect: ['type', 'key', 'date', 'kind', 'content'], resolve: ['type', 'key', 'inspectionId', 'resolved'],
   }
   if (typeof obj.type !== 'string' || !Object.prototype.hasOwnProperty.call(layouts, obj.type)) fail('지원하지 않는 작업입니다.')
   keys(obj, layouts[obj.type])
+  if (obj.type === 'installation-3d') {
+    if (!isModuleHeight(obj.moduleHeight)) fail('모듈 높이는 0.5~12m, 소수 둘째 자리까지 입력해 주세요.')
+    return {type:'installation-3d',moduleHeight:obj.moduleHeight}
+  }
   if (obj.type === 'confirm-layout') return { type: 'confirm-layout' }
   if (obj.type === 'establish-baseline' || obj.type === 'start-production') return { type: obj.type }
   if (obj.type === 'workflow') return { type: 'workflow', stages: validateWorkflowStages(obj.stages), reason: text(obj.reason, 0, 500, '변경 사유', true) }
@@ -191,7 +199,14 @@ export function validateCommand(value: unknown): ProjectCommand {
     return { type: 'bulk-stage', moduleKeys, stages: normalized }
   } else {
     if (typeof obj.key !== 'string' || !/^[1-9]\d*:\d+:\d+$/.test(obj.key)) fail('모듈 식별자를 확인해 주세요.')
-    if (obj.type === 'plan') {
+    if (obj.type === 'module-dimensions') {
+      const dims = record(obj.dimensions)
+      if (Object.keys(dims).some(key => !['width', 'depth', 'height', 'anchor'].includes(key))) fail('모듈 치수 항목을 확인해 주세요.')
+      for (const [key, val] of Object.entries(dims)) {
+        if (key === 'anchor' ? typeof val !== 'string' || !Object.hasOwn(ANCHORS, val) : !isDimension(val, key === 'height' ? 12 : 30)) fail('모듈 치수 또는 기준 모서리를 확인해 주세요. 폭·깊이 0.5~30m, 높이 0.5~12m, 소수 둘째 자리까지 입력할 수 있습니다.')
+      }
+      return { type: 'module-dimensions', key: obj.key, dimensions: { ...dims } as ModuleDimensions }
+    } else if (obj.type === 'plan') {
       return { type: 'plan', key: obj.key, plan: validatePlan(obj.plan) }
     } else if (obj.type === 'installation') {
       const date = obj.date === null ? null : validateDate(obj.date)
@@ -268,7 +283,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
   }
   let message = ''
   const layoutCommand = ['settings', 'place', 'fill', 'reset-floor', 'copy'].includes(command.type)
-  const moduleCommand = ['stage', 'notes', 'inspect', 'resolve', 'plan', 'bulk-plan', 'bulk-stage', 'installation'].includes(command.type)
+  const moduleCommand = ['stage', 'notes', 'inspect', 'resolve', 'plan', 'bulk-plan', 'bulk-stage', 'installation', 'module-dimensions'].includes(command.type)
   const productionCommand = ['stage', 'installation', 'bulk-stage'].includes(command.type)
   const phase = managementPhaseOf(result)
   const stageDefinitions = workflowStagesOf(result)
@@ -376,6 +391,9 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     result.baselineWorkflowStages = structuredClone(stageDefinitions)
     result.managementPhase = 'production'
     message = `제작 관리 시작 · 착수 기준일정 고정 · ${result.modules.filter(item => item.active).length}개 모듈`
+  } else if (command.type === 'installation-3d') {
+    result.installation3d = {moduleHeight:command.moduleHeight}
+    message = `3D 설치현황 높이 변경 · ${command.moduleHeight}m`
   } else if (command.type === 'stage-colors') {
     if (Object.keys(command.colors).some(id => !stageIds.has(id))) fail('프로젝트에 없는 공정의 색상은 저장할 수 없습니다.')
     result.stageColors = { ...command.colors }
@@ -444,7 +462,13 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     message = `${targets.length}개 모듈 · 공정 완료 상태 일괄 변경 (${stageLabels})`
   } else {
     const m = activeModule(command.key)
-    if (command.type === 'stage') {
+    if (command.type === 'module-dimensions') {
+      if (JSON.stringify(m.dimensions ?? {}) === JSON.stringify(command.dimensions)) return current
+      const before = JSON.stringify(m.dimensions ?? {})
+      if (Object.keys(command.dimensions).length) m.dimensions = command.dimensions
+      else delete m.dimensions
+      message = `${moduleNumber(m, result.config)} 모듈 치수·기준 모서리 변경 · ${before} → ${JSON.stringify(command.dimensions)}${Object.keys(command.dimensions).length ? '' : ' (기본값 상속)'}`
+    } else if (command.type === 'stage') {
       if (command.date === null) {
         delete m.completed[command.stage]
         if (command.stage === 'installation') delete m.actualInstallationDate

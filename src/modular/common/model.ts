@@ -1,3 +1,6 @@
+import type { ModuleDimensions } from './moduleGeometry'
+import type { Installation3DSettings } from './installation3d'
+
 export const STAGES = [
   { id: 'materials', label: '자재 입고', group: '구조 제작' },
   { id: 'processing', label: '부재 가공', group: '구조 제작' },
@@ -71,6 +74,7 @@ export interface ModuleRecord {
   x: number
   y: number
   active: boolean
+  dimensions?: ModuleDimensions
   completed: Partial<Record<StageId, string>>
   notes: string
   targetDate: string
@@ -98,6 +102,7 @@ export interface ProjectDetail {
   baselineWorkflowStages?: WorkflowStage[]
   workflowHistory?: WorkflowRevision[]
   stageColors?: Record<StageId, string>
+  installation3d?: Installation3DSettings
   history: HistoryEntry[]
   createdAt: string
   updatedAt: string
@@ -164,6 +169,8 @@ export type ProjectCommand =
   | { type: 'start-production' }
   | { type: 'workflow'; stages: WorkflowStage[]; reason: string }
   | { type: 'stage-colors'; colors: Record<StageId, string> }
+  | { type: 'installation-3d'; moduleHeight: number }
+  | { type: 'module-dimensions'; key: string; dimensions: ModuleDimensions }
   | { type: 'stage'; key: string; stage: StageId; date: string | null }
   | { type: 'notes'; key: string; notes: string; targetDate: string }
   | { type: 'inspect'; key: string; date: string; kind: Inspection['kind']; content: string }
