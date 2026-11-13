@@ -4,6 +4,7 @@ import { totalFloorsOf, axisNumber, currentPlanOf, defaultWorkflowStages, layout
 
 import { isStageColor } from './stageColors'
 import { isModuleHeight, moduleHeightOf } from './installation3d'
+import { actualStageDateOf, isStageOmitted, patchModulePlan } from './model'
 
 export const MAX_PLACED_MODULES = 5000
 export const MAX_MODULE_HISTORY = 1000
@@ -91,9 +92,11 @@ function validateWorkflowStages(value: unknown): WorkflowStage[] {
 }
 function ensurePlanStages(plan: ModulePlan, stageIds: ReadonlySet<string>) {
   for (const id of Object.keys(plan.stages)) if (!stageIds.has(id)) fail('현재 프로젝트에서 사용하지 않는 공정 계획 항목이 포함되어 있습니다.')
+  for (const id of plan.omittedStages ?? []) if (!stageIds.has(id)) fail('프로젝트에 없는 공정은 생략할 수 없습니다.')
 }
 function validatePlan(value: unknown): ModulePlan {
-  const obj = record(value); keys(obj, ['zone', 'factory', 'installationDate', 'stages'])
+  const obj = record(value); keys(obj, ['zone', 'factory', 'installationDate', 'stages', ...('omittedStages' in obj?['omittedStages']:[])])
+  if ('omittedStages' in obj && (!Array.isArray(obj.omittedStages) || obj.omittedStages.length>MAX_WORKFLOW_STAGES || obj.omittedStages.some(id=>!validStageId(id)) || new Set(obj.omittedStages).size!==obj.omittedStages.length)) fail('생략 공정 목록을 확인해 주세요. 중복 없이 현재 공정을 선택해 주세요.')
   const stages = record(obj.stages)
   const normalized: Partial<Record<StageId, string>> = {}
   for (const [key, date] of Object.entries(stages)) {
@@ -106,13 +109,19 @@ function validatePlan(value: unknown): ModulePlan {
     factory: text(obj.factory, 0, 80, '생산 공장', true),
     installationDate: validateDate(obj.installationDate, true),
     stages: normalized,
+    ...('omittedStages' in obj?{omittedStages:[...(obj.omittedStages as string[])].sort()}:{}),
   }
 }
 function validatePlanPatch(value: unknown): ModulePlanPatch {
   const obj = record(value)
-  const allowed = ['zone', 'factory', 'installationDate', 'stages']
+  const allowed = ['zone', 'factory', 'installationDate', 'stages', 'omissions']
   if (!Object.keys(obj).length || Object.keys(obj).some(key => !allowed.includes(key))) fail('일괄 적용할 관리계획 항목을 확인해 주세요.')
   const patch: ModulePlanPatch = {}
+  if ('omissions' in obj) {
+    const values=record(obj.omissions), entries=Object.entries(values)
+    if (!entries.length || entries.length>MAX_WORKFLOW_STAGES || entries.some(([id,skip])=>!validStageId(id)||typeof skip!=='boolean')) fail('일괄 생략할 공정과 적용 여부를 확인해 주세요.')
+    patch.omissions=Object.fromEntries(entries) as Record<string,boolean>
+  }
   if (Object.prototype.hasOwnProperty.call(obj, 'zone')) patch.zone = text(obj.zone, 0, 80, '구역', true)
   if (Object.prototype.hasOwnProperty.call(obj, 'factory')) patch.factory = text(obj.factory, 0, 80, '생산 공장', true)
   if (Object.prototype.hasOwnProperty.call(obj, 'installationDate')) patch.installationDate = validateDate(obj.installationDate, true)
@@ -268,6 +277,7 @@ function planChanges(before: ModulePlan, after: ModulePlan, stages: readonly Wor
   const changes: Array<{ field: string; before: string; after: string }> = []
   for (const field of ['zone', 'factory', 'installationDate'] as const) if (before[field] !== after[field]) changes.push({ field: field === 'zone' ? '구역' : field === 'factory' ? '생산 공장' : '설치예정일', before: before[field], after: after[field] })
   for (const stage of stages) {
+    if (isStageOmitted(before,stage.id)!==isStageOmitted(after,stage.id)) changes.push({field:`${stage.label} 적용 여부`,before:isStageOmitted(before,stage.id)?'생략':'적용',after:isStageOmitted(after,stage.id)?'생략':'적용'})
     if (stage.id === 'installation') continue // installationDate is the single plan field for the installation process
     const previous = before.stages[stage.id] ?? ''
     const planned = after.stages[stage.id] ?? ''
@@ -333,8 +343,9 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
   const activeStageIds = new Set(stageDefinitions.filter(stage => stage.active).map(stage => stage.id))
   if (command.type === 'plan') ensurePlanStages(command.plan, stageIds)
   if (command.type === 'bulk-plan' && Object.keys(command.patch.stages ?? {}).some(id => !activeStageIds.has(id))) fail('사용 중인 공정만 일괄 계획할 수 있습니다.')
+  if (command.type === 'bulk-plan' && Object.keys(command.patch.omissions ?? {}).some(id=>!activeStageIds.has(id))) fail('사용 중인 공정만 생략 또는 생략 해제할 수 있습니다.')
   if (command.type === 'bulk-plan' && Object.prototype.hasOwnProperty.call(command.patch, 'installationDate') && !activeStageIds.has('installation')) fail('비활성 설치 공정의 계획일은 변경할 수 없습니다. 공정을 다시 활성화한 뒤 수정해 주세요.')
-  if (command.type === 'bulk-stage' && Object.keys(command.stages).some(id => !activeStageIds.has(id))) fail('사용 중인 공정만 완료 상태를 변경할 수 있습니다.')
+  if (command.type === 'bulk-stage' && Object.keys(command.stages).some(id=>!activeStageIds.has(id))) fail('사용 중인 공정만 완료 상태를 변경할 수 있습니다.')
   if (command.type === 'stage' && !activeStageIds.has(command.stage)) fail('비활성 공정에는 실제 완료일을 입력할 수 없습니다.')
   if (command.type === 'installation' && !activeStageIds.has('installation')) fail('비활성 설치 공정에는 실제 완료일을 입력할 수 없습니다.')
   if (layoutCommand) requireDraft()
@@ -520,13 +531,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     const changedFields = new Set<string>()
     for (const m of targets) {
       const before = currentPlanOf(m)
-      const next: ModulePlan = {
-        ...before,
-        ...(Object.prototype.hasOwnProperty.call(command.patch, 'zone') ? { zone: command.patch.zone! } : {}),
-        ...(Object.prototype.hasOwnProperty.call(command.patch, 'factory') ? { factory: command.patch.factory! } : {}),
-        ...(Object.prototype.hasOwnProperty.call(command.patch, 'installationDate') ? { installationDate: command.patch.installationDate! } : {}),
-        stages: { ...before.stages, ...command.patch.stages },
-      }
+      const next = patchModulePlan(before,command.patch)
       const changes = planChanges(before, next, stageDefinitions)
       if (!changes.length) continue
       recordPlanRevision(m, changes, result.baselinePlanAt, context)
@@ -537,26 +542,27 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       audit(m, `${moduleNumber(m,result.config)} · 관리계획 일괄 변경 · ${moduleFields.join(' / ')}`)
       changedModules++
     }
-    if (!changedModules) fail('선택한 모듈에 적용할 변경사항이 없습니다.', 409)
+    if (!changedModules) return current
     message = `${changedModules}개 모듈 · 관리계획 일괄 변경 · ${[...changedFields].join(' / ')}`
   } else if (command.type === 'bulk-stage') {
-    if (Object.keys(command.stages).some(id => !activeStageIds.has(id))) fail('사용 중인 공정만 완료 상태를 변경할 수 있습니다.')
-    const targets = command.moduleKeys.map(key => activeModule(key))
-    const stageEntries = Object.entries(command.stages) as Array<[StageId, string | null]>
+    const targets=command.moduleKeys.map(key=>activeModule(key))
+    const entries=Object.entries(command.stages) as Array<[StageId,string|null]>
+    let applicablePairs=0,changedModules=0,changedPairs=0,skippedPairs=0
     for (const m of targets) {
-      for (const [stageId, date] of stageEntries) {
-        if (date === null) {
-          delete m.completed[stageId]
-          if (stageId === 'installation') delete m.actualInstallationDate
-        } else {
-          m.completed[stageId] = date
-          if (stageId === 'installation') m.actualInstallationDate = date
-        }
+      let changed=0
+      for (const [id,date] of entries) {
+        if (isStageOmitted(m.currentPlan,id)) {skippedPairs++;continue}
+        applicablePairs++
+        if ((actualStageDateOf(m,id)||null)===date) continue
+        if (date===null) {delete m.completed[id];if(id==='installation')delete m.actualInstallationDate}
+        else {m.completed[id]=date;if(id==='installation')m.actualInstallationDate=date}
+        changed++;changedPairs++
       }
-      audit(m, `${moduleNumber(m, result.config)} · 공정 완료 상태 일괄 변경`)
+      if(changed){audit(m,`${moduleNumber(m,result.config)} · 공정 완료 상태 일괄 변경 · ${changed}건 · 생략 공정 보존`);changedModules++}
     }
-    const stageLabels = stageEntries.map(([id, date]) => `${stageDefinitions.find(s => s.id === id)?.label ?? id} ${date ? '완료' : '해제'}`).join(', ')
-    message = `${targets.length}개 모듈 · 공정 완료 상태 일괄 변경 (${stageLabels})`
+    if(!applicablePairs)fail('선택한 모듈에서 모두 생략한 공정입니다. 관리계획에서 생략을 해제한 뒤 입력해 주세요.',409)
+    if(!changedPairs)return current
+    message=`${changedModules}개 모듈 · 공정 완료 상태 일괄 변경 · ${changedPairs}건 적용 · 생략 ${skippedPairs}건 보존`
   } else {
     const m = activeModule(command.key)
     if (command.type === 'module-dimensions') {
@@ -567,6 +573,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       if ('baseZ' in command) { if (command.baseZ === null) delete m.baseZ; else m.baseZ = command.baseZ }
       message = `${moduleNumber(m, result.config)} 모듈 치수·기준 모서리 변경 · ${before} → ${JSON.stringify(command.dimensions)} · 시작 ${m.baseZ ?? '기본'}m${Object.keys(command.dimensions).length ? '' : ' (기본값 상속)'}`
     } else if (command.type === 'stage') {
+      if (isStageOmitted(m.currentPlan,command.stage)) fail('이 모듈에서 생략한 공정입니다. 관리계획에서 생략을 해제한 뒤 실적을 입력해 주세요.',409)
       if (command.date === null) {
         delete m.completed[command.stage]
         if (command.stage === 'installation') delete m.actualInstallationDate
@@ -577,22 +584,25 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       message = `${moduleNumber(m,result.config)} · ${stageDefinitions.find(s => s.id === command.stage)?.label ?? command.stage} ${command.date ? `완료 ${command.date}` : '완료 해제'}`
     } else if (command.type === 'plan') {
       const before = currentPlanOf(m)
-      const next = command.plan
-      const inactivePlanChanged = stageDefinitions.some(stage => !stage.active && (before.stages[stage.id] ?? '') !== (next.stages[stage.id] ?? ''))
+      const next = { ...command.plan, ...(!('omittedStages' in command.plan)&&before.omittedStages?{omittedStages:[...before.omittedStages]}:{}) }
+      const inactivePlanChanged = stageDefinitions.some(stage => !stage.active && ((before.stages[stage.id] ?? '') !== (next.stages[stage.id] ?? '') || isStageOmitted(before,stage.id)!==isStageOmitted(next,stage.id)))
       if (inactivePlanChanged) fail('비활성 공정의 기존 계획은 변경할 수 없습니다. 공정을 다시 활성화한 뒤 수정해 주세요.')
       if (!activeStageIds.has('installation') && before.installationDate !== next.installationDate) fail('비활성 설치 공정의 계획일은 변경할 수 없습니다. 공정을 다시 활성화한 뒤 수정해 주세요.')
+      if (stageDefinitions.some(stage=>isStageOmitted(next,stage.id)&& (stage.id==='installation'?before.installationDate!==next.installationDate:(before.stages[stage.id]??'')!==(next.stages[stage.id]??'')))) fail('생략 공정의 기존 계획일은 보존됩니다. 생략을 해제한 뒤 날짜를 변경해 주세요.',409)
       const changes = planChanges(before, next, stageDefinitions)
       recordPlanRevision(m, changes, result.baselinePlanAt, context)
       m.currentPlan = structuredClone(next)
       m.targetDate = next.stages.shipping ?? ''
-      message = `${moduleNumber(m,result.config)} · 관리계획 저장${result.baselinePlanAt && changes.length ? ` · ${changes.map(change => `${change.field} ${change.before || '미입력'} → ${change.after || '미입력'}`).join(' / ')}` : ''}`
+      message = `${moduleNumber(m,result.config)} · 관리계획 저장${changes.length ? ` · ${changes.map(change => `${change.field} ${change.before || '미입력'} → ${change.after || '미입력'}`).join(' / ')}` : ''}`
     } else if (command.type === 'installation') {
+      if (isStageOmitted(m.currentPlan,'installation')) fail('이 모듈은 설치 공정을 생략했습니다. 관리계획에서 생략을 해제한 뒤 입력해 주세요.',409)
       if (command.date === null) { delete m.actualInstallationDate; delete m.completed.installation }
       else { m.actualInstallationDate = command.date; m.completed.installation = command.date }
       message = `${moduleNumber(m,result.config)} · 실제 설치일 ${command.date ?? '해제'}`
     } else if (command.type === 'notes') {
       const before = currentPlanOf(m)
-      const next = { ...before, stages: { ...before.stages, shipping: command.targetDate } }
+      if (isStageOmitted(before,'shipping')&&command.targetDate!==m.targetDate) fail('생략한 출고 공정의 기존 계획일은 보존됩니다. 관리계획에서 생략을 해제해 주세요.',409)
+      const next = isStageOmitted(before,'shipping')?before:{ ...before, stages: { ...before.stages, shipping: command.targetDate } }
       const changes = planChanges(before, next, stageDefinitions)
       recordPlanRevision(m, changes, result.baselinePlanAt, context)
       m.notes = command.notes; m.targetDate = command.targetDate; m.currentPlan = next

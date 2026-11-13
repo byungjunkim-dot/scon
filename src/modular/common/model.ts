@@ -37,9 +37,11 @@ export interface ModulePlan {
   factory: string
   installationDate: string
   stages: Partial<Record<StageId, string>>
+  omittedStages?: StageId[]
 }
 export type ModulePlanPatch = Partial<Pick<ModulePlan, 'zone' | 'factory' | 'installationDate'>> & {
   stages?: Partial<Record<StageId, string>>
+  omissions?: Partial<Record<StageId, boolean>>
 }
 export interface PlanRevision {
   at: string
@@ -154,7 +156,23 @@ export const currentPlanOf = (module: ModuleRecord): ModulePlan => {
 }
 export const plannedStageDateOf = (plan: ModulePlan | undefined, stageId: StageId) => stageId === 'installation' ? plan?.installationDate ?? '' : plan?.stages[stageId] ?? ''
 export const actualStageDateOf = (module: ModuleRecord, stageId: StageId) => stageId === 'installation' ? module.completed[stageId] || module.actualInstallationDate : module.completed[stageId]
+export const isStageOmitted = (plan: ModulePlan | undefined, stageId: StageId) => plan?.omittedStages?.includes(stageId) ?? false
+/** Partial updates resolve applicability first; excluded dates remain untouched. */
+export function patchModulePlan(before: ModulePlan, patch: ModulePlanPatch): ModulePlan {
+  const omitted = new Set(before.omittedStages ?? [])
+  for (const [id, skip] of Object.entries(patch.omissions ?? {})) { if (skip) omitted.add(id); else omitted.delete(id) }
+  const next: ModulePlan = { ...before, stages: { ...before.stages },
+    ...(patch.zone !== undefined ? {zone:patch.zone} : {}), ...(patch.factory !== undefined ? {factory:patch.factory} : {}),
+    ...(patch.omissions ? {omittedStages:[...omitted].sort()} : {}) }
+  if (patch.installationDate !== undefined && !omitted.has('installation')) next.installationDate = patch.installationDate
+  for (const [id,date] of Object.entries(patch.stages ?? {})) if (!omitted.has(id)) next.stages[id] = date
+  return next
+}
 export const validActualDate = (value: string | undefined) => Boolean(value && value <= today())
+export function stageOverdue(m: ModuleRecord, id: StageId, asOf=today(), plan=currentPlanOf(m)) {
+  const planned=plannedStageDateOf(plan,id)
+  return !isStageOmitted(plan,id)&&Boolean(planned&&planned<asOf&&!validActualDate(actualStageDateOf(m,id)))
+}
 export type ProjectCommand =
   | {type:'add-extra';floor:number;x:number;y:number;kind:ExtraKind;baseZ:number;dimensions:ModuleDimensions;confirmed:boolean}
   | {type:'extra-state';key:string;active:boolean;confirmed:boolean}
@@ -232,12 +250,14 @@ export const moduleNumber = (
   return `${m.floor}-${coordCode}${extraNumberSuffix(m)}`
 }
 type StageLike = Pick<WorkflowStage, 'id'> & Partial<Pick<WorkflowStage, 'active' | 'label'>>
-export const completedCount = (m: ModuleRecord, stages: readonly StageLike[] = STAGES) => stages.filter(s => s.active !== false && validActualDate(actualStageDateOf(m, s.id))).length
-export const progress = (m: ModuleRecord, stages: readonly StageLike[] = STAGES) => Math.round(completedCount(m, stages) / stages.filter(s => s.active !== false).length * 100)
+export const applicableStagesOf = <T extends StageLike>(m: Pick<ModuleRecord,'currentPlan'>, stages: readonly T[]): T[] => stages.filter(s=>s.active!==false&&!isStageOmitted(m.currentPlan,s.id))
+export const completedCount = (m: ModuleRecord, stages: readonly StageLike[] = STAGES) => applicableStagesOf(m,stages).filter(s => validActualDate(actualStageDateOf(m, s.id))).length
+export const progress = (m: ModuleRecord, stages: readonly StageLike[] = STAGES) => { const total=applicableStagesOf(m,stages).length; return total?Math.round(completedCount(m,stages)/total*100):0 }
 export const openIssues = (m: ModuleRecord) => m.inspections.filter(i => i.kind === 'issue' && i.status === 'open').length
-export type ModuleStatus = 'empty' | 'working' | 'ready' | 'shipped'
+export type ModuleStatus = 'empty' | 'working' | 'ready' | 'shipped' | 'notApplicable'
 export const moduleStatus = (m: ModuleRecord, stages: readonly StageLike[] = STAGES): ModuleStatus => {
-  const active = stages.filter(stage => stage.active !== false)
+  const active = applicableStagesOf(m,stages)
+  if (!active.length) return 'notApplicable'
   const completed = completedCount(m, active)
   const hasShipping = active.some(stage => stage.id === 'shipping')
   if (hasShipping && validActualDate(actualStageDateOf(m, 'shipping'))) return 'shipped'
@@ -245,7 +265,7 @@ export const moduleStatus = (m: ModuleRecord, stages: readonly StageLike[] = STA
   if (completed > 0 && completed === readyCount) return 'ready'
   return completed ? 'working' : 'empty'
 }
-export const STATUS_LABELS: Record<ModuleStatus, string> = { empty: '제작 대기', working: '제작 중', ready: '출고 대기', shipped: '출고 완료' }
+export const STATUS_LABELS: Record<ModuleStatus, string> = { empty: '제작 대기', working: '제작 중', ready: '출고 대기', shipped: '출고 완료', notApplicable:'대상 공정 없음' }
 export const moduleStatusLabel = (status: ModuleStatus, stages: readonly StageLike[] = STAGES) => {
   const shipping = stages.find(stage => stage.id === 'shipping' && stage.active !== false)
   if (status === 'ready' && !shipping) return '공정 완료'
