@@ -4,6 +4,7 @@ interface ReportStage { id: string; label: string; color: string }
 interface ReportModule {
   number: string; floor: number; x: number; y: number
   kind?: 'normal'|'roof'|'penthouse'|'special'
+  omittedStages?: string[]
   geometry: {width:number;depth:number;height:number;originX:number;originY:number;baseZ:number}
   completed: Record<string, string>; planned: Record<string, string>
   installation: { actualDate: string; plannedDate: string }
@@ -26,7 +27,7 @@ export function bootReportMini3D(math: ReturnType<typeof createSceneMath>, env: 
   const canvas = document.getElementById('plan-mini-canvas') as HTMLCanvasElement
   let camera: Camera = { ...math.INITIAL_CAMERA }, pending = 0
   let gesture: { id: number; x: number; y: number; camera: Camera } | null = null
-  const entries = data.modules.map(m => ({ key: m.number, number: m.number, ...m.geometry, floor: m.floor, x: m.x, y: m.y, actualDate: m.installation.actualDate, plannedDate: m.installation.plannedDate }))
+  const entries = data.modules.map(m => ({ key: m.number, number: m.number, ...m.geometry, floor: m.floor, x: m.x, y: m.y, actualDate: m.installation.actualDate, plannedDate: m.installation.plannedDate,omitted:m.omittedStages?.includes('installation') }))
   const scene: InstallationScene = { ...data.config, name: data.name, modules: entries }
   function render() {
     root.hidden = document.body.dataset.view === '3d'
@@ -34,7 +35,7 @@ export function bootReportMini3D(math: ReturnType<typeof createSceneMath>, env: 
     const selected = env.selected()
     root.dataset.selectedNumber = selected
     const picked = data.modules.find(m => m.number === selected)
-    canvas.setAttribute('aria-label', `생성일 ${data.asOf} 기준 전체 층 설치 현황. 공정 필터와 무관합니다.${picked ? ` 선택 ${picked.number} · ${data.floorLabels[picked.floor]}.` : ''} 드래그 또는 오른쪽 아래 버튼으로 회전하세요.`)
+    canvas.setAttribute('aria-label', `생성일 ${data.asOf} 기준 전체 층 설치 현황. 공정 필터와 무관합니다.${picked ? ` 선택 ${picked.number}${picked.omittedStages?.includes('installation')?' · 설치 생략':''} · ${data.floorLabels[picked.floor]}.` : ''} 드래그 또는 오른쪽 아래 버튼으로 회전하세요.`)
     const width = canvas.clientWidth, height = canvas.clientHeight, ctx = canvas.getContext('2d')
     if (!ctx || width < 1 || height < 1) return
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -85,7 +86,7 @@ export function bootReport3D(math: ReturnType<typeof createSceneMath>, env: Envi
   const stageOf = () => data.stages.find(s => s.id === element<HTMLSelectElement>('stage').value) || (element<HTMLSelectElement>('stage').value === 'installation' ? data.installationStage : undefined)
   const asOf = () => math.validDate(dateInput.value) && dateInput.value <= data.asOf ? dateInput.value : data.asOf
   const floorLabel = () => { const name=data.floorLabels[Number(element<HTMLSelectElement>('floor').value)]; return scope.value === 'all' ? '전체 층' : scope.value === 'single' ? name : `1층–${name}` }
-  const doneAt = (module: ReportModule, date: string) => data.stages.filter(s => module.completed[s.id] && module.completed[s.id] <= date)
+  const doneAt = (module: ReportModule, date: string) => data.stages.filter(s => !module.omittedStages?.includes(s.id) && module.completed[s.id] && module.completed[s.id] <= date)
   const shade = (hex: string, amount: number) => '#' + [1, 3, 5].map(i => {
     const n = parseInt(hex.slice(i, i + 2), 16)
     return Math.round(amount >= 0 ? n + (255 - n) * amount : n * (1 + amount)).toString(16).padStart(2, '0')
@@ -106,6 +107,7 @@ export function bootReport3D(math: ReturnType<typeof createSceneMath>, env: Envi
       colors.set(module.number, stage?.color || latest?.color || '#155DFC')
       return {
         key: module.number, number: module.number, ...module.geometry, floor: module.floor, x: module.x, y: module.y,
+        omitted:stage?module.omittedStages?.includes(stage.id):data.stages.every(s=>module.omittedStages?.includes(s.id)),
         plannedDate: stage?.id === 'installation' ? module.installation.plannedDate : stage ? module.planned[stage.id] || '' : '',
         actualDate: stage?.id === 'installation' ? module.installation.actualDate : stage ? module.completed[stage.id] || '' : latest ? module.completed[latest.id] : '',
       }
@@ -119,7 +121,7 @@ export function bootReport3D(math: ReturnType<typeof createSceneMath>, env: Envi
     element('floor-title').textContent = `3D 현황 · ${floorLabel()}`
     element('floor-summary').textContent = `${stage?.label || '전체 공정 / 진행 현황'} · ${date} 기준 · 일반층 기본 ${data.moduleHeight}m · RF 기본 1m · 개별 치수 우선`
     element('three-caption').textContent = `${floorLabel()} · ${stage?.label || '전체 공정 / 진행 현황'} · ${date} 기준 · 일반층 기본 ${data.moduleHeight}m · RF 기본 1m · 개별 치수 우선`
-    element('selection-summary').textContent = `${completed} / ${entries.length}개 ${stage ? '완료' : '공정 진행'}`
+    element('selection-summary').textContent = `${completed} / ${entries.filter(m=>!m.omitted).length}개 ${stage ? '완료' : '공정 진행'} · 생략 ${entries.filter(m=>m.omitted).length}개`
     element('three-count').textContent = `표시 ${visible.length}개 · 기준일 완료 ${completed}개`
     const legend = element('legend'), swatch = create('span', '')
     swatch.className = 'swatch'; swatch.style.background = stage?.color || '#155DFC'
@@ -135,7 +137,7 @@ export function bootReport3D(math: ReturnType<typeof createSceneMath>, env: Envi
       const placeholder = create('option', '박스 클릭 또는 모듈 선택') as HTMLOptionElement; placeholder.value = ''
       selector.replaceChildren(placeholder)
       const fragment = document.createDocumentFragment()
-      visible.forEach(m => { const option = create('option', `${m.number} · ${math.installedAt(m, date, data.asOf) ? '완료' : '기준일 미완료'}`) as HTMLOptionElement; option.value = m.number; fragment.append(option) })
+      visible.forEach(m => { const option = create('option', `${m.number} · ${m.omitted?'생략 · 집계 제외':math.installedAt(m, date, data.asOf) ? '완료' : '기준일 미완료'}`) as HTMLOptionElement; option.value = m.number; fragment.append(option) })
       selector.append(fragment)
     }
     selector.value = visible.some(m => m.number === env.selected()) ? env.selected() : ''
@@ -186,7 +188,7 @@ export function bootReport3D(math: ReturnType<typeof createSceneMath>, env: Envi
   element('three-move').onclick = () => { moving = !moving; element('three-move').setAttribute('aria-pressed', String(moving)); element('three-move').textContent = moving ? '이동 모드' : '회전 모드'; canvas.style.cursor = moving ? 'move' : 'grab' }
   canvas.onpointerdown = event => { if (event.button !== 0 || gesture) return; canvas.setPointerCapture(event.pointerId); gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, camera: { ...camera }, pan: { ...pan } } }
   canvas.onpointermove = event => {
-    if (!gesture) { const hit = pick(event); element('three-hint').textContent = hit ? `${hit.number} · ${math.installedAt(hit, asOf(), data.asOf) ? `완료 ${hit.actualDate}` : '기준일 미완료'}` : '드래그: 회전 · ＋/−: 확대·축소'; return }
+    if (!gesture) { const hit = pick(event); element('three-hint').textContent = hit ? `${hit.number} · ${hit.omitted?'생략 · 집계 제외':math.installedAt(hit, asOf(), data.asOf) ? `완료 ${hit.actualDate}` : '기준일 미완료'}` : '드래그: 회전 · ＋/−: 확대·축소'; return }
     if (gesture.id !== event.pointerId) return
     const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y
     if (Math.hypot(dx, dy) > 4) gesture.moved = true

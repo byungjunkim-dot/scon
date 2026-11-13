@@ -29,6 +29,7 @@ export function reportSnapshot(project: ProjectDetail, colors = project.stageCol
       const installationDate = reportDate(actualStageDateOf(module, 'installation'))
       return {
         number: moduleNumber(module, project.config), kind:moduleKindOf(module,project.config), geometry: moduleGeometryOf(module, project.config, project.installation3d), floor: module.floor, x: module.x, y: module.y,
+        omittedStages:[...(plan.omittedStages??[])],
         installation: { plannedDate: reportDate(plan.installationDate), actualDate: installationDate && installationDate <= asOf ? installationDate : '' },
         planned: Object.fromEntries(stages.map(stage => [stage.id, reportDate(plannedStageDateOf(plan, stage.id))])),
         completed: Object.fromEntries(stages.map(stage => {
@@ -47,7 +48,8 @@ export function buildReportHtml(project: ProjectDetail, colors = project.stageCo
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-<title>모듈러 제작 현황</title><style>${REPORT_CSS}</style></head><body${preview ? ' class="preview"' : ''}>
+<title>모듈러 제작 현황</title><style>${REPORT_CSS}
+.omitted-row{opacity:.55;background:#f8fafc}</style></head><body${preview ? ' class="preview"' : ''}>
 <header><div><p class="eyebrow">MODULAR PRODUCTION REPORT</p><h1 id="project-name"></h1><p id="timestamp" class="muted"></p></div><div class="overall"><span>전체 제작 진행률</span><strong id="overall-progress"></strong><span id="overall-count"></span><progress id="overall-bar" max="100"></progress></div></header>
 <main><section class="drawing"><div class="drawing-head"><div><div class="view-switch" role="group" aria-label="보고서 보기 방식"><button id="view-plan" aria-pressed="true">평면 배치</button><button id="view-3d" aria-pressed="false">3D 현황</button></div><h2 id="floor-title"></h2><p id="floor-summary" class="muted" aria-live="polite"></p></div><div class="drawing-actions"><div id="plan-mini-3d" role="region" aria-label="평면 선택 위치 작은 3D"><canvas id="plan-mini-canvas" role="img" aria-label="전체 층 설치 현황"></canvas><div class="plan-mini-controls" role="group" aria-label="보고서 작은 3D 회전 설정"><button id="plan-mini-left" aria-label="보고서 작은 3D 왼쪽 회전" title="왼쪽 회전">↶</button><button id="plan-mini-right" aria-label="보고서 작은 3D 오른쪽 회전" title="오른쪽 회전">↷</button><button id="plan-mini-reset" aria-label="보고서 작은 3D 방향 초기화" title="방향 초기화">⌂</button></div></div><div class="zoom"><button id="zoom-out" aria-label="축소">−</button><span id="zoom-label"></span><button id="zoom-in" aria-label="확대">+</button><button id="fit">화면 맞춤</button></div></div></div><div id="viewport"><div id="board"></div></div>
 <div id="report-3d-panel" hidden><div class="three-tools"><button id="three-move" aria-pressed="false">회전 모드</button><button id="three-left" aria-label="3D 왼쪽 회전">↶</button><button id="three-right" aria-label="3D 오른쪽 회전">↷</button><span id="three-count"></span></div><div id="three-viewport"><canvas id="three-canvas" role="img" aria-label="모듈 공정 입체 배치도. 드래그로 회전하고 박스를 클릭하세요. 키보드는 모듈 선택 목록을 사용하세요."></canvas><p id="three-caption"></p><p id="three-empty" hidden></p></div><p id="three-hint">드래그: 회전 · ＋/−: 확대·축소</p></div>
@@ -115,15 +117,17 @@ const REPORT_SCRIPT = String.raw`
   var selectedFloor = 1, selectedStage = '', selectedNumber = '', zoom = 1;
   var $ = function(id){ return document.getElementById(id); };
   function el(tag, text, cls){ var item = document.createElement(tag); if(text !== undefined) item.textContent = String(text); if(cls) item.className = cls; return item; }
-  function done(module){ return stages.filter(function(s){ return Boolean(module.completed[s.id]); }); }
-  function percent(module){ return stages.length ? Math.round(done(module).length / stages.length * 100) : 0; }
+  function omitted(module,id){return (module.omittedStages||[]).indexOf(id)>=0;}
+  function eligible(module){return stages.filter(function(s){return !omitted(module,s.id);});}
+  function done(module){ return eligible(module).filter(function(s){ return Boolean(module.completed[s.id]); }); }
+  function percent(module){ var total=eligible(module).length; return total ? Math.round(done(module).length / total * 100) : 0; }
   function foreground(hex){ var c = [1,3,5].map(function(i){ var n=parseInt(hex.slice(i,i+2),16)/255; return n<=.04045?n/12.92:Math.pow((n+.055)/1.055,2.4); }); return c[0]*.2126+c[1]*.7152+c[2]*.0722>.179?'#142033':'#ffffff'; }
   function floorModules(){ return data.modules.filter(function(m){return m.floor===selectedFloor && ($('layer').value==='all'||($('layer').value==='normal'?m.kind==='normal':m.kind!=='normal'));}).sort(function(a,b){return a.geometry.baseZ-b.geometry.baseZ;}); }
   function timestamp(value){ var d=new Date(value); return isNaN(d.getTime())?'—':new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d); }
   document.title = data.name + ' · 제작 현황';
   $('project-name').textContent = data.name;
   $('timestamp').textContent = '현황 저장 '+timestamp(data.updatedAt)+' · HTML 생성 '+timestamp(data.exportedAt)+' (한국 기준)';
-  var count = data.modules.reduce(function(sum,m){return sum+done(m).length;},0), total=data.modules.length*stages.length, overall=total?Math.round(count/total*100):0;
+  var count = data.modules.reduce(function(sum,m){return sum+done(m).length;},0), total=data.modules.reduce(function(sum,m){return sum+eligible(m).length;},0), overall=total?Math.round(count/total*100):0;
   $('overall-progress').textContent=overall+'%'; $('overall-count').textContent=data.modules.length+'개 모듈 · '+count+' / '+total+' 공정 완료'; $('overall-bar').value=overall;
   for(var f=1;f<=config.floors+(config.hasRoof?1:0);f++){var option=el('option',data.floorLabels[f]+' · '+data.modules.filter(function(m){return m.floor===f;}).length+'개');option.value=f;$('floor').append(option);}
   var overview=el('option','전체 공정 / 진행률');overview.value='';$('stage').append(overview);
@@ -132,34 +136,34 @@ const REPORT_SCRIPT = String.raw`
     var panel=$('module-detail');panel.replaceChildren();panel.append(el('h2','모듈 상세'));
     var module=data.modules.find(function(m){return m.number===selectedNumber;});
     if(!module){panel.append(el('p','배치도에서 모듈을 선택하세요.','muted'));return;}
-    panel.append(el('div',module.number,'detail-title'),el('p',percent(module)+'% · '+done(module).length+' / '+stages.length+' 공정 완료','muted'));
+    panel.append(el('div',module.number,'detail-title'),el('p',percent(module)+'% · '+done(module).length+' / '+eligible(module).length+' 공정 완료','muted'));
     panel.append(el('p','규격 '+module.geometry.width+' × '+module.geometry.depth+' × '+module.geometry.height+'m · 바닥 '+module.geometry.baseZ+'m','muted'));
-    if(three && three.isActive())panel.append(el('p','설치 예정 '+(module.installation.plannedDate||'미입력')+' · 실제 설치 '+(module.installation.actualDate||'미입력'),'muted'),el('p','상세는 보고서 생성 시점의 기록입니다.','muted'));
+    if(three && three.isActive())panel.append(el('p',(omitted(module,'installation')?'설치 생략 · 기록 보존 · ':'')+'설치 예정 '+(module.installation.plannedDate||'미입력')+' · 실제 설치 '+(module.installation.actualDate||'미입력'),'muted'),el('p','상세는 보고서 생성 시점의 기록입니다.','muted'));
     var table=el('table',undefined,'schedule'), head=el('thead'), hr=el('tr');['공정','계획','완료'].forEach(function(t){hr.append(el('th',t));});head.append(hr);table.append(head);
-    var body=el('tbody'); stages.forEach(function(s){var row=el('tr'), planned=module.planned[s.id], actual=module.completed[s.id];row.append(el('td',s.label),el('td',planned||'—'),el('td',actual||'—'));if(planned && (actual||data.asOf)>planned){row.className='late';var delay=Math.round((Date.parse((actual||data.asOf)+'T00:00:00Z')-Date.parse(planned+'T00:00:00Z'))/86400000);row.title=delay+'일 지연';}body.append(row);});table.append(body);var scroll=el('div',undefined,'schedule-scroll');scroll.append(table);panel.append(scroll);
+    var body=el('tbody'); stages.forEach(function(s){var row=el('tr'), planned=module.planned[s.id], actual=module.completed[s.id];row.append(el('td',s.label+(omitted(module,s.id)?' · 생략':'')),el('td',planned||'—'),el('td',actual||'—'));if(!omitted(module,s.id)&&planned && (actual||data.asOf)>planned){row.className='late';var delay=Math.round((Date.parse((actual||data.asOf)+'T00:00:00Z')-Date.parse(planned+'T00:00:00Z'))/86400000);row.title=delay+'일 지연';}if(omitted(module,s.id)){row.className='omitted-row';row.title='생략 · 집계 제외 · 날짜/실적 보존';}body.append(row);});table.append(body);var scroll=el('div',undefined,'schedule-scroll');scroll.append(table);panel.append(scroll);
   }
   function render(){
     if(three && three.isActive()){three.render();renderDetail();return;}
-    var modules=floorModules(), stage=stages.find(function(s){return s.id===selectedStage;}), completed=stage?modules.filter(function(m){return Boolean(m.completed[stage.id]);}).length:modules.filter(function(m){return percent(m)===100;}).length;
+    var modules=floorModules(), stage=stages.find(function(s){return s.id===selectedStage;}), completed=stage?modules.filter(function(m){return !omitted(m,stage.id)&&Boolean(m.completed[stage.id]);}).length:modules.filter(function(m){return eligible(m).length>0&&percent(m)===100;}).length;
     $('floor-title').textContent=data.floorLabels[selectedFloor]+' 모듈 배치도';
-    var floorTotal=modules.length*stages.length, floorDone=modules.reduce(function(sum,m){return sum+done(m).length;},0);
+    var floorTotal=modules.reduce(function(sum,m){return sum+eligible(m).length;},0), floorDone=modules.reduce(function(sum,m){return sum+done(m).length;},0);
     $('floor-summary').textContent=modules.length+'개 모듈 · 층 진행률 '+(floorTotal?Math.round(floorDone/floorTotal*100):0)+'% · '+config.width+' × '+config.depth+' m 기준 그리드';
     var legend=$('legend');legend.replaceChildren();var dot=el('span',undefined,'swatch');dot.style.background=stage?stage.color:'#dce7f7';legend.append(dot,el('span',stage?stage.label+' 완료':'전체 공정 진행률'));
-    $('selection-summary').textContent=completed+' / '+modules.length+'개 '+(stage?'완료':'전체 공정 완료');
+    $('selection-summary').textContent=completed+' / '+modules.filter(function(m){return stage?!omitted(m,stage.id):eligible(m).length>0;}).length+'개 '+(stage?'완료':'전체 공정 완료')+(modules.some(function(m){return stage?omitted(m,stage.id):!eligible(m).length;})?' · 생략 '+modules.filter(function(m){return stage?omitted(m,stage.id):!eligible(m).length;}).length+'개':'');
     var selector=$('plane-selection');selector.replaceChildren(el('option','모듈을 선택하세요'));selector.firstChild.value='';modules.forEach(function(m){var o=el('option',m.number);o.value=m.number;selector.append(o);});selector.value=selectedNumber;
     var board=$('board');board.replaceChildren();var cw=140*zoom,ch=cw*config.depth/config.width,scale=cw/config.width,bounds=data.bounds[selectedFloor],ox=-bounds.x0*scale,oy=(bounds.y1-config.rows*config.depth)*scale;board.style.width=bounds.width*scale+'px';board.style.height=bounds.depth*scale+'px';board.style.backgroundSize=cw+'px '+ch+'px';board.style.backgroundPosition=ox+'px '+oy+'px';
     $('zoom-label').textContent=Math.round(zoom*100)+'%';$('zoom-out').disabled=zoom<=.2;$('zoom-in').disabled=zoom>=2.5;
     for(var x=0;x<=config.columns;x++){var ax=el('span','X'+(x+1),'axis axis-x');ax.style.left=ox+x*cw+'px';board.append(ax);}
     for(var y=0;y<=config.rows;y++){var ay=el('span','Y'+(y+1),'axis axis-y');ay.style.top=oy+(config.rows-y)*ch+'px';board.append(ay);}
     modules.forEach(function(m){
-      var finished=done(m), latest=finished[finished.length-1], isDone=stage&&Boolean(m.completed[stage.id]);
-      var cell=el('button',undefined,'module'+(selectedNumber===m.number?' selected':''));cell.dataset.module=m.number;cell.dataset.completed=stage?String(Boolean(isDone)):String(finished.length);cell.setAttribute('aria-label',m.number+' · '+percent(m)+'%'+(stage?' · '+stage.label+(isDone?' 완료':' 미완료'):''));cell.setAttribute('aria-pressed',String(selectedNumber===m.number));
+      var finished=done(m), latest=finished[finished.length-1], isDone=stage&&!omitted(m,stage.id)&&Boolean(m.completed[stage.id]);
+      var cell=el('button',undefined,'module'+(selectedNumber===m.number?' selected':''));cell.dataset.module=m.number;cell.dataset.completed=stage?String(Boolean(isDone)):String(finished.length);cell.setAttribute('aria-label',m.number+' · '+percent(m)+'%'+(stage?' · '+stage.label+(omitted(m,stage.id)?' 생략':isDone?' 완료':' 미완료'):''));cell.setAttribute('aria-pressed',String(selectedNumber===m.number));
       var g=m.geometry;cell.style.left=ox+g.originX*scale+2+'px';cell.style.top=oy+(config.rows*config.depth-g.originY-g.depth)*scale+2+'px';cell.style.width=Math.max(1,g.width*scale-4)+'px';cell.style.height=Math.max(1,g.depth*scale-4)+'px';
       cell.style.background=stage?(isDone?stage.color:'#eef1f5'):(latest?latest.color+'18':'#f3f5f8');cell.style.color=stage&&isDone?foreground(stage.color):'#27384f';cell.style.borderColor=stage&&isDone?stage.color:'#ccd6e3';
       var content=el('span',undefined,'module-content'),heading=el('span',undefined,'module-heading');heading.append(el('span',m.number,'module-number'),el('span',percent(m)+'%','module-progress'));content.append(heading);
       var bar=el('span',undefined,'bar'),fill=el('i');fill.style.width=percent(m)+'%';bar.append(fill);content.append(bar);
-      var text=stage?(isDone?stage.label+' 완료\n'+m.completed[stage.id]:'미완료'):(finished.length?finished.map(function(s){return s.label;}).join(' · '):'완료 공정 없음');
-      var list=el('span',text,'done-list');content.append(list);var summary=stage?stage.label+(isDone?' 완료':' 미완료'):latest?latest.label+' 완료'+(finished.length>1?' 외 '+(finished.length-1)+'개':''):'제작 대기';content.append(el('span',summary,'done-summary'));cell.append(content);cell.title=m.number+' · '+percent(m)+'%\n'+text;
+      var text=stage?(omitted(m,stage.id)?stage.label+' 생략 · 집계 제외':isDone?stage.label+' 완료\n'+m.completed[stage.id]:'미완료'):(finished.length?finished.map(function(s){return s.label;}).join(' · '):'완료 공정 없음');
+      var list=el('span',text,'done-list');content.append(list);var summary=stage?stage.label+(omitted(m,stage.id)?' 생략':isDone?' 완료':' 미완료'):!eligible(m).length?'대상 공정 없음':latest?latest.label+' 완료'+(finished.length>1?' 외 '+(finished.length-1)+'개':''):'제작 대기';content.append(el('span',summary,'done-summary'));cell.append(content);cell.title=m.number+' · '+percent(m)+'%\n'+text;
       cell.onclick=function(){selectedNumber=m.number;$('plane-selection').value=selectedNumber;renderDetail();if(mini)mini.render();board.querySelectorAll('.module').forEach(function(item){item.classList.toggle('selected',item.dataset.module===selectedNumber);item.setAttribute('aria-pressed',String(item.dataset.module===selectedNumber));});};board.append(cell);
     });
     if(!modules.length)board.append(el('div','이 층에는 배치된 모듈이 없습니다.','empty'));
@@ -197,3 +201,4 @@ const REPORT_SCRIPT = String.raw`
   fitToViewport();
 })();
 `
+
