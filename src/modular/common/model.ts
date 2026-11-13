@@ -87,7 +87,7 @@ export interface ModuleRecord {
 }
 export type LayoutStatus = 'draft' | 'confirmed'
 export type ManagementPhase = 'planning' | 'production'
-export interface LayoutPosition { floor: number; x: number; y: number }
+export interface LayoutPosition { floor: number; x: number; y: number; dimensions?: ModuleDimensions }
 export interface ProjectDetail {
   id: string
   revision: number
@@ -155,6 +155,7 @@ export const plannedStageDateOf = (plan: ModulePlan | undefined, stageId: StageI
 export const actualStageDateOf = (module: ModuleRecord, stageId: StageId) => stageId === 'installation' ? module.completed[stageId] || module.actualInstallationDate : module.completed[stageId]
 export const validActualDate = (value: string | undefined) => Boolean(value && value <= today())
 export type ProjectCommand =
+  | { type: 'layout-module'; floor: number; x: number; y: number; active: boolean; confirmed: true }
   | { type: 'settings'; config: ProjectConfig }
   | { type: 'place'; floor: number; x: number; y: number; active: boolean }
   | { type: 'fill'; floor: number }
