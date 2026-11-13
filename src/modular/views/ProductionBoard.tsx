@@ -10,10 +10,12 @@ import manifest from '../manifest.json'
 import { actualStageDateOf, axisNumber, baselineWorkflowStagesOf, completedCount, currentPlanOf, DEFAULT_CONFIG, layoutStatusOf, managementPhaseOf, moduleKey, moduleNumber, moduleStatus, moduleStatusLabel, openIssues, plannedStageDateOf, progress, today, validActualDate, workflowStagesOf, totalFloorsOf, isRoofFloorOf, floorLabelOf, floorNameOf, type ModuleRecord, type ModuleStatus, type ProjectCommand, type ProjectConfig, type ProjectDetail, type ProjectSummary, type StageId, type WorkflowStage } from '../common/model'
 import { BulkPlanEditor } from '../components/BulkPlanEditor'
 import { ModuleDetail } from '../components/ModuleDetail'
+import { DraftModuleDetail } from '../components/DraftModuleDetail'
 import { WorkflowSettingsDialog } from '../components/WorkflowSettingsDialog'
 import { ReportDialog } from '../components/ReportDialog'
 import { ProductionNotesAndPhotos } from '../components/ProductionNotesAndPhotos'
 import { InstallationView } from '../features/installation3d/InstallationView'
+import { MiniInstallationView } from '../features/installation3d/MiniInstallationView'
 import { installationSceneOf } from '../features/installation3d/projectAdapter'
 import { moduleHeightOf } from '../common/installation3d'
 import { User } from '../../types'
@@ -50,6 +52,7 @@ function ActionConfirmDialog({
 }) {
   return (
     <div
+      role="dialog" aria-modal="true" aria-label={title}
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4 xl:pl-64 bg-slate-900/40 backdrop-blur-[2px] transition-all"
       onClick={onClose}
     >
@@ -352,11 +355,11 @@ function downloadCsv(project: ProjectDetail) {
   const baselineStages = baselineWorkflowStagesOf(project)
   const reportStages = [...currentStages, ...baselineStages.filter(stage => !currentStages.some(current => current.id === stage.id))]
   const stageHeader = (stage: WorkflowStage) => `${stage.label}${stage.active ? '' : ' (비활성)'}`
-  const headers = ['프로젝트', '관리단계', '모듈번호', '층', 'X축', 'Y축', '폭(m)', '깊이(m)', '높이(m)', '기준 모서리', '제작현황', '진척률(%)', '구역', '생산공장', '설치예정일(기준)', '설치예정일(현재)', '출고예정일', '미해결이슈', ...reportStages.flatMap(s => { const label = stageHeader(s); return [`${label} 계획일(기준)`, `${label} 계획일(현재)`, `${label} 완료일(실제)`, `${label} 편차(현재-계획)`, `${label} 편차(기준-계획)`] }), '특이사항', '검사·이슈 이력']
+  const headers = ['프로젝트', '관리단계', '모듈번호', '층', 'X축', 'Y축', '폭(m)', '깊이(m)', '높이(m)', '기준 모서리', '제작현황', '진척률(%)', '구역', '생산공장', '설치예정일(기준)', '설치예정일(현재)', '출고예정일', '미해결이슈', '착수 기준선 포함 여부', ...reportStages.flatMap(s => { const label = stageHeader(s); return [`${label} 계획일(기준)`, `${label} 계획일(현재)`, `${label} 완료일(실제)`, `${label} 편차(현재-계획)`, `${label} 편차(기준-계획)`] }), '특이사항', '검사·이슈 이력']
   const rows = project.modules.filter(m => m.active).sort((a, b) => a.floor - b.floor || a.y - b.y || a.x - b.x).map(m => {
     const current = currentPlanOf(m)
     const floorLabel = isRoofFloorOf(m.floor, project.config) ? 'RF' : m.floor
-    return [project.config.name, managementPhaseOf(project), moduleNumber(m, project.config), floorLabel, axisNumber(m.x), axisNumber(m.y), moduleGeometryOf(m,project.config).width, moduleGeometryOf(m,project.config).depth, moduleGeometryOf(m,project.config,project.installation3d).height, moduleGeometryOf(m,project.config).anchor, moduleStatusLabel(moduleStatus(m, activeStages), activeStages), progress(m, activeStages), current.zone, current.factory, m.baselinePlan?.installationDate ?? '', current.installationDate, m.targetDate, openIssues(m), ...reportStages.flatMap(s => { const planned = plannedStageDateOf(current, s.id); const baseline = plannedStageDateOf(m.baselinePlan, s.id); const actual = actualStageDateOf(m, s.id) ?? ''; return [baseline, planned, actual, dayDelta(actual, planned), dayDelta(actual, baseline)] }), m.notes, m.inspections.map(i => `${i.date} [${i.kind === 'issue' ? '이슈' : i.kind === 'inspection' ? '검사' : '특이사항'} / ${i.kind === 'issue' ? i.status === 'resolved' ? '해결' : '미해결' : '기록'}] ${i.content}`).join('\n')]
+    return [project.config.name, managementPhaseOf(project), moduleNumber(m, project.config), floorLabel, axisNumber(m.x), axisNumber(m.y), moduleGeometryOf(m,project.config).width, moduleGeometryOf(m,project.config).depth, moduleGeometryOf(m,project.config,project.installation3d).height, moduleGeometryOf(m,project.config).anchor, moduleStatusLabel(moduleStatus(m, activeStages), activeStages), progress(m, activeStages), current.zone, current.factory, m.baselinePlan?.installationDate ?? '', current.installationDate, m.targetDate, openIssues(m), project.baselinePlanAt ? m.baselinePlan ? '포함' : '미포함' : '미설정', ...reportStages.flatMap(s => { const planned = plannedStageDateOf(current, s.id); const baseline = plannedStageDateOf(m.baselinePlan, s.id); const actual = actualStageDateOf(m, s.id) ?? ''; return [baseline, planned, actual, dayDelta(actual, planned), dayDelta(actual, baseline)] }), m.notes, m.inspections.map(i => `${i.date} [${i.kind === 'issue' ? '이슈' : i.kind === 'inspection' ? '검사' : '특이사항'} / ${i.kind === 'issue' ? i.status === 'resolved' ? '해결' : '미해결' : '기록'}] ${i.content}`).join('\n')]
   })
   const blob = new Blob(['\uFEFF', [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${project.config.name.replace(/[<>:"/\\|?*]/g, '_')}_제작현황_${today()}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
@@ -541,7 +544,8 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
   const indexed = useMemo(() => new Map(floorModules.map(m => [moduleKey(m.floor, m.x, m.y), m])), [floorModules])
   const draftFloor = useMemo(() => draftLayout.filter(p => p.floor === floor), [draftLayout, floor])
   const draftIndexed = useMemo(() => new Map(draftFloor.map(p => [moduleKey(p.floor, p.x, p.y), p])), [draftFloor])
-  const bounds = project ? planBoundsOf(floorModules, project.config) : null
+  const bounds = project ? planBoundsOf(isDraft ? draftFloor : floorModules, project.config) : null
+  const selectedDraft = selectedKey ? draftIndexed.get(selectedKey) ?? null : null
   const selected = modules.find(m => m.key === selectedKey) ?? null
   const selectedModules = useMemo(() => modules.filter(m => selectedModuleKeys.has(m.key)), [modules, selectedModuleKeys])
   const phase = project ? managementPhaseOf(project) : 'draft'
@@ -669,15 +673,39 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
     setMode('inspect')
   }
 
+  const changeMode = (next: typeof mode) => {
+    if (next === mode || busy || loading) return
+    if (dirty.current || heightDirty.current || geometryDirty.current) { setError('입력을 먼저 저장하거나 취소한 뒤 배치 모드를 변경해 주세요.'); return }
+    if (!canLeave()) return
+    dirty.current = false; setSelectedModuleKeys(new Set()); setSelectedKey(null); setMode(next)
+  }
   const chooseCell = async (x: number, y: number) => {
-    if (!project || busy || loading) return
+    if (!project || busy || loading || locked.current) return
+    const key = moduleKey(floor, x, y)
     if (isDraft) {
-      const planned = draftIndexed.has(moduleKey(floor, x, y))
-      if (mode === 'place' && !planned) { await command({ type: 'place', floor, x, y, active: true }); return }
-      if (mode === 'remove' && planned) { await command({ type: 'place', floor, x, y, active: false }); return }
+      const planned = draftIndexed.has(key)
+      if (planned && key === selectedKey && mode !== 'remove') return
+      if ((key !== selectedKey || mode === 'remove') && !canLeave()) return
+      if (mode === 'place' && !planned) { if (await command({ type: 'place', floor, x, y, active: true })) { dirty.current = false; setSelectedKey(key) }; return }
+      if (mode === 'remove' && planned) { if (await command({ type: 'place', floor, x, y, active: false })) { dirty.current = false; setSelectedKey(null) }; return }
+      if (planned && mode !== 'remove') { dirty.current = false; setSelectedKey(key) }
       return
     }
-    const m = indexed.get(moduleKey(floor, x, y))
+    const m = indexed.get(key)
+    if (mode === 'place' || mode === 'remove') {
+      const adding = mode === 'place'
+      if ((adding && m) || (!adding && !m)) return
+      if (dirty.current || heightDirty.current || geometryDirty.current) { setError('모듈 입력을 먼저 저장하거나 취소한 뒤 배치를 변경해 주세요.'); return }
+      const stored = project.modules.find(m => m.key === key)
+      const title = `${moduleNumber({ floor, x, y }, project.config)} · ${floorNameOf(floor, project.config)} X${axisNumber(x)} Y${axisNumber(y)}`
+      const records = stored ? `완료 공정 ${Object.keys(stored.completed).length}건 · 검사·이슈 ${stored.inspections.length}건 · 변경 이력 ${stored.history.length}건` : ''
+      const prompt = adding ? stored ? `${title}\n\n삭제했던 모듈을 다시 추가할까요?\n기존 치수·계획·실적·검사 기록을 그대로 복원합니다.\n${records}` : `${title}\n\n이 위치에 새 모듈을 추가할까요?\n빈 관리계획과 미완료 상태로 시작합니다.${project.baselinePlanAt ? '\n착수 기준선에는 포함되지 않습니다.' : ''}` : `${title}\n\n이 모듈을 배치에서 삭제할까요?\n${records}\n기존 기록은 보존되며, 같은 위치에 다시 추가하면 복원됩니다.`
+      askConfirm(adding ? stored ? '삭제 모듈 복원' : '모듈 추가' : '모듈 삭제', prompt, async () => {
+        if (dirty.current || heightDirty.current || geometryDirty.current) { setError('확인창을 연 뒤 변경한 입력이 있습니다. 먼저 저장하거나 취소한 뒤 다시 배치를 변경해 주세요.'); return }
+        if (await command({ type: 'layout-module', floor, x, y, active: adding, confirmed: true })) { dirty.current = false; setSelectedKey(adding ? key : null); setSelectedModuleKeys(new Set()) }
+      }, adding ? stored ? '기록 복원' : '추가' : '삭제', !adding)
+      return
+    }
     if (mode === 'select' && m) {
       const next = new Set(selectedModuleKeys)
       if (next.has(m.key)) next.delete(m.key)
@@ -690,10 +718,11 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
 
   const confirmLayout = () => {
     if (!project || !isDraft || !draftLayout.length || busy || loading) return
+    if (dirty.current || geometryDirty.current) { setError('모듈 치수를 먼저 저장하거나 입력 취소한 뒤 배치를 확정해 주세요.'); return }
     const floorsUsed = new Set(draftLayout.map(p => p.floor)).size
     askConfirm(
       '최종 배치 확정',
-      `배치 모듈 ${draftLayout.length}개 · 배치 층 ${floorsUsed}개 · 전체 ${project.config.floors}개 층${project.config.hasRoof ? ' + 지붕층(RF)' : ''}\n\n확정하면 모듈번호가 생성되고 그리드와 위치를 다시 변경할 수 없습니다. 모듈별 관리계획 단계로 이동할까요?`,
+      `배치 모듈 ${draftLayout.length}개 · 배치 층 ${floorsUsed}개 · 전체 ${project.config.floors}개 층${project.config.hasRoof ? ' + 지붕층(RF)' : ''}\n\n확정하면 모듈번호가 생성되고 그리드 기준은 고정됩니다. 이후에도 확인창을 거쳐 단일 모듈 추가·삭제를 할 수 있습니다. 모듈별 관리계획 단계로 이동할까요?`,
       async () => {
         if (await command({ type: 'confirm-layout' })) { setMode('inspect'); setSelectedKey(null); setNotice('최종 배치를 확정했습니다. 모듈번호가 부여되어 모듈 관리계획을 입력할 수 있습니다.') }
       },
@@ -980,14 +1009,15 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
         )}
 
         {view === '3d' && !isDraft && installationScene ? <InstallationView key={project.id} scene={installationScene} moduleHeight={moduleHeightOf(project.installation3d)} today={asOf} floor={floor} selectedKey={selectedKey} busy={busy || loading} heightReset={heightReset} onHeightDirty={value=>{heightDirty.current=value}} onSelect={key=>{if(key!==selectedKey && canLeave()){dirty.current=false;setSelectedModuleKeys(new Set());setSelectedKey(key);setMode('inspect');setMobilePickerOpen(false)}}} onSaveHeight={async moduleHeight=>{if(dirty.current){setError('모듈 상세의 입력을 먼저 저장하거나 취소한 뒤 높이를 저장해 주세요.');return false}return command({type:'installation-3d',moduleHeight})}} /> : <section className={styles.planPanel} aria-label={`${floorNameOf(floor, project.config)} 모듈 배치도`}>
-          <div className={styles.planHead}><div><span className={styles.eyebrow}>{isDraft ? 'LAYOUT DRAFT' : phase === 'planning' ? 'MODULE PLAN SETUP' : 'PRODUCTION TRACKING'}</span><h2>{floorNameOf(floor, project.config)} 모듈 배치도 <span>{isDraft ? `${draftFloor.length}개 배치 예정` : `${floorModules.length}개 모듈`}</span></h2></div></div>
-          <div className={styles.planTools}><div className={styles.modeSwitch}>{isDraft ? <><button className={mode === 'place' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => setMode('place')}><IconPlus size={15} />배치</button><button className={mode === 'remove' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => setMode('remove')}><IconMinus size={15} />제외</button></> : <><button className={mode === 'inspect' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => { if (mode === 'select') leaveBulkSelection() }}><IconSearch size={15} />현황 조회</button><button className={mode === 'select' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => { if (mode === 'select') leaveBulkSelection(); else enterBulkSelection() }}><IconCheck size={15} />{mode === 'select' ? '선택 종료' : '여러 모듈 선택'}</button></>}</div><div className={styles.zoom}><button className={styles.iconButton} aria-label="배치도 축소" disabled={zoom <= 0.4} onClick={() => setZoom(z => Math.max(0.4, Math.round((z - 0.2) * 10) / 10))}><IconMinus size={15} /></button><button onClick={() => setZoom(1)} title="배율 초기화">{Math.round(zoom * 100)}%</button><button className={styles.iconButton} aria-label="배치도 확대" disabled={zoom >= 2.4} onClick={() => setZoom(z => Math.min(2.4, Math.round((z + 0.2) * 10) / 10))}><IconPlus size={15} /></button></div></div>
+          <div className={styles.planHead}><div><span className={styles.eyebrow}>{isDraft ? 'LAYOUT DRAFT' : phase === 'planning' ? 'MODULE PLAN SETUP' : 'PRODUCTION TRACKING'}</span><h2>{floorNameOf(floor, project.config)} 모듈 배치도 <span>{isDraft ? `${draftFloor.length}개 배치 예정` : `${floorModules.length}개 모듈`}</span></h2></div>{!isDraft && installationScene && <MiniInstallationView key={project.id} scene={installationScene} moduleHeight={moduleHeightOf(project.installation3d)} today={asOf} selectedKey={selectedKey || (selectedModules.length === 1 ? selectedModules[0].key : null)} />}</div>
+          <div className={styles.planTools}><div className={styles.modeSwitch}>{isDraft ? <><button className={mode === 'place' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => changeMode('place')}><IconPlus size={15} />배치</button><button className={mode === 'remove' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => changeMode('remove')}><IconMinus size={15} />제외</button><button className={mode === 'inspect' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => changeMode('inspect')}>치수 선택</button></> : <><button className={mode === 'inspect' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => changeMode('inspect')}><IconSearch size={15} />현황 조회</button><button className={mode === 'select' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => { if (mode === 'select') leaveBulkSelection(); else enterBulkSelection() }}><IconCheck size={15} />{mode === 'select' ? '선택 종료' : '여러 모듈 선택'}</button><button className={mode === 'place' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => changeMode('place')}><IconPlus size={15} />모듈 추가</button><button className={mode === 'remove' ? styles.modeActive : ''} disabled={busy || loading} onClick={() => changeMode('remove')}><IconMinus size={15} />모듈 삭제</button></>}</div><div className={styles.zoom}><button className={styles.iconButton} aria-label="배치도 축소" disabled={zoom <= 0.4} onClick={() => setZoom(z => Math.max(0.4, Math.round((z - 0.2) * 10) / 10))}><IconMinus size={15} /></button><button onClick={() => setZoom(1)} title="배율 초기화">{Math.round(zoom * 100)}%</button><button className={styles.iconButton} aria-label="배치도 확대" disabled={zoom >= 2.4} onClick={() => setZoom(z => Math.min(2.4, Math.round((z + 0.2) * 10) / 10))}><IconPlus size={15} /></button></div></div>
           {isDraft ? (
             <div className={styles.editBar}>
               <button
                 className={styles.inlineButton}
                 disabled={busy || loading}
                 onClick={() => {
+                  if (dirty.current || geometryDirty.current) { setError('모듈 치수를 먼저 저장하거나 입력 취소해 주세요.'); return }
                   askConfirm(
                     '층 전체 채우기',
                     `${floorNameOf(floor, project.config)}의 모든 그리드 칸에 배치 예정 모듈을 채우시겠습니까?`,
@@ -1004,6 +1034,7 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
                 className={styles.inlineButton}
                 disabled={busy || loading || !draftFloor.length}
                 onClick={() => {
+                  if (dirty.current || geometryDirty.current) { setError('모듈 치수를 먼저 저장하거나 입력 취소해 주세요.'); return }
                   askConfirm(
                     '층 배치 초기화',
                     `${floorNameOf(floor, project.config)} 배치 초안 ${draftFloor.length}개를 모두 초기화할까요?\n이 작업은 초안에만 적용되며 다시 배치할 수 있습니다.`,
@@ -1036,7 +1067,7 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
                 선택 해제
               </button>
             </div>
-          ) : null}
+          ) : <div className={styles.lockedBanner}>그리드 기준 고정 · 모듈 추가·삭제는 확인 후 적용 · 삭제 기록 포함 최대 5,000개 좌표 보관</div>}
           {showCopy && isDraft && (
             <div className={styles.copyRow}>
               <span>{floorNameOf(floor, project.config)} 배치를</span>
@@ -1059,6 +1090,7 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
                 disabled={busy || loading || !draftFloor.length}
                 onClick={() => {
                   const target = copyFloor === floor || copyFloor > totalFloors ? (floor === 1 ? 2 : 1) : copyFloor
+                  if (dirty.current || geometryDirty.current) { setError('모듈 치수를 먼저 저장하거나 입력 취소해 주세요.'); return }
                   askConfirm(
                     '층 배치 복사',
                     `${floorNameOf(floor, project.config)}의 배치 모양을 ${floorNameOf(target, project.config)}에 복사할까요?\n대상 층 배치는 이 모양으로 바뀝니다.`,
@@ -1080,8 +1112,8 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
             <div className={styles.blueprint} style={{ width: (bounds?.width ?? project.config.columns * project.config.width) * 13 * zoom + 96, height: (bounds?.depth ?? project.config.rows * project.config.depth) * 13 * zoom + 94 }}>
               <span className={styles.dimensionX} style={{ left: 54 - (bounds?.x0 ?? 0) * 13 * zoom, width: project.config.columns * project.config.width * 13 * zoom }}>{number(project.config.columns * project.config.width)} m</span>
               <div className={styles.grid} style={{ display: 'block', backgroundSize: `${project.config.width * 13 * zoom}px ${project.config.depth * 13 * zoom}px`, left: 54 - (bounds?.x0 ?? 0) * 13 * zoom, top: 42 + ((bounds?.y1 ?? project.config.rows * project.config.depth) - project.config.rows * project.config.depth) * 13 * zoom, width: project.config.columns * project.config.width * 13 * zoom, height: project.config.rows * project.config.depth * 13 * zoom, gridTemplateColumns: `repeat(${project.config.columns}, 1fr)`, gridTemplateRows: `repeat(${project.config.rows}, 1fr)` }}>
-                {Array.from({ length: project.config.rows }, (_, row) => project.config.rows - row - 1).flatMap(y => Array.from({ length: project.config.columns }, (_, x) => { const key = moduleKey(floor, x, y); const m = indexed.get(key); const planned = isDraft ? draftIndexed.get(key) : undefined; const geometry = m ? moduleGeometryOf(m, project.config, project.installation3d) : { originX: x * project.config.width, originY: y * project.config.depth, width: project.config.width, depth: project.config.depth }; const match = m && matches(m); const occupied = isDraft ? Boolean(planned) : Boolean(m); return <button style={{ position: 'absolute', left: geometry.originX * 13 * zoom, top: (project.config.rows * project.config.depth - geometry.originY - geometry.depth) * 13 * zoom, width: geometry.width * 13 * zoom, height: geometry.depth * 13 * zoom, zIndex: m ? (m.key === selectedKey ? 4 : 2) : 0 }} key={`${x}:${y}`} type="button" disabled={busy || loading || (!isDraft && ((mode === 'inspect' && (!m || !match)) || (mode === 'select' && !m)))} onClick={() => void chooseCell(x, y)} aria-label={`${floorNameOf(floor, project.config)} X${axisNumber(x)} Y${axisNumber(y)}${isDraft ? planned ? ' 배치 예정' : ' 빈 칸' : m ? ` 모듈 ${moduleNumber(m, project.config)}, ${moduleStatusLabel(moduleStatus(m, activeStages), activeStages)}, ${progress(m, activeStages)}%` : ' 빈 칸'}${mode === 'place' && !occupied ? ', 클릭하여 배치' : mode === 'remove' && occupied ? ', 클릭하여 제외' : ''}`} aria-pressed={Boolean(m && (mode === 'select' ? selectedModuleKeys.has(m.key) : m.key === selectedKey))} className={[styles.cell, isDraft ? planned ? styles.planned : styles.vacant : m ? styles[moduleStatus(m, activeStages)] : styles.vacant, m && (mode === 'select' ? selectedModuleKeys.has(m.key) : m.key === selectedKey) ? styles.selectedCell : '', m && !match && mode === 'inspect' ? styles.dimCell : '', mode === 'place' && !occupied ? styles.placeCell : '', mode === 'remove' && occupied ? styles.removeCell : ''].join(' ')}>
-                  <div className={styles.cellContent} title={m ? `${geometry.width}×${geometry.depth}m · ${moduleNumber(m, project?.config)} · ${progress(m, activeStages)}% · ${moduleStatusLabel(moduleStatus(m, activeStages), activeStages)}${openIssues(m) ? ` · 미해결 이슈 ${openIssues(m)}건` : ''}` : undefined}>{isDraft ? planned ? <><IconCube className={styles.cellCube} size={19} stroke={1.2} /><span className={styles.plannedLabel}>배치 예정</span></> : mode === 'place' ? <IconPlus size={17} /> : <span className={styles.emptyCross}>+</span> : m ? <><div className={styles.cellHeader}><span>{moduleNumber(m, project?.config)}</span>{openIssues(m) > 0 && <IconAlertTriangle size={14} />}</div>{project.config.width * 13 * zoom >= 44 && <><IconCube className={styles.cellCube} size={19} stroke={1.2} /><b className={styles.cellPercent}>{progress(m, activeStages)}<small>%</small></b><span className={styles.cellStatus}>{moduleStatusLabel(moduleStatus(m, activeStages), activeStages)}</span><div className={styles.cellProgress}><i style={{ width: `${progress(m, activeStages)}%` }} /></div></>}</> : <span className={styles.emptyCross}>+</span>}</div>
+                {Array.from({ length: project.config.rows }, (_, row) => project.config.rows - row - 1).flatMap(y => Array.from({ length: project.config.columns }, (_, x) => { const key = moduleKey(floor, x, y); const m = indexed.get(key); const planned = isDraft ? draftIndexed.get(key) : undefined; const geometry = (m || planned) ? moduleGeometryOf((m || planned)!, project.config, project.installation3d) : { originX: x * project.config.width, originY: y * project.config.depth, width: project.config.width, depth: project.config.depth }; const match = m && matches(m); const occupied = isDraft ? Boolean(planned) : Boolean(m); return <button style={{ position: 'absolute', left: geometry.originX * 13 * zoom, top: (project.config.rows * project.config.depth - geometry.originY - geometry.depth) * 13 * zoom, width: geometry.width * 13 * zoom, height: geometry.depth * 13 * zoom, zIndex: occupied ? (key === selectedKey ? 4 : 2) : 0 }} key={`${x}:${y}`} type="button" disabled={busy || loading || (!isDraft && ((mode === 'inspect' && (!m || !match)) || (mode === 'select' && !m) || (mode === 'place' && Boolean(m)) || (mode === 'remove' && !m)))} onClick={() => void chooseCell(x, y)} aria-label={`${floorNameOf(floor, project.config)} X${axisNumber(x)} Y${axisNumber(y)}${isDraft ? planned ? ' 배치 예정' : ' 빈 칸' : m ? ` 모듈 ${moduleNumber(m, project?.config)}, ${moduleStatusLabel(moduleStatus(m, activeStages), activeStages)}, ${progress(m, activeStages)}%` : ' 빈 칸'}${mode === 'place' && !occupied ? ', 클릭하여 배치' : mode === 'remove' && occupied ? ', 클릭하여 제외' : ''}`} aria-pressed={occupied && (mode === 'select' ? selectedModuleKeys.has(key) : key === selectedKey)} className={[styles.cell, isDraft ? planned ? styles.planned : styles.vacant : m ? styles[moduleStatus(m, activeStages)] : styles.vacant, occupied && (mode === 'select' ? selectedModuleKeys.has(key) : key === selectedKey) ? styles.selectedCell : '', m && !match && mode === 'inspect' ? styles.dimCell : '', mode === 'place' && !occupied ? styles.placeCell : '', mode === 'remove' && occupied ? styles.removeCell : ''].join(' ')}>
+                  <div className={styles.cellContent} title={m ? `${geometry.width}×${geometry.depth}m · ${moduleNumber(m, project?.config)} · ${progress(m, activeStages)}% · ${moduleStatusLabel(moduleStatus(m, activeStages), activeStages)}${openIssues(m) ? ` · 미해결 이슈 ${openIssues(m)}건` : ''}` : undefined}>{isDraft ? planned ? <><IconCube className={styles.cellCube} size={19} stroke={1.2} /><span className={styles.plannedLabel}>배치 예정 · {number(geometry.width)}×{number(geometry.depth)}m</span></> : mode === 'place' ? <IconPlus size={17} /> : <span className={styles.emptyCross}>+</span> : m ? <><div className={styles.cellHeader}><span>{moduleNumber(m, project?.config)}</span>{openIssues(m) > 0 && <IconAlertTriangle size={14} />}</div>{project.config.width * 13 * zoom >= 44 && <><IconCube className={styles.cellCube} size={19} stroke={1.2} /><b className={styles.cellPercent}>{progress(m, activeStages)}<small>%</small></b><span className={styles.cellStatus}>{moduleStatusLabel(moduleStatus(m, activeStages), activeStages)}</span><div className={styles.cellProgress}><i style={{ width: `${progress(m, activeStages)}%` }} /></div></>}</> : <span className={styles.emptyCross}>+</span>}</div>
                 </button> }))}
                 {Array.from({ length: project.config.columns + 1 }, (_, x) => <span key={`x${x}`} className={styles.xAxis} style={{ left: `${x / project.config.columns * 100}%` }}>X{axisNumber(x)}</span>)}
                 {Array.from({ length: project.config.rows + 1 }, (_, y) => (
@@ -1102,20 +1134,12 @@ export function ProductionBoard({ sconProject, currentUser }: ProductionBoardPro
             {isDraft && !draftFloor.length && <div className={styles.gridEmpty}><IconCube size={26} stroke={1.3} /><b>이 층에는 배치 초안이 없습니다</b><span>그리드 칸을 클릭하면 즉시 저장됩니다.</span><button className={styles.primaryButton} onClick={() => setMode('place')}><IconPlus size={15} />배치 시작</button></div>}
           </div>
           {isDraft ? <div className={styles.legend}><span><i className={styles.plannedLegend} />배치 초안</span><span><IconCheck size={13} />저장됨 · 확정 전에는 번호와 제작 이력이 없습니다</span></div> : <div className={styles.legend}>{(['empty', 'working', 'ready', 'shipped'] as const).filter(s => s !== 'shipped' || activeStages.some(stage => stage.id === 'shipping')).map(s => <span key={s}><i className={styles[s]} />{moduleStatusLabel(s, activeStages)}</span>)}<span><IconAlertTriangle size={13} color="#b67a1c" />이슈</span></div>}
-          {!isDraft && <label className={styles.planModulePicker}>모듈 선택<select aria-label="평면 모듈 선택" value={selected?.floor === floor ? selected.key : ''} disabled={busy || loading} onChange={e => { const m=floorModules.find(m=>m.key===e.target.value); if(m) void chooseCell(m.x,m.y) }}><option value="">가려진 모듈도 목록에서 선택</option>{floorModules.map(m=><option key={m.key} value={m.key}>{moduleNumber(m,project.config)}</option>)}</select></label>}
-          <div className={styles.planFoot}><span>{isDraft ? mode === 'place' ? '빈 칸을 클릭해 배치 초안을 저장하세요.' : '배치된 칸을 클릭해 초안에서 제외하세요.' : filtering ? `${floorModules.length}개 중 ${filteredCount}개 표시` : mode === 'select' ? '모듈을 클릭해 선택하거나 해제하세요.' : '모듈을 클릭하면 우측에 제작 정보가 표시됩니다.'}</span></div>
+          {(isDraft || mode === 'place' || mode === 'remove') && <label className={styles.planModulePicker}>배치 위치<select aria-label="배치 위치 선택" value="" disabled={busy || loading} onChange={e => { if (e.target.value) { const [x,y] = e.target.value.split(':').map(Number); void chooseCell(x,y) } }}><option value="">가려진 좌표도 목록에서 선택</option>{Array.from({ length: project.config.rows }, (_, y) => Array.from({ length: project.config.columns }, (_, x) => { const key = moduleKey(floor,x,y); const occupied = isDraft ? draftIndexed.has(key) : indexed.has(key); return <option key={key} value={`${x}:${y}`} disabled={mode === 'remove' ? !occupied : !isDraft && mode === 'place' ? occupied : false}>X{axisNumber(x)} Y{axisNumber(y)} · {occupied ? isDraft ? '배치 예정' : '배치됨' : '빈 칸'}</option> }))}</select></label>}
+          {!isDraft && mode !== 'place' && mode !== 'remove' && <label className={styles.planModulePicker}>모듈 선택<select aria-label="평면 모듈 선택" value={selected?.floor === floor ? selected.key : ''} disabled={busy || loading} onChange={e => { const m=floorModules.find(m=>m.key===e.target.value); if(m) void chooseCell(m.x,m.y) }}><option value="">가려진 모듈도 목록에서 선택</option>{floorModules.map(m=><option key={m.key} value={m.key}>{moduleNumber(m,project.config)}</option>)}</select></label>}
+          <div className={styles.planFoot}><span>{isDraft ? mode === 'remove' ? '배치된 칸을 클릭해 초안에서 제외하세요.' : '빈 칸을 클릭해 배치하고, 배치된 칸을 선택해 치수를 설정하세요.' : filtering ? `${floorModules.length}개 중 ${filteredCount}개 표시` : mode === 'select' ? '모듈을 클릭해 선택하거나 해제하세요.' : '모듈을 클릭하면 우측에 제작 정보가 표시됩니다.'}</span></div>
         </section>}
         {isDraft ? (
-          <aside className={styles.draftDetail} aria-label="배치 초안 안내">
-            <div className={styles.draftDetailIcon}><IconCube size={26} stroke={1.4} /></div>
-            <span className={styles.eyebrow}>LAYOUT DRAFT</span>
-            <h2>배치 초안 작성 중</h2>
-            <p>최종 배치를 확정하면 각 모듈에 번호를 부여하고 관리계획 입력 단계로 이동합니다.</p>
-            <div className={styles.draftDetailStats}>
-              <span>배치 예정</span><b>{draftLayout.length}개</b>
-              <span>기준 모듈</span><b>{number(project.config.width)} × {number(project.config.depth)} m</b>
-            </div>
-          </aside>
+          <DraftModuleDetail key={project.id} position={selectedDraft} config={project.config} generalHeight={moduleHeightOf(project.installation3d)} count={draftLayout.length} busy={busy || loading} onSave={dimensions => selectedKey ? command({ type: 'module-dimensions', key: selectedKey, dimensions }) : Promise.resolve(false)} onDirtyChange={value => { dirty.current = value; geometryDirty.current = value }} />
         ) : selectedModules.length > 1 || (mode === 'select' && !selected && selectedModules.length === 0) ? (
           <BulkPlanEditor
             key={`${project.id}-${project.revision}-${[...selectedModuleKeys].sort().join(',')}`}

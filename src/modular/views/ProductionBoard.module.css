@@ -580,3 +580,6 @@
 
 .planModulePicker{display:flex;gap:10px;align-items:center;padding:8px 18px;font-size:11px;color:#64748b}.planModulePicker select{min-width:0;max-width:260px;padding:6px;border:1px solid #e2e8f0;background:white;border-radius:5px}.grid{background-image:linear-gradient(to right,#cbd5e1 1px,transparent 1px),linear-gradient(to bottom,#cbd5e1 1px,transparent 1px)}
 
+
+/* Compact locator and layout toolbar: preserve host mobile rules above. */
+.planHead{align-items:flex-start;gap:14px;flex-wrap:wrap}.planHead>div:first-child{min-width:0}.planHead>section{margin-left:auto}.planTools,.modeSwitch{flex-wrap:wrap}
