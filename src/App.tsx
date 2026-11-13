@@ -300,6 +300,26 @@ export default function App() {
               setSettings(settingsData);
             }
           }
+
+          if (currentUser?.email && currentUser.id !== 'admin-master') {
+            try {
+              const latestUser = await supabaseService.getUserByEmail(currentUser.email);
+              if (latestUser) {
+                const normalizedUser: User = {
+                  ...latestUser,
+                  userRole: (latestUser.userRole as string) === '관리'
+                    ? '실버'
+                    : ((latestUser.userRole as string) === '일반' || (latestUser.userRole as string) === '기타' || !latestUser.userRole)
+                      ? '브론즈'
+                      : latestUser.userRole
+                };
+                setCurrentUser(normalizedUser);
+                localStorage.setItem('cp_current_user', JSON.stringify(normalizedUser));
+              }
+            } catch (userSyncErr) {
+              console.warn('Could not refresh current user from Supabase:', userSyncErr);
+            }
+          }
         } catch (error) {
           console.warn('Supabase data could not be loaded. Falling back to local data.');
         }
@@ -1517,7 +1537,11 @@ export default function App() {
   ) : null;
 
   if (viewMode === 'user-management') return (
-    <UserManagement onBack={handleNavToProjectList} projects={projects} />
+    <UserManagement
+      onBack={handleNavToProjectList}
+      projects={projects}
+      onCurrentUserUpdated={(updated) => setCurrentUser(updated)}
+    />
   );
 
   return (
