@@ -1,3 +1,4 @@
+import { extraNumberSuffix, type PlacementMetadata, type ExtraKind } from './buildingModules'
 import type { ModuleDimensions } from './moduleGeometry'
 import type { Installation3DSettings } from './installation3d'
 
@@ -68,7 +69,7 @@ export interface Inspection {
   resolvedAt?: string
 }
 export interface HistoryEntry { id: string; at: string; message: string }
-export interface ModuleRecord {
+export interface ModuleRecord extends PlacementMetadata {
   key: string
   floor: number
   x: number
@@ -87,7 +88,7 @@ export interface ModuleRecord {
 }
 export type LayoutStatus = 'draft' | 'confirmed'
 export type ManagementPhase = 'planning' | 'production'
-export interface LayoutPosition { floor: number; x: number; y: number; dimensions?: ModuleDimensions }
+export interface LayoutPosition extends PlacementMetadata { key?:string; floor: number; x: number; y: number; dimensions?: ModuleDimensions }
 export interface ProjectDetail {
   id: string
   revision: number
@@ -155,6 +156,8 @@ export const plannedStageDateOf = (plan: ModulePlan | undefined, stageId: StageI
 export const actualStageDateOf = (module: ModuleRecord, stageId: StageId) => stageId === 'installation' ? module.completed[stageId] || module.actualInstallationDate : module.completed[stageId]
 export const validActualDate = (value: string | undefined) => Boolean(value && value <= today())
 export type ProjectCommand =
+  | {type:'add-extra';floor:number;x:number;y:number;kind:ExtraKind;baseZ:number;dimensions:ModuleDimensions;confirmed:boolean}
+  | {type:'extra-state';key:string;active:boolean;confirmed:boolean}
   | { type: 'layout-module'; floor: number; x: number; y: number; active: boolean; confirmed: true }
   | { type: 'settings'; config: ProjectConfig }
   | { type: 'place'; floor: number; x: number; y: number; active: boolean }
@@ -171,7 +174,7 @@ export type ProjectCommand =
   | { type: 'workflow'; stages: WorkflowStage[]; reason: string }
   | { type: 'stage-colors'; colors: Record<StageId, string> }
   | { type: 'installation-3d'; moduleHeight: number }
-  | { type: 'module-dimensions'; key: string; dimensions: ModuleDimensions }
+  | { type: 'module-dimensions'; key: string; dimensions: ModuleDimensions; baseZ?:number|null }
   | { type: 'stage'; key: string; stage: StageId; date: string | null }
   | { type: 'notes'; key: string; notes: string; targetDate: string }
   | { type: 'inspect'; key: string; date: string; kind: Inspection['kind']; content: string }
@@ -215,7 +218,7 @@ export const moduleCoordinateNumbers = (
 }
 
 export const moduleNumber = (
-  m: Pick<ModuleRecord, 'floor' | 'x' | 'y'>,
+  m: Pick<ModuleRecord, 'floor' | 'x' | 'y' | 'kind' | 'sequence'>,
   config?: Pick<ProjectConfig, 'floors' | 'hasRoof' | 'rows' | 'numberingOrder' | 'numberingOrigin'>
 ) => {
   const { colNum, rowNum } = moduleCoordinateNumbers(m, config)
@@ -224,9 +227,9 @@ export const moduleNumber = (
   const order = config?.numberingOrder ?? 'col-row'
   const coordCode = order === 'row-col' ? `${rowStr}${colStr}` : `${colStr}${rowStr}`
   if (config && isRoofFloorOf(m.floor, config)) {
-    return `RF-${coordCode}`
+    return `RF-${coordCode}${extraNumberSuffix(m)}`
   }
-  return `${m.floor}-${coordCode}`
+  return `${m.floor}-${coordCode}${extraNumberSuffix(m)}`
 }
 type StageLike = Pick<WorkflowStage, 'id'> & Partial<Pick<WorkflowStage, 'active' | 'label'>>
 export const completedCount = (m: ModuleRecord, stages: readonly StageLike[] = STAGES) => stages.filter(s => s.active !== false && validActualDate(actualStageDateOf(m, s.id))).length

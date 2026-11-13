@@ -1,8 +1,9 @@
 import { ANCHORS, isDimension, type ModuleDimensions } from './moduleGeometry'
-import { axisNumber, currentPlanOf, defaultWorkflowStages, layoutStatusOf, managementPhaseOf, moduleKey, moduleNumber, today, totalFloorsOf, workflowStagesOf, type HistoryEntry, type LayoutPosition, type ModulePlan, type ModulePlanPatch, type ModuleRecord, type ProjectCommand, type ProjectConfig, type ProjectDetail, type StageId, type WorkflowStage } from './model'
+import { hasValidPlacementIdentity, isElevation, isExtraKey, isExtraKind, isModuleKey, positionKeyOf, type ExtraKind } from './buildingModules'
+import { totalFloorsOf, axisNumber, currentPlanOf, defaultWorkflowStages, layoutStatusOf, managementPhaseOf, moduleKey, moduleNumber, today, workflowStagesOf, type HistoryEntry, type LayoutPosition, type ModulePlan, type ModulePlanPatch, type ModuleRecord, type ProjectCommand, type ProjectConfig, type ProjectDetail, type StageId, type WorkflowStage } from './model'
 
 import { isStageColor } from './stageColors'
-import { isModuleHeight } from './installation3d'
+import { isModuleHeight, moduleHeightOf } from './installation3d'
 
 export const MAX_PLACED_MODULES = 5000
 export const MAX_MODULE_HISTORY = 1000
@@ -139,17 +140,28 @@ function validateDimensions(value: unknown): ModuleDimensions {
 export function validateCommand(value: unknown): ProjectCommand {
   const obj = record(value)
   const layouts: Record<string, readonly string[]> = {
+    'add-extra': ['type', 'floor', 'x', 'y', 'kind', 'baseZ', 'dimensions', 'confirmed'],
+    'extra-state': ['type', 'key', 'active', 'confirmed'],
     'layout-module': ['type', 'floor', 'x', 'y', 'active', 'confirmed'],
-    'module-dimensions': ['type', 'key', 'dimensions'],
+    'module-dimensions': ['type', 'key', 'dimensions', ...('baseZ' in obj ? ['baseZ'] : [])],
     'installation-3d': ['type', 'moduleHeight'],
     settings: ['type', 'config'], place: ['type', 'floor', 'x', 'y', 'active'], fill: ['type', 'floor'], 'reset-floor': ['type', 'floor'], copy: ['type', 'sourceFloor', 'targetFloor'], 'confirm-layout': ['type'], plan: ['type', 'key', 'plan'], 'bulk-plan': ['type', 'moduleKeys', 'patch'], 'bulk-stage': ['type', 'moduleKeys', 'stages'], installation: ['type', 'key', 'date'], 'establish-baseline': ['type'], 'start-production': ['type'],
     workflow: ['type', 'stages', 'reason'], 'stage-colors': ['type', 'colors'], stage: ['type', 'key', 'stage', 'date'], notes: ['type', 'key', 'notes', 'targetDate'], inspect: ['type', 'key', 'date', 'kind', 'content'], resolve: ['type', 'key', 'inspectionId', 'resolved'],
   }
   if (typeof obj.type !== 'string' || !Object.prototype.hasOwnProperty.call(layouts, obj.type)) fail('지원하지 않는 작업입니다.')
   keys(obj, layouts[obj.type])
+  if (obj.type === 'add-extra') {
+    integer(obj.floor, 1, 16, '관리층'); integer(obj.x, 0, 39, 'X축열', 1); integer(obj.y, 0, 39, 'Y축열', 1)
+    if (!isExtraKind(obj.kind) || !isElevation(obj.baseZ) || typeof obj.confirmed !== 'boolean') fail('모듈 종류·추가 확인·시작 높이(0~500m, 소수 둘째 자리)를 확인해 주세요.')
+    return { type: 'add-extra', floor: obj.floor as number, x: obj.x as number, y: obj.y as number, kind: obj.kind, baseZ: obj.baseZ, dimensions: validateDimensions(obj.dimensions), confirmed: obj.confirmed }
+  }
+  if (obj.type === 'extra-state') {
+    if (!isExtraKey(obj.key) || typeof obj.active !== 'boolean' || typeof obj.confirmed !== 'boolean') fail('추가 모듈 식별자와 배치 확인을 확인해 주세요.')
+    return { type: 'extra-state', key: obj.key, active: obj.active, confirmed: obj.confirmed }
+  }
   if (obj.type === 'installation-3d') {
     if (!isModuleHeight(obj.moduleHeight)) fail('모듈 높이는 0.5~12m, 소수 둘째 자리까지 입력해 주세요.')
-    return {type:'installation-3d',moduleHeight:obj.moduleHeight}
+    return { type: 'installation-3d', moduleHeight: obj.moduleHeight }
   }
   if (obj.type === 'confirm-layout') return { type: 'confirm-layout' }
   if (obj.type === 'establish-baseline' || obj.type === 'start-production') return { type: obj.type }
@@ -178,7 +190,7 @@ export function validateCommand(value: unknown): ProjectCommand {
     if (!Array.isArray(obj.moduleKeys) || obj.moduleKeys.length < 1 || obj.moduleKeys.length > MAX_PLACED_MODULES) fail(`일괄 적용할 모듈은 1~${MAX_PLACED_MODULES}개로 선택해 주세요.`)
     const seen = new Set<string>()
     const moduleKeys = obj.moduleKeys.map(key => {
-      if (typeof key !== 'string' || !/^[1-9]\d*:\d+:\d+$/.test(key)) fail('모듈 식별자를 확인해 주세요.')
+      if (!isModuleKey(key)) fail('모듈 식별자를 확인해 주세요.')
       if (seen.has(key)) fail('같은 모듈이 두 번 선택되어 있습니다. 최신 배치에서 다시 선택해 주세요.')
       seen.add(key)
       return key
@@ -188,7 +200,7 @@ export function validateCommand(value: unknown): ProjectCommand {
     if (!Array.isArray(obj.moduleKeys) || obj.moduleKeys.length < 1 || obj.moduleKeys.length > MAX_PLACED_MODULES) fail(`일괄 적용할 모듈은 1~${MAX_PLACED_MODULES}개로 선택해 주세요.`)
     const seen = new Set<string>()
     const moduleKeys = obj.moduleKeys.map(key => {
-      if (typeof key !== 'string' || !/^[1-9]\d*:\d+:\d+$/.test(key)) fail('모듈 식별자를 확인해 주세요.')
+      if (!isModuleKey(key)) fail('모듈 식별자를 확인해 주세요.')
       if (seen.has(key)) fail('같은 모듈이 두 번 선택되어 있습니다. 최신 배치에서 다시 선택해 주세요.')
       seen.add(key)
       return key
@@ -208,9 +220,10 @@ export function validateCommand(value: unknown): ProjectCommand {
     }
     return { type: 'bulk-stage', moduleKeys, stages: normalized }
   } else {
-    if (typeof obj.key !== 'string' || !/^[1-9]\d*:\d+:\d+$/.test(obj.key)) fail('모듈 식별자를 확인해 주세요.')
+    if (!isModuleKey(obj.key)) fail('모듈 식별자를 확인해 주세요.')
     if (obj.type === 'module-dimensions') {
-      return { type: 'module-dimensions', key: obj.key, dimensions: validateDimensions(obj.dimensions) }
+      if ('baseZ' in obj && obj.baseZ !== null && !isElevation(obj.baseZ)) fail('시작 높이는 0~500m, 소수 둘째 자리까지 입력해 주세요.')
+      return { type: 'module-dimensions', key: obj.key, dimensions: validateDimensions(obj.dimensions), ...('baseZ' in obj ? { baseZ: obj.baseZ as number | null } : {}) }
     } else if (obj.type === 'plan') {
       return { type: 'plan', key: obj.key, plan: validatePlan(obj.plan) }
     } else if (obj.type === 'installation') {
@@ -248,6 +261,9 @@ function append(history: HistoryEntry[], message: string, context: DomainContext
 function freshModule(floor: number, x: number, y: number): ModuleRecord {
   return { key: moduleKey(floor, x, y), floor, x, y, active: true, completed: {}, notes: '', targetDate: '', inspections: [], history: [] }
 }
+function moduleFromPosition(p: LayoutPosition): ModuleRecord {
+  return { ...freshModule(p.floor, p.x, p.y), key: positionKeyOf(p), ...(p.kind ? { kind: p.kind, sequence: p.sequence } : {}), ...(p.baseZ !== undefined ? { baseZ: p.baseZ } : {}), ...(p.dimensions && Object.keys(p.dimensions).length ? { dimensions: structuredClone(p.dimensions) } : {}) }
+}
 function planChanges(before: ModulePlan, after: ModulePlan, stages: readonly WorkflowStage[]) {
   const changes: Array<{ field: string; before: string; after: string }> = []
   for (const field of ['zone', 'factory', 'installationDate'] as const) if (before[field] !== after[field]) changes.push({ field: field === 'zone' ? '구역' : field === 'factory' ? '생산 공장' : '설치예정일', before: before[field], after: after[field] })
@@ -284,8 +300,29 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
   const activeModule = (key: string) => {
     const m = result.modules.find(item => item.key === key && item.active)
     if (!m) fail('배치된 모듈을 찾을 수 없습니다.')
+    if (!hasValidPlacementIdentity(m)) fail('모듈 식별자와 종류·순번이 일치하지 않습니다.', 409)
     return m
   }
+  const validatePositions = (positions: LayoutPosition[]) => {
+    const seen = new Set<string>(), numbers = new Set<string>()
+    for (const p of positions) {
+      if (!Number.isSafeInteger(p.floor) || p.floor < 1 || p.floor > totalFloorsOf(result.config) || !Number.isSafeInteger(p.x) || p.x < 0 || p.x >= result.config.columns || !Number.isSafeInteger(p.y) || p.y < 0 || p.y >= result.config.rows) fail('모듈 좌표가 현재 그리드 범위를 벗어났습니다.', 409)
+      if (!hasValidPlacementIdentity(p) || (p.baseZ !== undefined && !isElevation(p.baseZ))) fail('모듈 식별자·종류·순번·시작 높이가 올바르지 않습니다.', 409)
+      if ('dimensions' in p) validateDimensions(p.dimensions)
+      const key = positionKeyOf(p), number = moduleNumber(p, result.config)
+      if (seen.has(key) || numbers.has(number)) fail('모듈 식별자 또는 번호가 중복되었습니다.', 409)
+      seen.add(key); numbers.add(number)
+    }
+  }
+  const positions = () => result.layoutStatus === 'draft' ? draftPositions() : result.modules
+  const nextExtra = (p: {floor:number;x:number;y:number;kind:ExtraKind}, existing: LayoutPosition[]): LayoutPosition => {
+    const sequence = Math.max(0, ...existing.filter(m => m.floor === p.floor && m.x === p.x && m.y === p.y && m.kind === p.kind).map(m => m.sequence ?? 0)) + 1
+    if (sequence > 9999) fail('이 위치의 추가 모듈 순번 한도에 도달했습니다.', 409)
+    const key = `extra:${context.uuid()}`
+    if (!isExtraKey(key) || existing.some(m => positionKeyOf(m) === key)) fail('추가 모듈 식별자가 중복되거나 올바르지 않습니다.', 409)
+    return { floor:p.floor, x:p.x, y:p.y, kind:p.kind, key, sequence }
+  }
+  if (['add-extra','extra-state','layout-module','place','fill','copy','reset-floor','confirm-layout'].includes(command.type)) validatePositions(positions())
   let message = ''
   const layoutCommand = ['settings', 'place', 'fill', 'reset-floor', 'copy'].includes(command.type)
   const moduleCommand = ['stage', 'notes', 'inspect', 'resolve', 'plan', 'bulk-plan', 'bulk-stage', 'installation', 'module-dimensions'].includes(command.type)
@@ -302,26 +339,51 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
   if (command.type === 'installation' && !activeStageIds.has('installation')) fail('비활성 설치 공정에는 실제 완료일을 입력할 수 없습니다.')
   if (layoutCommand) requireDraft()
   if (moduleCommand && command.type !== 'module-dimensions' && phase === 'draft') fail('최종 배치를 확정한 뒤 모듈별 관리계획을 입력할 수 있습니다.', 409)
-  if (productionCommand && phase === 'draft') fail('최종 배치를 확정한 뒤 실제 공정 실적을 입력할 수 있습니다.', 409)
+  if (productionCommand && phase === 'draft') fail('제작 관리 시작 후 실제 공정·설치 실적을 입력할 수 있습니다.', 409)
   if (command.type === 'confirm-layout' && result.layoutStatus !== 'draft') fail('이미 최종 배치가 확정된 프로젝트입니다.', 409)
-  if (command.type === 'settings') {
+  if (command.type === 'add-extra') {
+    if (result.layoutStatus !== 'draft' && !command.confirmed) fail('모듈 추가 확인이 필요합니다.', 409)
+    floor(command.floor)
+    if (command.x >= result.config.columns || command.y >= result.config.rows) fail('설정한 축열 범위를 벗어났습니다.')
+    if (positions().length >= MAX_PLACED_MODULES) fail(`삭제 기록을 포함하여 최대 ${MAX_PLACED_MODULES}개 모듈을 보관할 수 있습니다.`, 409)
+    const p = { ...nextExtra(command, positions()), baseZ: command.baseZ, ...(Object.keys(command.dimensions).length ? {dimensions:command.dimensions} : {}) }
+    // Only placement metadata enters the stored draft; never persist command fields.
+    const placed: LayoutPosition = { key:p.key, floor:p.floor, x:p.x, y:p.y, kind:p.kind, sequence:p.sequence, baseZ:p.baseZ, ...(p.dimensions ? {dimensions:p.dimensions} : {}) }
+    if (result.layoutStatus === 'draft') { draftPositions().push(placed); message = `${p.floor}층 X${axisNumber(p.x)} Y${axisNumber(p.y)} · ${p.kind} 초안 추가 · 시작 ${p.baseZ}m` }
+    else { const m = moduleFromPosition(placed); message = `${moduleNumber(m,result.config)} · 추가 모듈 배치 · 시작 ${p.baseZ}m${result.baselinePlanAt ? ' · 착수 기준선 미포함' : ''}`; audit(m,message); result.modules.push(m) }
+  } else if (command.type === 'extra-state') {
+    const list = positions(), index = list.findIndex(p => positionKeyOf(p) === command.key)
+    if (index < 0) fail('추가 모듈을 찾을 수 없습니다.', 409)
+    const p = list[index]
+    if (result.layoutStatus === 'draft') {
+      if (command.active) fail('제외된 초안은 새로 추가해 주세요.', 409)
+      list.splice(index,1); message = `${p.floor}층 추가 모듈 초안 제외`
+    } else {
+      if (!command.confirmed) fail('추가 모듈 제외·복원 확인이 필요합니다.', 409)
+      const m = p as ModuleRecord
+      if (m.active === command.active) fail('배치 상태가 이미 변경되었습니다. 최신 데이터를 불러오세요.', 409)
+      m.active = command.active; message = `${moduleNumber(m,result.config)} · 추가 모듈 ${command.active ? '기록 복원' : '배치 제외'} · 기존 치수·계획·실적·검사·기준선 보존`; audit(m,message)
+    }
+  } else if (command.type === 'settings') {
     const next = command.config
     if (draftPositions().some(p => p.floor > totalFloorsOf(next) || p.x >= next.columns || p.y >= next.rows)) fail('배치 초안이 새 그리드 범위를 벗어납니다. 해당 위치를 먼저 제외한 뒤 설정을 저장해 주세요.', 409)
     result.config = next
-    message = `프로젝트 설정 변경 · ${next.name} · ${next.width}×${next.depth}m · X${next.columns}/Y${next.rows} · ${next.floors}층${next.hasRoof ? '+지붕층(RF)' : ''}`
+    message = `프로젝트 설정 변경 · ${next.name} · ${next.width}×${next.depth}m · X${next.columns}/Y${next.rows} · ${next.floors}층`
   } else if (command.type === 'module-dimensions' && result.layoutStatus === 'draft') {
-    const p = draftPositions().find(p => moduleKey(p.floor, p.x, p.y) === command.key)
+    const p = draftPositions().find(p => positionKeyOf(p) === command.key)
     if (!p) fail('배치 초안 모듈을 찾을 수 없습니다.')
-    if (JSON.stringify(p.dimensions ?? {}) === JSON.stringify(command.dimensions)) return current
+    if (!hasValidPlacementIdentity(p)) fail('배치 초안 식별자를 확인해 주세요.', 409)
+    if (JSON.stringify(p.dimensions ?? {}) === JSON.stringify(command.dimensions) && (!('baseZ' in command) || p.baseZ === (command.baseZ ?? undefined))) return current
     if (Object.keys(command.dimensions).length) p.dimensions = command.dimensions
     else delete p.dimensions
-    message = `${p.floor}층 X${axisNumber(p.x)} Y${axisNumber(p.y)} 배치 초안 치수·기준 모서리 변경 · ${JSON.stringify(command.dimensions)}`
+    if ('baseZ' in command) { if (command.baseZ === null) delete p.baseZ; else p.baseZ = command.baseZ }
+    message = `${p.floor}층 X${axisNumber(p.x)} Y${axisNumber(p.y)} 배치 초안 치수·기준 모서리 변경 · ${JSON.stringify(command.dimensions)} · 시작 ${p.baseZ ?? '기본'}m`
   } else if (command.type === 'layout-module') {
     if (result.layoutStatus === 'draft') fail('초안에서는 배치·제외 도구를 이용해 주세요.', 409)
     floor(command.floor)
     if (command.x >= result.config.columns || command.y >= result.config.rows) fail('설정한 축열 범위를 벗어났습니다.')
     const key = moduleKey(command.floor, command.x, command.y)
-    const records = result.modules.filter(m => m.key === key || (m.floor === command.floor && m.x === command.x && m.y === command.y))
+    const records = result.modules.filter(m => !isExtraKey(m.key) && (m.key === key || (m.floor === command.floor && m.x === command.x && m.y === command.y)))
     if (records.length > 1 || records.some(m => m.key !== key || m.floor !== command.floor || m.x !== command.x || m.y !== command.y)) fail('같은 좌표의 모듈 기록이 중복되거나 일치하지 않습니다. 데이터를 확인해 주세요.', 409)
     let m = records[0]
     if (m?.active === command.active || (!m && !command.active)) fail('모듈 배치 상태가 이미 변경되었거나 대상이 없습니다. 최신 데이터를 불러오세요.', 409)
@@ -340,7 +402,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     if (result.layoutStatus === 'draft') {
       const positions = draftPositions()
       const key = moduleKey(command.floor, command.x, command.y)
-      const index = positions.findIndex(p => moduleKey(p.floor, p.x, p.y) === key)
+      const index = positions.findIndex(p => positionKeyOf(p) === key)
       if (command.active && index < 0) {
         if (positions.length >= MAX_PLACED_MODULES) fail(`프로젝트에는 최대 ${MAX_PLACED_MODULES}개 배치 초안을 저장할 수 있습니다.`, 409)
         positions.push({ floor: command.floor, x: command.x, y: command.y })
@@ -354,7 +416,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     floor(command.floor)
     if (result.layoutStatus === 'draft') {
       const positions = draftPositions()
-      const present = new Set(positions.filter(p => p.floor === command.floor).map(p => moduleKey(p.floor, p.x, p.y)))
+      const present = new Set(positions.filter(p => p.floor === command.floor && !isExtraKey(p.key)).map(p => positionKeyOf(p)))
       const extra = result.config.columns * result.config.rows - present.size
       if (positions.length + extra > MAX_PLACED_MODULES) fail(`프로젝트에는 최대 ${MAX_PLACED_MODULES}개 배치 초안을 저장할 수 있습니다.`, 409)
       for (let y = 0; y < result.config.rows; y++) for (let x = 0; x < result.config.columns; x++) {
@@ -381,7 +443,13 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       if (!source.length) fail('원본 층에 배치 초안이 없습니다.')
       const nextCount = positions.filter(p => p.floor !== command.targetFloor).length + source.length
       if (nextCount > MAX_PLACED_MODULES) fail(`프로젝트에는 최대 ${MAX_PLACED_MODULES}개 배치 초안을 저장할 수 있습니다.`, 409)
-      result.draftLayout = [...positions.filter(p => p.floor !== command.targetFloor), ...source.map(p => ({ floor: command.targetFloor, x: p.x, y: p.y, ...('dimensions' in p ? { dimensions: validateDimensions(p.dimensions) } : {}) }))]
+      const copied = positions.filter(p => p.floor !== command.targetFloor)
+      for (const p of source) {
+        const next: LayoutPosition = { floor:command.targetFloor, x:p.x, y:p.y, ...(p.dimensions ? {dimensions:validateDimensions(p.dimensions)} : {}), ...(p.baseZ !== undefined ? {baseZ:Math.round((p.baseZ+(command.targetFloor-command.sourceFloor)*moduleHeightOf(result.installation3d))*100)/100} : {}) }
+        if (p.kind) Object.assign(next,nextExtra({floor:command.targetFloor,x:p.x,y:p.y,kind:p.kind},copied))
+        copied.push(next)
+      }
+      validatePositions(copied); result.draftLayout = copied
       message = `${command.sourceFloor}층 → ${command.targetFloor}층 배치 초안 동기화 (${source.length}개)`
     }
   } else if (command.type === 'confirm-layout') {
@@ -394,12 +462,12 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       integer(p.floor, 1, totalFloorsOf(result.config), '층수')
       floor(p.floor)
       if (!Number.isSafeInteger(p.x) || !Number.isSafeInteger(p.y) || p.x < 0 || p.x >= result.config.columns || p.y < 0 || p.y >= result.config.rows) fail('배치 초안의 좌표가 현재 그리드 범위를 벗어났습니다. 설정을 확인해 주세요.', 409)
-      const key = moduleKey(p.floor, p.x, p.y)
+      const key = positionKeyOf(p)
       if (seen.has(key)) fail('배치 초안에 같은 좌표가 중복되어 있습니다. 최신 데이터를 불러오세요.', 409)
       seen.add(key)
     }
     for (const p of positions) {
-      const m = freshModule(p.floor, p.x, p.y)
+      const m = moduleFromPosition(p)
       if ('dimensions' in p) { const dims = validateDimensions(p.dimensions); if (Object.keys(dims).length) m.dimensions = dims }
       audit(m, `${moduleNumber(m, result.config)} · 최종 배치 확정`)
       result.modules.push(m)
@@ -424,7 +492,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     result.managementPhase = 'production'
     message = `제작 관리 시작 · 착수 기준일정 고정 · ${result.modules.filter(item => item.active).length}개 모듈`
   } else if (command.type === 'installation-3d') {
-    result.installation3d = {moduleHeight:command.moduleHeight}
+    result.installation3d = { moduleHeight: command.moduleHeight }
     message = `3D 설치현황 높이 변경 · ${command.moduleHeight}m`
   } else if (command.type === 'stage-colors') {
     if (Object.keys(command.colors).some(id => !stageIds.has(id))) fail('프로젝트에 없는 공정의 색상은 저장할 수 없습니다.')
@@ -466,14 +534,11 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       if (Object.prototype.hasOwnProperty.call(command.patch.stages ?? {}, 'shipping')) m.targetDate = next.stages.shipping ?? ''
       const moduleFields = [...new Set(changes.map(change => change.field))]
       moduleFields.forEach(field => changedFields.add(field))
-      audit(m, `${moduleNumber(m, result.config)} · 관리계획 일괄 변경 · ${moduleFields.join(' / ')}`)
+      audit(m, `${moduleNumber(m,result.config)} · 관리계획 일괄 변경 · ${moduleFields.join(' / ')}`)
       changedModules++
     }
-    if (!changedModules) {
-      message = '선택한 모듈의 계획이 이미 최신 상태입니다.'
-    } else {
-      message = `${changedModules}개 모듈 · 관리계획 일괄 변경 · ${[...changedFields].join(' / ')}`
-    }
+    if (!changedModules) fail('선택한 모듈에 적용할 변경사항이 없습니다.', 409)
+    message = `${changedModules}개 모듈 · 관리계획 일괄 변경 · ${[...changedFields].join(' / ')}`
   } else if (command.type === 'bulk-stage') {
     if (Object.keys(command.stages).some(id => !activeStageIds.has(id))) fail('사용 중인 공정만 완료 상태를 변경할 수 있습니다.')
     const targets = command.moduleKeys.map(key => activeModule(key))
@@ -495,11 +560,12 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
   } else {
     const m = activeModule(command.key)
     if (command.type === 'module-dimensions') {
-      if (JSON.stringify(m.dimensions ?? {}) === JSON.stringify(command.dimensions)) return current
+      if (JSON.stringify(m.dimensions ?? {}) === JSON.stringify(command.dimensions) && (!('baseZ' in command) || m.baseZ === (command.baseZ ?? undefined))) return current
       const before = JSON.stringify(m.dimensions ?? {})
       if (Object.keys(command.dimensions).length) m.dimensions = command.dimensions
       else delete m.dimensions
-      message = `${moduleNumber(m, result.config)} 모듈 치수·기준 모서리 변경 · ${before} → ${JSON.stringify(command.dimensions)}${Object.keys(command.dimensions).length ? '' : ' (기본값 상속)'}`
+      if ('baseZ' in command) { if (command.baseZ === null) delete m.baseZ; else m.baseZ = command.baseZ }
+      message = `${moduleNumber(m, result.config)} 모듈 치수·기준 모서리 변경 · ${before} → ${JSON.stringify(command.dimensions)} · 시작 ${m.baseZ ?? '기본'}m${Object.keys(command.dimensions).length ? '' : ' (기본값 상속)'}`
     } else if (command.type === 'stage') {
       if (command.date === null) {
         delete m.completed[command.stage]
@@ -508,7 +574,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
         m.completed[command.stage] = command.date
         if (command.stage === 'installation') m.actualInstallationDate = command.date
       }
-      message = `${moduleNumber(m, result.config)} · ${stageDefinitions.find(s => s.id === command.stage)?.label ?? command.stage} ${command.date ? `완료 ${command.date}` : '완료 해제'}`
+      message = `${moduleNumber(m,result.config)} · ${stageDefinitions.find(s => s.id === command.stage)?.label ?? command.stage} ${command.date ? `완료 ${command.date}` : '완료 해제'}`
     } else if (command.type === 'plan') {
       const before = currentPlanOf(m)
       const next = command.plan
@@ -519,29 +585,29 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       recordPlanRevision(m, changes, result.baselinePlanAt, context)
       m.currentPlan = structuredClone(next)
       m.targetDate = next.stages.shipping ?? ''
-      message = `${moduleNumber(m, result.config)} · 관리계획 저장${result.baselinePlanAt && changes.length ? ` · ${changes.map(change => `${change.field} ${change.before || '미입력'} → ${change.after || '미입력'}`).join(' / ')}` : ''}`
+      message = `${moduleNumber(m,result.config)} · 관리계획 저장${result.baselinePlanAt && changes.length ? ` · ${changes.map(change => `${change.field} ${change.before || '미입력'} → ${change.after || '미입력'}`).join(' / ')}` : ''}`
     } else if (command.type === 'installation') {
       if (command.date === null) { delete m.actualInstallationDate; delete m.completed.installation }
       else { m.actualInstallationDate = command.date; m.completed.installation = command.date }
-      message = `${moduleNumber(m, result.config)} · 실제 설치일 ${command.date ?? '해제'}`
+      message = `${moduleNumber(m,result.config)} · 실제 설치일 ${command.date ?? '해제'}`
     } else if (command.type === 'notes') {
       const before = currentPlanOf(m)
       const next = { ...before, stages: { ...before.stages, shipping: command.targetDate } }
       const changes = planChanges(before, next, stageDefinitions)
       recordPlanRevision(m, changes, result.baselinePlanAt, context)
       m.notes = command.notes; m.targetDate = command.targetDate; m.currentPlan = next
-      message = `${moduleNumber(m, result.config)} · 특이사항/출고예정일 변경${command.targetDate ? ` (${command.targetDate})` : ''}${changes.length ? ` · 출고 계획 ${changes[0].before || '미입력'} → ${changes[0].after || '미입력'}` : ''}`
+      message = `${moduleNumber(m,result.config)} · 특이사항/출고예정일 변경${command.targetDate ? ` (${command.targetDate})` : ''}${changes.length ? ` · 출고 계획 ${changes[0].before || '미입력'} → ${changes[0].after || '미입력'}` : ''}`
     } else if (command.type === 'inspect') {
       if (m.inspections.length >= MAX_INSPECTIONS) fail('모듈 검사/이슈 기록 한도에 도달했습니다. 기존 기록을 보존하기 위해 저장을 중단했습니다.', 409)
       m.inspections.push({ id: context.uuid(), date: command.date, kind: command.kind, content: command.content, status: command.kind === 'issue' ? 'open' : 'resolved', createdAt: context.now() })
-      message = `${moduleNumber(m, result.config)} · ${command.kind === 'issue' ? '이슈' : command.kind === 'inspection' ? '검사' : '메모'} 기록 (${command.date})`
+      message = `${moduleNumber(m,result.config)} · ${command.kind === 'issue' ? '이슈' : command.kind === 'inspection' ? '검사' : '메모'} 기록 (${command.date})`
     } else {
       const inspection = m.inspections.find(i => i.id === command.inspectionId)
       if (!inspection || inspection.kind !== 'issue') fail('변경할 이슈를 찾을 수 없습니다.')
       inspection.status = command.resolved ? 'resolved' : 'open'
       if (command.resolved) inspection.resolvedAt = context.now()
       else delete inspection.resolvedAt
-      message = `${moduleNumber(m, result.config)} · 이슈 ${command.resolved ? '해결' : '재개'} (${inspection.date})`
+      message = `${moduleNumber(m,result.config)} · 이슈 ${command.resolved ? '해결' : '재개'} (${inspection.date})`
     }
     audit(m, message)
   }
