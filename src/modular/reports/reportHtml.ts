@@ -1,4 +1,5 @@
 import { moduleGeometryOf, planBoundsOf } from '../common/moduleGeometry'
+import { moduleKindOf } from '../common/buildingModules'
 import { totalFloorsOf, floorNameOf, actualStageDateOf, currentPlanOf, layoutStatusOf, moduleNumber, plannedStageDateOf, today, workflowStagesOf, type ProjectDetail } from '../common/model'
 import { stageColorOf } from '../common/stageColors'
 import { moduleHeightOf } from '../common/installation3d'
@@ -27,7 +28,7 @@ export function reportSnapshot(project: ProjectDetail, colors = project.stageCol
       const plan = currentPlanOf(module)
       const installationDate = reportDate(actualStageDateOf(module, 'installation'))
       return {
-        number: moduleNumber(module, project.config), geometry: moduleGeometryOf(module, project.config, project.installation3d), floor: module.floor, x: module.x, y: module.y,
+        number: moduleNumber(module, project.config), kind:moduleKindOf(module,project.config), geometry: moduleGeometryOf(module, project.config, project.installation3d), floor: module.floor, x: module.x, y: module.y,
         installation: { plannedDate: reportDate(plan.installationDate), actualDate: installationDate && installationDate <= asOf ? installationDate : '' },
         planned: Object.fromEntries(stages.map(stage => [stage.id, reportDate(plannedStageDateOf(plan, stage.id))])),
         completed: Object.fromEntries(stages.map(stage => {
@@ -51,7 +52,7 @@ export function buildReportHtml(project: ProjectDetail, colors = project.stageCo
 <main><section class="drawing"><div class="drawing-head"><div><div class="view-switch" role="group" aria-label="보고서 보기 방식"><button id="view-plan" aria-pressed="true">평면 배치</button><button id="view-3d" aria-pressed="false">3D 현황</button></div><h2 id="floor-title"></h2><p id="floor-summary" class="muted" aria-live="polite"></p></div><div class="drawing-actions"><div id="plan-mini-3d" role="region" aria-label="평면 선택 위치 작은 3D"><canvas id="plan-mini-canvas" role="img" aria-label="전체 층 설치 현황"></canvas><div class="plan-mini-controls" role="group" aria-label="보고서 작은 3D 회전 설정"><button id="plan-mini-left" aria-label="보고서 작은 3D 왼쪽 회전" title="왼쪽 회전">↶</button><button id="plan-mini-right" aria-label="보고서 작은 3D 오른쪽 회전" title="오른쪽 회전">↷</button><button id="plan-mini-reset" aria-label="보고서 작은 3D 방향 초기화" title="방향 초기화">⌂</button></div></div><div class="zoom"><button id="zoom-out" aria-label="축소">−</button><span id="zoom-label"></span><button id="zoom-in" aria-label="확대">+</button><button id="fit">화면 맞춤</button></div></div></div><div id="viewport"><div id="board"></div></div>
 <div id="report-3d-panel" hidden><div class="three-tools"><button id="three-move" aria-pressed="false">회전 모드</button><button id="three-left" aria-label="3D 왼쪽 회전">↶</button><button id="three-right" aria-label="3D 오른쪽 회전">↷</button><span id="three-count"></span></div><div id="three-viewport"><canvas id="three-canvas" role="img" aria-label="모듈 공정 입체 배치도. 드래그로 회전하고 박스를 클릭하세요. 키보드는 모듈 선택 목록을 사용하세요."></canvas><p id="three-caption"></p><p id="three-empty" hidden></p></div><p id="three-hint">드래그: 회전 · ＋/−: 확대·축소</p></div>
 <p class="drawing-foot" id="drawing-foot">좌하단 X1 / Y1 기준 · 빈 칸은 미배치 · 모듈을 선택하면 일정을 확인할 수 있습니다.</p></section>
-<aside><section><h2>보기 선택</h2><label for="floor">층</label><select id="floor"></select><label for="stage">공정</label><select id="stage"></select><div id="three-controls" hidden><label for="three-scope">3D 층 표시</label><select id="three-scope"><option value="all">전체 층</option><option value="single">선택한 층만</option><option value="below">선택층 이하 · 상부 숨김</option></select><label for="three-date">3D 기준일</label><div class="three-date-row"><input id="three-date" type="date"><button id="three-latest">생성일</button></div><label class="three-check"><input id="three-only-completed" type="checkbox">완료 모듈만</label><label for="three-selection">3D 모듈 선택</label><select id="three-selection"></select><p class="muted">기준일까지 완료한 박스를 색으로 표시합니다. 전체 공정 선택 시 완료 기록이 있는 모듈을 표시합니다. 상단 진행률과 상세 표는 생성 시점 기준입니다.</p></div><label for="plane-selection" id="plane-selection-label">평면 모듈 선택</label><select id="plane-selection"></select><div id="legend" class="legend"></div><div id="selection-summary" class="selection-summary" aria-live="polite"></div><p class="muted">공정을 선택하면 완료된 모듈만 색상으로 표시됩니다.</p></section>
+<aside><section><h2>보기 선택</h2><label for="floor">층</label><select id="floor"></select><label for="layer">모듈 종류</label><select id="layer"><option value="all">전체 모듈</option><option value="normal">일반 모듈</option><option value="extra">지붕·옥탑·특수</option></select><label for="stage">공정</label><select id="stage"></select><div id="three-controls" hidden><label for="three-scope">3D 층 표시</label><select id="three-scope"><option value="all">전체 층</option><option value="single">선택한 층만</option><option value="below">선택층 이하 · 상부 숨김</option></select><label for="three-date">3D 기준일</label><div class="three-date-row"><input id="three-date" type="date"><button id="three-latest">생성일</button></div><label class="three-check"><input id="three-only-completed" type="checkbox">완료 모듈만</label><label for="three-selection">3D 모듈 선택</label><select id="three-selection"></select><p class="muted">기준일까지 완료한 박스를 색으로 표시합니다. 전체 공정 선택 시 완료 기록이 있는 모듈을 표시합니다. 상단 진행률과 상세 표는 생성 시점 기준입니다.</p></div><label for="plane-selection" id="plane-selection-label">평면 모듈 선택</label><select id="plane-selection"></select><div id="legend" class="legend"></div><div id="selection-summary" class="selection-summary" aria-live="polite"></div><p class="muted">공정을 선택하면 완료된 모듈만 색상으로 표시됩니다.</p></section>
 <section id="module-detail"><h2>모듈 상세</h2><p class="muted">배치도에서 모듈을 선택하세요.</p></section>
 <details id="color-settings"><summary>공정 색상 설정</summary><p class="muted">색상 또는 HEX 코드를 지정하세요. 변경한 색상은 새 HTML로 저장할 수 있습니다.</p><div id="color-list"></div><button id="save-html" class="wide">색상 반영 HTML 저장</button></details>
 <button id="print" class="wide">현재 층 인쇄 / PDF</button><p class="muted footnote">다운로드 시점의 현황입니다. 이후 제작 실적은 자동 갱신되지 않습니다.</p></aside></main>
@@ -117,7 +118,7 @@ const REPORT_SCRIPT = String.raw`
   function done(module){ return stages.filter(function(s){ return Boolean(module.completed[s.id]); }); }
   function percent(module){ return stages.length ? Math.round(done(module).length / stages.length * 100) : 0; }
   function foreground(hex){ var c = [1,3,5].map(function(i){ var n=parseInt(hex.slice(i,i+2),16)/255; return n<=.04045?n/12.92:Math.pow((n+.055)/1.055,2.4); }); return c[0]*.2126+c[1]*.7152+c[2]*.0722>.179?'#142033':'#ffffff'; }
-  function floorModules(){ return data.modules.filter(function(m){return m.floor===selectedFloor;}); }
+  function floorModules(){ return data.modules.filter(function(m){return m.floor===selectedFloor && ($('layer').value==='all'||($('layer').value==='normal'?m.kind==='normal':m.kind!=='normal'));}).sort(function(a,b){return a.geometry.baseZ-b.geometry.baseZ;}); }
   function timestamp(value){ var d=new Date(value); return isNaN(d.getTime())?'—':new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d); }
   document.title = data.name + ' · 제작 현황';
   $('project-name').textContent = data.name;
@@ -167,6 +168,7 @@ const REPORT_SCRIPT = String.raw`
   $('plane-selection').onchange=function(){selectedNumber=this.value;render();};
   $('floor').onchange=function(){selectedFloor=Number(this.value);selectedNumber='';$('viewport').scrollTop=0;$('viewport').scrollLeft=0;render();};
   $('stage').onchange=function(){selectedStage=this.value;render();};
+  $('layer').onchange=function(){selectedNumber='';render();};
   $('zoom-in').onclick=function(){if(three.isActive()){three.zoom(1);return;}zoom=Math.min(2.5,Math.round((zoom+.1)*100)/100);render();};
   $('zoom-out').onclick=function(){if(three.isActive()){three.zoom(-1);return;}zoom=Math.max(.2,Math.round((zoom-.1)*100)/100);render();};
   function fitToViewport(){if(three && three.isActive()){three.fit();return;}zoom=Math.max(.2,Math.min(2.5,($('viewport').clientWidth-85)/(data.bounds[selectedFloor].width/config.width*140),($('viewport').clientHeight-85)/(data.bounds[selectedFloor].depth/config.width*140)));render();}
@@ -189,7 +191,7 @@ const REPORT_SCRIPT = String.raw`
     var blob=new Blob(['<!doctype html>\n'+copy.outerHTML],{type:'text/html;charset=utf-8'}),url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=data.name.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'_제작현황_'+data.asOf+'.html';a.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);
   };
   var sceneMath=(${createSceneMath.toString()})();
-  var reportEnv={data:data,selected:function(){return selectedNumber;},select:function(number){selectedNumber=number;renderDetail();},setStage:function(id){selectedStage=id;$('stage').value=id;},render:render};
+  var reportEnv={data:data,selected:function(){return selectedNumber;},select:function(number){selectedNumber=number;var picked=data.modules.find(function(m){return m.number===number;});if(picked){selectedFloor=picked.floor;$('floor').value=String(selectedFloor);}renderDetail();},setStage:function(id){selectedStage=id;$('stage').value=id;},render:render};
   var three=(${bootReport3D.toString()})(sceneMath,reportEnv);
   var mini=(${bootReportMini3D.toString()})(sceneMath,reportEnv);
   fitToViewport();

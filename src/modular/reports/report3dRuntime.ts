@@ -3,6 +3,7 @@ import type { createSceneMath, Camera, InstallationModule, InstallationScene, Fl
 interface ReportStage { id: string; label: string; color: string }
 interface ReportModule {
   number: string; floor: number; x: number; y: number
+  kind?: 'normal'|'roof'|'penthouse'|'special'
   geometry: {width:number;depth:number;height:number;originX:number;originY:number;baseZ:number}
   completed: Record<string, string>; planned: Record<string, string>
   installation: { actualDate: string; plannedDate: string }
@@ -97,7 +98,8 @@ export function bootReport3D(math: ReturnType<typeof createSceneMath>, env: Envi
     if (!active) return
     element('three-hint').textContent = '드래그: 회전 · ＋/−: 확대·축소'
     const stage = stageOf(), date = asOf(), floor = Number(element<HTMLSelectElement>('floor').value)
-    const modules = data.modules.filter(m => scope.value === 'all' || (scope.value === 'single' ? m.floor === floor : m.floor <= floor))
+    const layer=element<HTMLSelectElement>('layer').value
+    const modules = data.modules.filter(m => (scope.value === 'all' || (scope.value === 'single' ? m.floor === floor : m.floor <= floor)) && (layer==='all'||(layer==='normal'?m.kind==='normal':m.kind!=='normal')))
     const colors = new Map<string, string>()
     const entries = modules.map(module => {
       const latest = doneAt(module, date).at(-1)
