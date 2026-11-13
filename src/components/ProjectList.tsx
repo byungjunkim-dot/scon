@@ -375,11 +375,17 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelect, onAdd, on
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 xl:gap-6">
             {sortedProjects.map((project, idx) => {
               const isMaster = currentUser?.role === 'admin';
-              const userAllowedCodes = currentUser?.allowedProjectCodes && currentUser.allowedProjectCodes.length > 0
+              const userAllowedCodes = Array.isArray(currentUser?.allowedProjectCodes)
                 ? currentUser.allowedProjectCodes
                 : (currentUser?.signupCode ? currentUser.signupCode.split(',').map(s => s.trim()).filter(Boolean) : []);
               const pCode = project.projectCode?.trim();
-              const canAccess = isMaster || (pCode ? userAllowedCodes.includes(pCode) : userAllowedCodes.includes(project.id));
+              const originalIndex = projects.findIndex(p => p.id === project.id);
+              const fallbackCode = originalIndex >= 0 ? `PRJ-${String(originalIndex + 1).padStart(3, '0')}` : '';
+              const canAccess = isMaster || (
+                pCode
+                  ? userAllowedCodes.includes(pCode)
+                  : (userAllowedCodes.includes(project.id) || (fallbackCode ? userAllowedCodes.includes(fallbackCode) : false))
+              );
               const isFav = favorites.includes(project.id);
 
               return (

@@ -18,23 +18,34 @@ import {
   CheckSquare,
   Square,
   X,
-  ShieldCheck
+  ShieldCheck,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  CheckCircle2
 } from 'lucide-react';
 import { User, Project } from '../types';
 import { supabaseService } from '../services/supabaseService';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { safeJsonParse } from '../utils/safeJson';
+
+type SortKey = 'name' | 'contact' | 'email' | 'affiliation' | 'userRole' | 'projects' | 'createdAt';
+type SortDirection = 'asc' | 'desc';
 
 interface UserManagementProps {
   onBack: () => void;
   projects?: Project[];
+  onCurrentUserUpdated?: (user: User) => void;
 }
 
-export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects: propProjects }) => {
+export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects: propProjects, onCurrentUserUpdated }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const [openDropdownUserId, setOpenDropdownUserId] = useState<string | null>(null);
   const [pendingUserCodes, setPendingUserCodes] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +80,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
   // Click outside to close project dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-project-dropdown-trigger]')) {
+        return;
+      }
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setOpenDropdownUserId(null);
         setProjectSearchTerm('');
@@ -83,26 +98,42 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
   }, [openDropdownUserId]);
 
   useEffect(() => {
+    if (!saveFeedback) return;
+    const timer = setTimeout(() => setSaveFeedback(null), 4000);
+    return () => clearTimeout(timer);
+  }, [saveFeedback]);
+
+  useEffect(() => {
     const mapRole = (role?: string) => {
       if (role === '관리') return '실버';
       if (role === '일반' || role === '기타' || !role) return '브론즈';
       return role as any;
     };
 
-    const loadUsers = async () => {
-      const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+    const normalizeUsers = (list: any[]): User[] =>
+      list.map(u => {
+        const signupCode = typeof u.signupCode === 'string' ? u.signupCode : '';
+        const allowedProjectCodes = Array.isArray(u.allowedProjectCodes)
+          ? u.allowedProjectCodes
+          : (signupCode ? signupCode.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+        return {
+          ...u,
+          userRole: mapRole(u.userRole),
+          signupCode,
+          allowedProjectCodes
+        };
+      });
 
+    const loadUsers = async () => {
       if (isSupabaseConfigured) {
         try {
           const data = await supabaseService.getUsers();
-          setUsers(data.map(u => ({
-            ...u,
-            userRole: mapRole(u.userRole),
-            allowedProjectCodes: u.allowedProjectCodes || (u.signupCode ? u.signupCode.split(',').map(s => s.trim()).filter(Boolean) : [])
-          })));
+          const normalized = normalizeUsers(data);
+          setUsers(normalized);
+          localStorage.setItem('cp_users', JSON.stringify(normalized));
         } catch (error) {
           console.error('Error loading users from Supabase:', error);
+          setSaveFeedback({ type: 'error', text: '서버에서 회원 목록을 불러오지 못해 로컬 캐시를 표시합니다.' });
           loadFromLocalStorage();
         }
       } else {
@@ -113,11 +144,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
     const loadFromLocalStorage = () => {
       const savedUsersStr = localStorage.getItem('cp_users');
       const parsed: any[] = safeJsonParse(savedUsersStr, []);
-      setUsers(parsed.map((u: any) => ({
-        ...u,
-        userRole: mapRole(u.userRole),
-        allowedProjectCodes: u.allowedProjectCodes || (u.signupCode ? u.signupCode.split(',').map(s => s.trim()).filter(Boolean) : [])
-      })));
+      setUsers(normalizeUsers(parsed));
     };
 
     loadUsers();
@@ -156,7 +183,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
     if (!userToUpdate) return;
 
     const updatedUser = { ...userToUpdate, userRole: newRole };
-    saveUserUpdate(updatedUser);
+    try {
+      await saveUserUpdate(updatedUser);
+      setSaveFeedback({ type: 'success', text: `${userToUpdate.name} 님의 등급 권한이 저장되었습니다.` });
+    } catch {
+      // error feedback is handled inside saveUserUpdate
+    }
   };
 
   // Toggle single project code for a user (in pending state)
@@ -184,14 +216,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
 
     setIsSaving(true);
     try {
+      const cleanedCodes = Array.from(new Set(pendingUserCodes.map(c => c.trim()).filter(Boolean)));
       const updatedUser: User = {
         ...userToUpdate,
-        allowedProjectCodes: pendingUserCodes,
-        signupCode: pendingUserCodes.join(', ')
+        allowedProjectCodes: cleanedCodes,
+        signupCode: cleanedCodes.join(', ')
       };
 
       await saveUserUpdate(updatedUser);
       setOpenDropdownUserId(null);
+      setSaveFeedback({
+        type: 'success',
+        text: `${userToUpdate.name} 님의 허용 프로젝트(${cleanedCodes.length}개)가 서버에 저장되었습니다.`
+      });
     } catch (error) {
       console.error('Failed to save project selection:', error);
     } finally {
@@ -199,39 +236,64 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
     }
   };
 
-  // Save updated user to state, localStorage, and Supabase
+  // Save updated user to Supabase, state, and localStorage
   const saveUserUpdate = async (updatedUser: User) => {
-    // 1. Update React state
-    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+    let persistedUser = updatedUser;
 
-    // 2. Update localStorage users
+    // 1. Update Supabase first if configured so we don't show stale optimistic state on failure
+    if (isSupabaseConfigured) {
+      try {
+        persistedUser = await supabaseService.saveUser(updatedUser);
+      } catch (error: any) {
+        console.error('Error saving updated user to Supabase:', error);
+        setSaveFeedback({
+          type: 'error',
+          text: `서버 저장 실패: ${error?.message || 'Supabase 저장 중 오류가 발생했습니다.'}`
+        });
+        throw error;
+      }
+    }
+
+    // 2. Update React state
+    setUsers(prev => prev.map(u => u.id === persistedUser.id ? persistedUser : u));
+
+    // 3. Update localStorage users (upsert if missing)
     const savedUsersStr = localStorage.getItem('cp_users');
     const localUsers: User[] = safeJsonParse(savedUsersStr, []);
-    const updatedLocalUsers = localUsers.map(u => u.id === updatedUser.id ? updatedUser : u);
+    const existsInLocal = localUsers.some(u => u.id === persistedUser.id);
+    const updatedLocalUsers = existsInLocal
+      ? localUsers.map(u => u.id === persistedUser.id ? persistedUser : u)
+      : [...localUsers, persistedUser];
     localStorage.setItem('cp_users', JSON.stringify(updatedLocalUsers));
 
-    // 3. If currently logged in user is updated, update active session
+    // 4. If currently logged in user is updated, update active session
     const curUserStr = localStorage.getItem('cp_current_user');
     if (curUserStr) {
       try {
         const curUser = JSON.parse(curUserStr);
-        if (curUser.id === updatedUser.id) {
-          localStorage.setItem('cp_current_user', JSON.stringify(updatedUser));
+        if (curUser.id === persistedUser.id) {
+          localStorage.setItem('cp_current_user', JSON.stringify(persistedUser));
+          onCurrentUserUpdated?.(persistedUser);
         }
       } catch (e) {}
     }
+  };
 
-    // 4. Update Supabase if configured
-    const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && 
-      (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
+  const handleSort = (key: SortKey) => {
+    setSortConfig(prev => {
+      if (!prev || prev.key !== key) return { key, direction: 'asc' };
+      if (prev.direction === 'asc') return { key, direction: 'desc' };
+      return null;
+    });
+  };
 
-    if (isSupabaseConfigured) {
-      try {
-        await supabaseService.saveUser(updatedUser);
-      } catch (error) {
-        console.error('Error saving updated user to Supabase:', error);
-      }
+  const renderSortIcon = (key: SortKey) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown size={13} className="text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" />;
     }
+    return sortConfig.direction === 'asc'
+      ? <ArrowUp size={13} className="text-blue-600 shrink-0" />
+      : <ArrowDown size={13} className="text-blue-600 shrink-0" />;
   };
 
   const filteredUsers = users.filter(u => 
@@ -241,9 +303,55 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
     u.discipline.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const sortedUsers = useMemo(() => {
+    if (!sortConfig) return filteredUsers;
+    const roleWeight: Record<string, number> = { '브론즈': 1, '실버': 2, '골드': 3 };
+    const dir = sortConfig.direction === 'asc' ? 1 : -1;
+
+    return [...filteredUsers].sort((a, b) => {
+      switch (sortConfig.key) {
+        case 'name':
+          return (a.name || '').localeCompare(b.name || '', 'ko') * dir;
+        case 'contact':
+          return (a.contact || '').localeCompare(b.contact || '', 'ko') * dir;
+        case 'email':
+          return (a.email || '').localeCompare(b.email || '', 'en') * dir;
+        case 'affiliation': {
+          const affCmp = (a.affiliation || '').localeCompare(b.affiliation || '', 'ko');
+          if (affCmp !== 0) return affCmp * dir;
+          return (a.discipline || '').localeCompare(b.discipline || '', 'ko') * dir;
+        }
+        case 'userRole': {
+          const wA = roleWeight[a.userRole || '브론즈'] ?? 0;
+          const wB = roleWeight[b.userRole || '브론즈'] ?? 0;
+          if (wA !== wB) return (wA - wB) * dir;
+          return (a.name || '').localeCompare(b.name || '', 'ko') * dir;
+        }
+        case 'projects': {
+          const aCodes = a.allowedProjectCodes ?? (a.signupCode ? a.signupCode.split(',').map(s => s.trim()).filter(Boolean) : []);
+          const bCodes = b.allowedProjectCodes ?? (b.signupCode ? b.signupCode.split(',').map(s => s.trim()).filter(Boolean) : []);
+          const aMaster = a.role === 'admin' ? 1 : 0;
+          const bMaster = b.role === 'admin' ? 1 : 0;
+          if (aMaster !== bMaster) return (aMaster - bMaster) * dir;
+          if (aCodes.length !== bCodes.length) return (aCodes.length - bCodes.length) * dir;
+          return aCodes.join(',').localeCompare(bCodes.join(','), 'ko') * dir;
+        }
+        case 'createdAt': {
+          const tA = a.createdAt ? Date.parse(a.createdAt) : 0;
+          const tB = b.createdAt ? Date.parse(b.createdAt) : 0;
+          const vA = Number.isFinite(tA) ? tA : 0;
+          const vB = Number.isFinite(tB) ? tB : 0;
+          return (vA - vB) * dir;
+        }
+        default:
+          return 0;
+      }
+    });
+  }, [filteredUsers, sortConfig]);
+
   return (
     <div className="h-full flex flex-col bg-gray-50 p-6 overflow-y-auto">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button 
             onClick={onBack}
@@ -270,27 +378,84 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
         </div>
       </div>
 
+      {saveFeedback && (
+        <div
+          className={`mb-4 px-4 py-3 rounded-xl border text-xs font-bold flex items-center justify-between shadow-2xs ${
+            saveFeedback.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-red-50 border-red-200 text-red-700'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {saveFeedback.type === 'success' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+            <span>{saveFeedback.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSaveFeedback(null)}
+            className="p-0.5 opacity-60 hover:opacity-100 cursor-pointer"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-gray-50 text-gray-600 border-b border-gray-100">
               <tr>
-                <th className="px-6 py-4 font-bold">이름</th>
-                <th className="px-6 py-4 font-bold">연락처</th>
-                <th className="px-6 py-4 font-bold">이메일</th>
-                <th className="px-6 py-4 font-bold">회사명 / 공종</th>
-                <th className="px-6 py-4 font-bold">등급 권한</th>
-                <th className="px-6 py-4 font-bold">접근 허용 프로젝트 (가입코드)</th>
-                <th className="px-6 py-4 font-bold">가입일</th>
+                <th className="px-6 py-4 font-bold">
+                  <button type="button" onClick={() => handleSort('name')} className="group flex items-center gap-1.5 hover:text-blue-600 cursor-pointer">
+                    <span>이름</span>
+                    {renderSortIcon('name')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 font-bold">
+                  <button type="button" onClick={() => handleSort('contact')} className="group flex items-center gap-1.5 hover:text-blue-600 cursor-pointer">
+                    <span>연락처</span>
+                    {renderSortIcon('contact')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 font-bold">
+                  <button type="button" onClick={() => handleSort('email')} className="group flex items-center gap-1.5 hover:text-blue-600 cursor-pointer">
+                    <span>이메일</span>
+                    {renderSortIcon('email')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 font-bold">
+                  <button type="button" onClick={() => handleSort('affiliation')} className="group flex items-center gap-1.5 hover:text-blue-600 cursor-pointer">
+                    <span>회사명 / 공종</span>
+                    {renderSortIcon('affiliation')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 font-bold">
+                  <button type="button" onClick={() => handleSort('userRole')} className="group flex items-center gap-1.5 hover:text-blue-600 cursor-pointer">
+                    <span>등급 권한</span>
+                    {renderSortIcon('userRole')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 font-bold">
+                  <button type="button" onClick={() => handleSort('projects')} className="group flex items-center gap-1.5 hover:text-blue-600 cursor-pointer">
+                    <span>접근 허용 프로젝트 (가입코드)</span>
+                    {renderSortIcon('projects')}
+                  </button>
+                </th>
+                <th className="px-6 py-4 font-bold">
+                  <button type="button" onClick={() => handleSort('createdAt')} className="group flex items-center gap-1.5 hover:text-blue-600 cursor-pointer">
+                    <span>가입일</span>
+                    {renderSortIcon('createdAt')}
+                  </button>
+                </th>
                 <th className="px-6 py-4 font-bold text-center">관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredUsers.map((user) => {
-                const userCodes = user.allowedProjectCodes || (
+              {sortedUsers.map((user) => {
+                const userCodes = user.allowedProjectCodes ?? (
                   user.signupCode ? user.signupCode.split(',').map(s => s.trim()).filter(Boolean) : []
                 );
-                const isMasterRole = user.role === 'admin' || user.userRole === '골드';
+                const isMasterRole = user.role === 'admin';
                 const isDropdownOpen = openDropdownUserId === user.id;
 
                 const filteredProjectOptions = availableProjects.filter(p =>
@@ -366,6 +531,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
 
                         <button
                           type="button"
+                          data-project-dropdown-trigger
                           onClick={() => {
                             if (isDropdownOpen) {
                               setOpenDropdownUserId(null);
@@ -375,7 +541,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
                               setOpenDropdownUserId(user.id);
                               setProjectSearchTerm('');
                               // Initialize pending codes from current user data
-                              const currentCodes = user.allowedProjectCodes || (
+                              const currentCodes = user.allowedProjectCodes ?? (
                                 user.signupCode ? user.signupCode.split(',').map(s => s.trim()).filter(Boolean) : []
                               );
                               setPendingUserCodes([...currentCodes]);
@@ -529,7 +695,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onBack, projects
                   </motion.tr>
                 );
               })}
-              {filteredUsers.length === 0 && (
+              {sortedUsers.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">
                     가입된 회원이 없습니다.
