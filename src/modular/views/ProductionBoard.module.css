@@ -583,3 +583,5 @@
 
 /* Compact locator and layout toolbar: preserve host mobile rules above. */
 .planHead{align-items:flex-start;gap:14px;flex-wrap:wrap}.planHead>div:first-child{min-width:0}.planHead>section{margin-left:auto}.planTools,.modeSwitch{flex-wrap:wrap}
+
+.notApplicable{background:#f3f5f8;color:#64748b;border-color:#dbe4f0}
