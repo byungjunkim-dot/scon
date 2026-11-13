@@ -196,6 +196,8 @@ function SelectedModule({ onGeometryDirty, generalHeight, record, config, phase,
         {issues > 0 && <div className={styles.issueSummary}><IconAlertTriangle size={14} /><span>미해결 이슈 {issues}건</span><button type="button" onClick={() => setTab('inspections')}>확인하기</button></div>}
       </header>
 
+      {phase === 'production' && baselinePlanAt && !record.baselinePlan && <div className={styles.baselineNotice}>착수 기준선 미포함 · 제작 시작 후 추가된 모듈입니다. 현재 계획과 실적은 관리하며, 착수 기준 대비 지연 집계에서는 제외합니다.</div>}
+
       <ModuleDimensionsEditor module={record} config={config} generalHeight={generalHeight ?? 4} busy={locked} otherDirty={detailsDirty || planDirty || inspectionDirty || stagesDirty} onDirtyChange={value=>{setGeometryDirty(value);onGeometryDirty?.(value)}} onSave={dimensions => execute({ type: 'module-dimensions', key: record.key, dimensions }, 'dimensions')} />
       <div className={styles.tabs} role="tablist" aria-label="모듈 정보 구분">
         {([

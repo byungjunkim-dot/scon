@@ -3,8 +3,8 @@ import type { ModuleRecord, ProjectConfig } from '../common/model'
 import { ANCHORS, isDimension, moduleGeometryOf, type ModuleAnchor, type ModuleDimensions } from '../common/moduleGeometry'
 import styles from './ModuleDimensionsEditor.module.css'
 
-interface Props { module: ModuleRecord; config: ProjectConfig; generalHeight: number; busy: boolean; otherDirty: boolean; onSave: (dimensions: ModuleDimensions) => Promise<boolean>; onDirtyChange: (dirty: boolean) => void }
-export function ModuleDimensionsEditor({ module, config, generalHeight, busy, otherDirty, onSave, onDirtyChange }: Props) {
+interface Props { module: Pick<ModuleRecord, 'key' | 'floor' | 'x' | 'y' | 'dimensions'>; config: ProjectConfig; generalHeight: number; busy: boolean; otherDirty: boolean; defaultOpen?: boolean; onSave: (dimensions: ModuleDimensions) => Promise<boolean>; onDirtyChange: (dirty: boolean) => void }
+export function ModuleDimensionsEditor({ module, config, generalHeight, busy, otherDirty, defaultOpen, onSave, onDirtyChange }: Props) {
   const initial = () => ({ width: String(module.dimensions?.width ?? ''), depth: String(module.dimensions?.depth ?? ''), height: String(module.dimensions?.height ?? ''), anchor: module.dimensions?.anchor ?? 'bottom-left' as ModuleAnchor })
   const [input, setInput] = useState(initial), [error, setError] = useState('')
   const saved = JSON.stringify(module.dimensions ?? {})
@@ -27,7 +27,7 @@ export function ModuleDimensionsEditor({ module, config, generalHeight, busy, ot
     if (await onSave(dimensions)) { if (reset) setInput({ width: '', depth: '', height: '', anchor: 'bottom-left' }); onDirtyChange(false) }
     else setError('저장하지 못했습니다. 입력은 유지됩니다.')
   }
-  return <details className={styles.root}><summary>모듈 치수 · 기준 모서리 <small>{effective.width} × {effective.depth} × {effective.height}m</small></summary><div className={styles.fields}>
+  return <details className={styles.root} open={defaultOpen || undefined}><summary>모듈 치수 · 기준 모서리 <small>{effective.width} × {effective.depth} × {effective.height}m</small></summary><div className={styles.fields}>
     {(['width', 'depth', 'height'] as const).map((key, i) => <label key={key}>{['가로 / 폭', '세로 / 깊이', '높이'][i]} (m)<input aria-label={`개별 ${['폭', '깊이', '높이'][i]}(m)`} type="number" min="0.5" max={key === 'height' ? 12 : 30} step="0.01" placeholder={`${defaults[key]} (기본)`} value={input[key]} disabled={busy} onChange={e => setInput(v => ({ ...v, [key]: e.target.value }))} /></label>)}
     <label>고정할 기준 모서리<select aria-label="모듈 기준 모서리" value={input.anchor} disabled={busy} onChange={e => setInput(v => ({ ...v, anchor: e.target.value as ModuleAnchor }))}>{Object.entries(ANCHORS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     </div><p>빈 치수는 기본값을 따릅니다. 선택한 모서리를 원래 그리드 칸에 고정합니다. 높이를 바꿔도 상층 바닥은 이동하지 않습니다.</p>
