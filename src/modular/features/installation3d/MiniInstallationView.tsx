@@ -44,7 +44,7 @@ export function MiniInstallationView({ scene, moduleHeight, today, selectedKey }
     if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)
   }
   return <section className={styles.root} aria-label="선택 위치 작은 3D" data-selected-key={picked?.key||''}>
-      <div className={styles.viewport}><canvas ref={canvas} role="img" aria-label={`전체 건물 속 선택 모듈 위치.${picked?` 선택 ${picked.number} · ${scene.floorLabels?.[picked.floor]||`${picked.floor}층`}.`:''} 주황색은 가려진 부분을 포함한 선택 위치입니다. 드래그 또는 오른쪽 아래 버튼으로 회전하세요.`}
+      <div className={styles.viewport}><canvas ref={canvas} role="img" aria-label={`전체 건물 속 선택 모듈 위치.${picked?` 선택 ${picked.number}${picked.omitted?' · 설치 생략':''} · ${scene.floorLabels?.[picked.floor]||`${picked.floor}층`}.`:''} 주황색은 가려진 부분을 포함한 선택 위치입니다. 드래그 또는 오른쪽 아래 버튼으로 회전하세요.`}
         onPointerDown={event=>{if(event.button!==0||gesture.current)return;event.currentTarget.setPointerCapture(event.pointerId);gesture.current={id:event.pointerId,x:event.clientX,y:event.clientY,camera}}}
         onPointerMove={move} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={()=>{gesture.current=null}} />
         <div className={styles.controls} role="group" aria-label="작은 3D 회전 설정"><button type="button" aria-label="작은 3D 왼쪽 회전" title="왼쪽 회전" onClick={()=>setCamera(c=>({...c,yaw:c.yaw-.4}))}>↶</button><button type="button" aria-label="작은 3D 오른쪽 회전" title="오른쪽 회전" onClick={()=>setCamera(c=>({...c,yaw:c.yaw+.4}))}>↷</button><button type="button" aria-label="작은 3D 방향 초기화" title="방향 초기화" onClick={()=>setCamera(INITIAL_CAMERA)}>⌂</button></div>

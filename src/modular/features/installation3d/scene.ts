@@ -4,6 +4,7 @@ export interface InstallationModule {
   kind?: 'normal'|'roof'|'penthouse'|'special'
   width?: number; depth?: number; height?: number; originX?: number; originY?: number; baseZ?: number
   plannedDate: string; actualDate: string
+  omitted?: boolean
 }
 export interface InstallationScene {
   name: string; width: number; depth: number; columns: number; rows: number; floors: number
@@ -24,7 +25,7 @@ function validDate(value: string) {
   const date = new Date(`${value}T00:00:00Z`)
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
 }
-const installedAt = (module: InstallationModule, asOf: string, today: string) => validDate(module.actualDate) && validDate(asOf) && validDate(today) && asOf <= today && module.actualDate <= asOf
+const installedAt = (module: InstallationModule, asOf: string, today: string) => !module.omitted && validDate(module.actualDate) && validDate(asOf) && validDate(today) && asOf <= today && module.actualDate <= asOf
 function floorModules(scene: InstallationScene, filter: SceneFilter) {
   return scene.modules.filter(m => filter.scope === 'all' || (filter.scope === 'single' ? m.floor === filter.floor : m.floor <= filter.floor))
 }
