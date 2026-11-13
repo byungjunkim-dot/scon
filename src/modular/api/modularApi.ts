@@ -208,7 +208,9 @@ export function appApi(_appId: string) {
         const match=path.match(/^\/projects\/([^/]+)\/commands$/);if(!match)fail(404,'경로를 찾을 수 없습니다.')
         const envelope=validateEnvelope(body),remote=await loadRemote(decodeURIComponent(match[1]));if(!remote)fail(404,'서버에서 프로젝트를 찾을 수 없습니다.')
         if(revisionOf(remote.project)!==envelope.expectedRevision)fail(409,'다른 화면에서 기록이 변경됐습니다. 최신 데이터를 불러온 뒤 다시 저장하세요.','REVISION_CONFLICT')
-        const next=applyCommand(normalized(remote.project),envelope.command,context)
+        const current=normalized(remote.project)
+        const next=applyCommand(current,envelope.command,context)
+        if(next===current)return next as unknown as T
         return await persist(next,remote) as unknown as T
       } catch(error) {
         if(error instanceof ApiError)throw error
