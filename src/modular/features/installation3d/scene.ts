@@ -14,7 +14,7 @@ export interface SceneFilter { scope: FloorScope; floor: number; asOf: string; t
 export interface Camera { yaw: number; elevation: number }
 export type Point3 = [number, number, number]
 export interface Point2 { x: number; y: number; depth: number }
-export interface BoxFace { key: string; module: InstallationModule; installed: boolean; side: 'top' | 'x' | 'y'; points: Point2[]; depth: number }
+export interface BoxFace { key: string; module: InstallationModule; installed: boolean; side: 'top' | 'x' | 'y'; points: Point2[]; depth: number; edges?: Array<[Point2, Point2]> }
 /** Self-contained factory: also embedded verbatim in offline reports. No module captures. */
 export function createSceneMath() {
 const INITIAL_CAMERA: Camera = { yaw: -0.65, elevation: 0.52 }
@@ -34,7 +34,7 @@ function projectPoint([x, y, z]: Point3, camera: Camera): Point2 {
   const back = s * x - c * y
   return { x: c * x + s * y, y: se * back - ce * z, depth: ce * back + se * z }
 }
-function boxFaces(scene: InstallationScene, modules: InstallationModule[], height: number, camera: Camera, asOf: string, today: string): BoxFace[] {
+function boxFaces(scene: InstallationScene, modules: InstallationModule[], height: number, camera: Camera, asOf: string, today: string, wireframe = false): BoxFace[] {
   const faces: BoxFace[] = []
   const sx = Math.sin(camera.yaw), sy = -Math.cos(camera.yaw)
   for (const module of modules) {
@@ -42,6 +42,8 @@ function boxFaces(scene: InstallationScene, modules: InstallationModule[], heigh
     const x0 = module.originX ?? module.x * scene.width, x1 = x0 + (module.width ?? scene.width)
     const y0 = module.originY ?? module.y * scene.depth, y1 = y0 + (module.depth ?? scene.depth)
     const z0 = module.baseZ ?? (module.floor - 1) * height, z1 = z0 + (module.height ?? height)
+    const corners: Point3[] = [[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]
+    const edges: Array<[Point2,Point2]> | undefined = wireframe ? [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].map(([a,b]) => [projectPoint(corners[a],camera),projectPoint(corners[b],camera)]) : undefined
     const x = sx >= 0 ? x1 : x0, y = sy >= 0 ? y1 : y0
     const definitions: Array<[BoxFace['side'], Point3[]]> = [
       ['top', [[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]],
@@ -50,7 +52,7 @@ function boxFaces(scene: InstallationScene, modules: InstallationModule[], heigh
     if (Math.abs(sy) > 0.0001) definitions.push(['y', [[x0,y,z0],[x1,y,z0],[x1,y,z1],[x0,y,z1]]])
     for (const [side, vertices] of definitions) {
       const points = vertices.map(p => projectPoint(p, camera))
-      faces.push({ key: `${module.key}:${side}`, module, side, points, installed, depth: points.reduce((sum, p) => sum + p.depth, 0) / points.length })
+      faces.push({ key: `${module.key}:${side}`, module, side, points, installed, depth: points.reduce((sum, p) => sum + p.depth, 0) / points.length, ...(side === 'top' && edges ? {edges} : {}) })
     }
   }
   // Far faces first. A deterministic tie-break prevents flicker at cardinal directions.
@@ -70,12 +72,16 @@ function sceneFrame(scene: InstallationScene, modules: InstallationModule[], hei
 }
 
 /** Exact orthographic visibility for unequal and overlapping boxes. Larger depth is nearer. */
-function rasterFaces(faces: BoxFace[], width: number, height: number, screen: (p: Point2) => Point2) {
+function rasterFaces(faces: BoxFace[], width: number, height: number, screen: (p: Point2) => Point2, transparent = false) {
   width = Math.max(1, Math.round(width)); height = Math.max(1, Math.round(height))
   const ids = new Int32Array(width * height); ids.fill(-1)
   const depths = new Float64Array(width * height); depths.fill(-Infinity)
+  const solidIds = transparent ? new Int32Array(width * height) : null; solidIds?.fill(-1)
+  const solidDepths = transparent ? new Float64Array(width * height) : null; solidDepths?.fill(-Infinity)
+  const wires: Array<Array<[Point2,Point2]> | undefined> = []
   faces.forEach((face, id) => {
     const p = face.points.map(screen)
+    if (transparent && face.edges) wires[id] = face.edges.map(([a,b]) => [screen(a),screen(b)])
     for (const indices of [[0,1,2],[0,2,3]]) {
       const [a,b,c] = indices.map(i => p[i])
       const den = (b.y-c.y)*(a.x-c.x)+(c.x-b.x)*(a.y-c.y)
@@ -88,14 +94,64 @@ function rasterFaces(faces: BoxFace[], width: number, height: number, screen: (p
         if (u < -1e-9 || v < -1e-9 || w < -1e-9) continue
         const z=u*a.depth+v*b.depth+w*c.depth, i=y*width+x
         if (z >= depths[i]-1e-9) { depths[i]=z; ids[i]=id }
+        if (face.installed && solidDepths && solidIds && z >= solidDepths[i]-1e-9) { solidDepths[i]=z;solidIds[i]=id }
       }
     }
   })
-  return { ids, depths, width, height }
+  return { ids, depths, width, height, solidIds, solidDepths, wires }
 }
-function paintFaces(ctx: CanvasRenderingContext2D, faces: BoxFace[], buffer: ReturnType<typeof rasterFaces>, selected: string | null, color: (face: BoxFace) => string) {
+/** Bounded line rasterization; a mask stores coverage once, never per-layer alpha. */
+function wireMask(edges: Array<[Point2,Point2]>, mask: Uint8Array, width: number, height: number, solidDepths: Float64Array | null, radius = 0) {
+  for (const [a,b] of edges) {
+    const dx=b.x-a.x,dy=b.y-a.y;let lo=0,hi=1,visible=true
+    for (const [p,q] of [[-dx,a.x],[dx,width-1-a.x],[-dy,a.y],[dy,height-1-a.y]]) {
+      if (Math.abs(p)<1e-10) { if(q<0){visible=false;break} }
+      else { const t=q/p;if(p<0)lo=Math.max(lo,t);else hi=Math.min(hi,t);if(lo>hi){visible=false;break} }
+    }
+    if(!visible)continue
+    const steps=Math.max(1,Math.ceil(Math.max(Math.abs(dx),Math.abs(dy))*(hi-lo)))
+    for(let n=0;n<=steps;n++){
+      const t=lo+(hi-lo)*n/steps,x=Math.round(a.x+dx*t),y=Math.round(a.y+dy*t),depth=a.depth+(b.depth-a.depth)*t
+      for(let oy=-radius;oy<=radius;oy++)for(let ox=-radius;ox<=radius;ox++){
+        const px=x+ox,py=y+oy;if(px<0||py<0||px>=width||py>=height)continue
+        const i=py*width+px;if(!solidDepths||depth>=solidDepths[i]-1e-5)mask[i]=1
+      }
+    }
+  }
+}
+function paintFaces(ctx: CanvasRenderingContext2D, faces: BoxFace[], buffer: ReturnType<typeof rasterFaces>, selected: string | null, color: (face: BoxFace) => string, xraySelection = false) {
   const { width, height, ids } = buffer, image = ctx.getImageData(0,0,width,height)
   const colors = faces.map(face => { const hex=color(face); return [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)) })
+  if(buffer.solidIds && buffer.solidDepths){
+    const solid=buffer.solidIds,ghostEdges=new Uint8Array(width*height),selectedEdges=xraySelection&&selected?new Uint8Array(width*height):null
+    faces.forEach((face,id)=>{
+      const edges=buffer.wires[id];if(!edges)return
+      if(!face.installed)wireMask(edges,ghostEdges,width,height,buffer.solidDepths)
+      if(selectedEdges&&face.module.key===selected)wireMask(edges,selectedEdges,width,height,null,1)
+    })
+    const blend=(j:number,c:number[],alpha:number)=>{
+      const a=image.data[j+3]/255,out=alpha+a*(1-alpha)
+      for(let k=0;k<3;k++)image.data[j+k]=(c[k]*alpha+image.data[j+k]*a*(1-alpha))/out
+      image.data[j+3]=out*255
+    }
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const i=y*width+x,j=i*4,id=ids[i],solidId=solid[i]
+      if(solidId>=0){
+        const edge=(x>0?solid[i-1]:-1)!==solidId||(x<width-1?solid[i+1]:-1)!==solidId||(y>0?solid[i-width]:-1)!==solidId||(y<height-1?solid[i+width]:-1)!==solidId
+        const c=edge?(faces[solidId].module.key===selected?[245,158,11]:[203,213,225]):colors[solidId]
+        for(let k=0;k<3;k++)image.data[j+k]=c[k];image.data[j+3]=255
+      }
+      if(id>=0&&!faces[id].installed)blend(j,colors[id],0.12)
+      if(ghostEdges[i])blend(j,[100,116,139],0.24)
+      // A selected planned face keeps its normal visible outline in the main view.
+      if(id>=0&&!faces[id].installed&&faces[id].module.key===selected){
+        const edge=(x>0?ids[i-1]:-1)!==id||(x<width-1?ids[i+1]:-1)!==id||(y>0?ids[i-width]:-1)!==id||(y<height-1?ids[i+width]:-1)!==id
+        if(edge)blend(j,[245,158,11],0.95)
+      }
+      if(selectedEdges?.[i])blend(j,[245,158,11],1)
+    }
+    ctx.putImageData(image,0,0);return
+  }
   for (let y=0; y<height; y++) for (let x=0; x<width; x++) {
     const i=y*width+x, id=ids[i]; if(id<0) continue
     const face=faces[id], neighbors=[x>0?ids[i-1]:-1,x<width-1?ids[i+1]:-1,y>0?ids[i-width]:-1,y<height-1?ids[i+width]:-1]
@@ -108,7 +164,8 @@ function paintFaces(ctx: CanvasRenderingContext2D, faces: BoxFace[], buffer: Ret
 function pickFace(faces: BoxFace[], buffer: ReturnType<typeof rasterFaces>, x: number, y: number) {
   x=Math.floor(x);y=Math.floor(y)
   if(x<0||y<0||x>=buffer.width||y>=buffer.height)return null
-  return faces[buffer.ids[y*buffer.width+x]] ?? null
+  const i=y*buffer.width+x,solid=buffer.solidIds?.[i] ?? -1
+  return faces[solid>=0?solid:buffer.ids[i]] ?? null
 }
 
 return { INITIAL_CAMERA, validDate, installedAt, floorModules, projectPoint, boxFaces, sceneFrame, rasterFaces, paintFaces, pickFace }

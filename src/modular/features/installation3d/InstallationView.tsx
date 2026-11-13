@@ -55,7 +55,7 @@ export function InstallationView(props: Props) {
   const displayed = useMemo(() => scoped.filter(m => !installedOnly || installedAt(m,date,today)), [scoped,installedOnly,date,today])
   const installed = scoped.filter(m => installedAt(m,date,today)).length
   const frame = useMemo(() => sceneFrame(scene, scoped, moduleHeight, camera), [scene,scoped,moduleHeight,camera])
-  const faces = useMemo(() => boxFaces(scene,displayed,moduleHeight,camera,date,today), [scene,displayed,moduleHeight,camera,date,today])
+  const faces = useMemo(() => boxFaces(scene,displayed,moduleHeight,camera,date,today,true), [scene,displayed,moduleHeight,camera,date,today])
   const hovered = displayed.find(m => m.key === hoverKey)
   const floorName = scene.floorLabels?.[floor] || `${floor}층`
   const picked = scene.modules.find(m => m.key === selectedKey)
@@ -77,7 +77,7 @@ export function InstallationView(props: Props) {
     const path = (points: ScreenFace['points']) => { ctx.beginPath(); points.forEach((p,i) => i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y)); ctx.closePath() }
     const ground = [[frame.x0,frame.y0,frame.z0],[frame.x1,frame.y0,frame.z0],[frame.x1,frame.y1,frame.z0],[frame.x0,frame.y1,frame.z0]] as [number,number,number][]
     path(ground.map(p => screen(projectPoint(p,camera)))); ctx.fillStyle='#eef2f7'; ctx.fill(); ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.stroke()
-    const buffer = rasterFaces(faces, element.width, element.height, p => ({ ...screen(p), x: screen(p).x*dpr, y: screen(p).y*dpr, depth: p.depth }))
+    const buffer = rasterFaces(faces, element.width, element.height, p => ({ ...screen(p), x: screen(p).x*dpr, y: screen(p).y*dpr, depth: p.depth }),true)
     paintFaces(ctx, faces, buffer, selectedKey, face => face.installed ? ({top:'#60a5fa',x:'#1d4ed8',y:'#155dfc'}[face.side]) : ({top:'#f1f5f9',x:'#dce3eb',y:'#e5eaf1'}[face.side]))
     hitBuffer.current={faces,buffer,dpr}
     // A fixed-size orientation triad remains legible at every zoom.
@@ -140,7 +140,7 @@ export function InstallationView(props: Props) {
       {!displayed.length&&<div className={styles.empty}>{scoped.length?'기준일까지 설치 완료된 모듈이 없습니다.':'이 층에는 배치된 모듈이 없습니다.'}</div>}
       {hovered&&<div className={styles.tooltip}>{hovered.number} · {installedAt(hovered,date,today)?`설치 ${hovered.actualDate}`:'기준일 미설치'}</div>}
     </div>
-    <div className={styles.legend}><span><i className={styles.installed} />설치 완료</span><span><i />기준일 미설치</span><span><i className={styles.selected} />선택 모듈</span><small>드래그: {moveMode?'화면 이동':'회전'} · ＋/−: 확대·축소</small></div>
+    <div className={styles.legend}><span><i className={styles.installed} />설치 완료</span><span><i />기준일 미설치 · 반투명</span><span><i className={styles.selected} />선택 모듈</span><small>드래그: {moveMode?'화면 이동':'회전'} · ＋/−: 확대·축소</small></div>
     <label className={styles.moduleSelect}>모듈 선택<select aria-label="3D 모듈 선택" disabled={busy||!displayed.length} value={displayed.some(m=>m.key===selectedKey)?selectedKey!:''} onChange={e=>onSelect(e.target.value)}><option value="">입체 박스 클릭 또는 목록에서 선택</option>{displayed.map(m=><option key={m.key} value={m.key}>{m.number} · {installedAt(m,date,today)?'설치 완료':'기준일 미설치'}</option>)}</select></label>
     {picked&&<p className={styles.selection}>선택 {picked.number} · 바닥 높이 {Number((picked.baseZ ?? (picked.floor-1)*moduleHeight).toFixed(2))}m · 규격 {picked.width ?? scene.width}×{picked.depth ?? scene.depth}×{picked.height ?? moduleHeight}m · 설치 예정 {picked.plannedDate||'미입력'} · 실제 설치 {picked.actualDate||'미입력'}{!displayed.some(m=>m.key===picked.key)&&' · 현재 필터에서 숨김'}</p>}
     <p className={styles.note}>현재 저장된 실제 설치일로 날짜별 모습을 표시합니다. 우측 상세는 최신 기록입니다. 과거 수정·취소 전 상태는 재현하지 않습니다.</p>

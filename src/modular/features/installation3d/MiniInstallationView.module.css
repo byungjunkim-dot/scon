@@ -1,0 +1,5 @@
+.root{width:260px;max-width:100%;min-width:0;flex-shrink:0;border:1px solid #dbe5f3;border-radius:9px;background:#fff;overflow:hidden;color:#475569;text-align:left;box-shadow:0 2px 8px #1e3a8a08}
+.root button{font:inherit;cursor:pointer;background:white;color:#64748b;border:0;border-radius:4px;padding:3px 6px;font-size:12px}.root button:hover{color:#155dfc;background:#eff6ff}.root button:disabled{opacity:.4;cursor:default}.root button:focus-visible{outline:2px solid #155dfc;outline-offset:-2px}
+.viewport{position:relative;height:170px;background:radial-gradient(ellipse at center,#fff,#f3f6fb);overflow:hidden}.viewport canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.controls{position:absolute;right:6px;bottom:6px;display:flex;gap:2px;padding:2px;border-radius:5px;background:#ffffffe6}.controls button{display:grid;place-items:center;width:22px;height:22px;padding:0;font-size:14px;background:transparent}
+@media(max-width:600px){.root{width:260px}.viewport{height:150px}}
