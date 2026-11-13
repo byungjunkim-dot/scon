@@ -1,3 +1,4 @@
+import { isStageOmitted, patchModulePlan } from '../common/model'
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react'
 import {
   IconAlertTriangle,
@@ -104,6 +105,7 @@ export function BulkPlanEditor({
   const initialValues = useMemo(() => valuesFor(plans, planStages), [plans, planStages])
   const [values, setValues] = useState<FieldValues>(() => initialValues)
   const [enabled, setEnabled] = useState<Set<FieldId>>(() => new Set())
+  const [omissions,setOmissions]=useState<Record<string,boolean>>({})
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -120,24 +122,23 @@ export function BulkPlanEditor({
       if (enabled.has(field)) stagePatch[stage.id] = values[field]
     }
     if (Object.keys(stagePatch).length) next.stages = stagePatch
+    if (Object.keys(omissions).length) next.omissions=omissions
     return next
-  }, [enabled, planStages, values])
-
+  }, [enabled, planStages, values, omissions])
+  const updatedPlans=useMemo(()=>plans.map(plan=>patchModulePlan(plan,patch)),[plans,patch])
   const changedModules = useMemo(() => modules.filter((_, index) => {
     const plan = plans[index]
-    if (patch.zone !== undefined && plan.zone !== patch.zone) return true
-    if (patch.factory !== undefined && plan.factory !== patch.factory) return true
-    if (patch.installationDate !== undefined && plan.installationDate !== patch.installationDate) return true
-    return Object.entries(patch.stages ?? {}).some(([stage, date]) => (plan.stages[stage as StageId] ?? '') !== date)
-  }), [modules, plans, patch])
-
+    const next=updatedPlans[index]
+    if (plan.zone!==next.zone||plan.factory!==next.factory||plan.installationDate!==next.installationDate) return true
+    return Object.keys(patch.stages??{}).some(stage=>(plan.stages[stage]??'')!==(next.stages[stage]??''))||Object.keys(patch.omissions??{}).some(stage=>isStageOmitted(plan,stage)!==isStageOmitted(next,stage))
+  }), [modules, plans, patch, updatedPlans])
   const stagesDirty = Object.keys(stageChanges).length > 0
   const planDirty = useMemo(() => {
     const hasValueEdit = (Object.keys(values) as FieldId[]).some(field => values[field] !== initialValues[field])
-    return hasValueEdit || changedModules.length > 0
-  }, [values, initialValues, changedModules])
+    return hasValueEdit || changedModules.length > 0 || Object.keys(omissions).length>0
+  }, [values, initialValues, changedModules, omissions])
 
-  const dirty = tab === 'stages' ? stagesDirty : planDirty
+  const dirty = stagesDirty || planDirty
 
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
@@ -226,6 +227,8 @@ export function BulkPlanEditor({
   // Save stage changes
   async function saveStages() {
     if (locked || !modules.length || !stagesDirty) return
+    if(planDirty){setError('관리계획을 먼저 저장하거나 계획 입력을 취소해 주세요.');return}
+    const affected=modules.filter(m=>Object.entries(stageChanges).some(([stage,date])=>!isStageOmitted(m.currentPlan,stage)&&(actualStageDateOf(m,stage)||null)!==date))
     setPending(true)
     setError('')
     setNotice('')
@@ -237,7 +240,7 @@ export function BulkPlanEditor({
       })
       const isSuccess = typeof res === 'boolean' ? res : res.success
       if (isSuccess) {
-        setNotice(`${modules.length}개 모듈의 공정상태를 저장했습니다.`)
+        setNotice(`${affected.length}개 모듈의 공정상태를 저장했습니다. 생략 공정의 기록은 보존됩니다.`)
         setStageChanges({})
       } else {
         const errorMsg = (typeof res === 'object' && res.error) || '공정 상태 일괄 저장에 실패했습니다.'
@@ -249,6 +252,8 @@ export function BulkPlanEditor({
       setPending(false)
     }
   }
+
+  const omissionSelect=(stage:string,label:string)=><label className={styles.skipBulk}>{plans.filter(p=>isStageOmitted(p,stage)).length}/{plans.length}개 생략<select aria-label={`${label} 생략 일괄설정`} value={omissions[stage]===undefined?'':omissions[stage]?'omit':'include'} disabled={locked} onChange={e=>{const value=e.target.value;setOmissions(old=>{const next={...old};if(value==='')delete next[stage];else next[stage]=value==='omit';return next})}}><option value="">적용 여부 유지</option><option value="omit">모두 생략</option><option value="include">모두 생략 해제</option></select></label>
 
   // Plan field helpers
   function setField(field: FieldId, value: string) {
@@ -274,6 +279,7 @@ export function BulkPlanEditor({
   async function submitPlan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (locked || !modules.length || !changedModules.length) return
+    if(stagesDirty){setError('공정 입력을 먼저 저장하거나 취소해 주세요.');return}
     setPending(true)
     setError('')
     setNotice('')
@@ -343,9 +349,10 @@ export function BulkPlanEditor({
         id={`${id}-${field}`}
         type="date"
         value={values[field]}
-        disabled={locked || !installationActive || !enabled.has(field)}
+        disabled={locked || !installationActive || !enabled.has(field)||omissions.installation===true}
         onChange={event => setField(field, event.target.value)}
       />
+      {installationActive&&omissionSelect('installation','설치')}
     </div>
   )
 
@@ -432,15 +439,17 @@ export function BulkPlanEditor({
         {tab === 'stages' && (
           <div className={styles.stagesList}>
             <div className={styles.sectionIntro}>
-              <p>완료한 공정을 입력하세요</p>
+              <p>완료한 공정을 입력하세요. 생략 공정은 건너뛰며 기록을 보존합니다.</p>
+              {planDirty&&<p>관리계획을 먼저 저장하거나 취소해 주세요.</p>}
             </div>
 
             {stages.map(stage => {
-              const completedModules = modules.filter(m => Boolean(actualStageDateOf(m, stage.id)))
+              const targets=modules.filter(m=>!isStageOmitted(m.currentPlan,stage.id))
+              const completedModules = targets.filter(m => Boolean(actualStageDateOf(m, stage.id)))
               const completedCount = completedModules.length
-              const isAllDone = completedCount === modules.length && modules.length > 0
+              const isAllDone = completedCount === targets.length && targets.length > 0
               const firstDate = completedModules[0] ? actualStageDateOf(completedModules[0], stage.id) : ''
-              const isCommonDate = isAllDone && modules.every(m => actualStageDateOf(m, stage.id) === firstDate)
+              const isCommonDate = isAllDone && targets.every(m => actualStageDateOf(m, stage.id) === firstDate)
               const originalDate = isCommonDate ? firstDate : ''
 
               const pendingChange = stageChanges[stage.id]
@@ -456,7 +465,7 @@ export function BulkPlanEditor({
                     <input
                       type="checkbox"
                       checked={isChecked}
-                      disabled={locked}
+                      disabled={locked||!targets.length}
                       onChange={() =>
                         handleToggleStage(
                           stage.id,
@@ -468,11 +477,11 @@ export function BulkPlanEditor({
                         )
                       }
                     />
-                    <span>{stage.label}</span>
+                    <span>{stage.label}{!targets.length&&' · 생략'}</span>
                   </label>
                   <div className={styles.stageInfo}>
                     <div className={styles.stageDataRow}>
-                      <span className={styles.stageLabel}>완료</span>
+                      <span className={styles.stageLabel}>완료 {completedCount}/{targets.length}개 · 생략 {modules.length-targets.length}개</span>
                     </div>
                     <div className={styles.stageDataRow}>
                       <label className={styles.stageActual}>
@@ -482,7 +491,7 @@ export function BulkPlanEditor({
                           max={todayStr}
                           value={dateValue || ''}
                           aria-label={`${stage.label} 완료일`}
-                          disabled={locked}
+                          disabled={locked||!targets.length}
                           onChange={e =>
                             handleStageDateChange(
                               stage.id,
@@ -505,6 +514,8 @@ export function BulkPlanEditor({
         {/* TAB 2: PLAN BULK INPUT */}
         {tab === 'plan' && (
           <form id={`${id}-plan-form`} onSubmit={submitPlan}>
+            <p>생략 공정의 날짜는 보존합니다. 생략 해제를 함께 선택하면 날짜도 적용합니다.</p>
+            {stagesDirty&&<p>공정 입력을 먼저 저장하거나 취소해 주세요.</p>}
             <div className={styles.sectionHeading}>
               <h3>공통 적용 항목</h3>
               <span>값이 다르면 새 입력값을 일괄 적용</span>
@@ -543,9 +554,10 @@ export function BulkPlanEditor({
                       id={`${id}-${field}`}
                       type="date"
                       value={values[field]}
-                      disabled={locked || !enabled.has(field)}
+                      disabled={locked || !enabled.has(field)||omissions[stage.id]===true}
                       onChange={event => setField(field, event.target.value)}
                     />
+                    {omissionSelect(stage.id,stage.label)}
                   </div>
                 )
               })}
@@ -559,10 +571,11 @@ export function BulkPlanEditor({
         {tab === 'stages' && stagesDirty ? (
           <div className={styles.footerSaveArea}>
             <span className={styles.footerWarning}>저장하지 않은 입력이 있습니다.</span>
+            <button type="button" disabled={locked} onClick={()=>setStageChanges({})}>공정 입력 취소</button>
             <button
               type="button"
               className={styles.primaryButton}
-              disabled={locked}
+              disabled={locked||planDirty}
               onClick={saveStages}
             >
               <IconDeviceFloppy size={15} />
@@ -572,11 +585,12 @@ export function BulkPlanEditor({
         ) : tab === 'plan' && planDirty ? (
           <div className={styles.footerSaveArea}>
             <span className={styles.footerWarning}>저장하지 않은 입력이 있습니다.</span>
+            <button type="button" disabled={locked} onClick={()=>{setValues(initialValues);setEnabled(new Set());setOmissions({});setError('');setNotice('')}}>계획 입력 취소</button>
             <button
               type="submit"
               form={`${id}-plan-form`}
               className={styles.primaryButton}
-              disabled={locked || !changedModules.length}
+              disabled={locked || !changedModules.length||stagesDirty}
             >
               <IconDeviceFloppy size={15} />
               {pending ? '저장 중…' : '선택 모듈에 일괄 저장'}

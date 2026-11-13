@@ -166,3 +166,5 @@
   }
 }
 
+
+.planDateRow{display:flex;align-items:center;gap:10px}.planDateRow>label:first-child{flex:1;min-width:0}.skipControl{display:flex;align-items:center;gap:4px;font-size:11px;color:#64748b;white-space:nowrap;cursor:pointer}.skipControl input{width:13px!important;height:13px!important;accent-color:#155dfc}.skipHint{font-size:11px;line-height:1.6;color:#64748b}.omitted{opacity:.55;background:#f8fafc}

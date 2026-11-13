@@ -1,3 +1,4 @@
+import { applicableStagesOf, isStageOmitted } from '../common/model'
 import { ModuleDimensionsEditor } from './ModuleDimensionsEditor'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import {
@@ -104,8 +105,10 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
   const percentage = progress(record, stages)
   const issues = openIssues(record)
   const planStages = stages.filter(stage => stage.id !== 'installation')
+  const applicable=applicableStagesOf(record,stages)
+  const plannedStages=applicableStagesOf({currentPlan:plan},planStages)
   const installationActive = workflowStages.some(stage => stage.id === 'installation' && stage.active)
-  const inactiveWithHistory = workflowStages.filter(stage => !stage.active && Boolean(plannedStageDateOf(record.currentPlan, stage.id) || plannedStageDateOf(record.baselinePlan, stage.id) || actualStageDateOf(record, stage.id)))
+  const inactiveWithHistory = workflowStages.filter(stage => !stage.active && Boolean(isStageOmitted(record.currentPlan,stage.id)||isStageOmitted(record.baselinePlan,stage.id)||plannedStageDateOf(record.currentPlan, stage.id) || plannedStageDateOf(record.baselinePlan, stage.id) || actualStageDateOf(record, stage.id)))
 
   useEffect(() => {
     onDirtyChange?.(dirty)
@@ -146,6 +149,7 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
   }
 
   async function saveStages() {
+    if(planDirty){setError('관리계획을 먼저 저장하거나 계획 입력을 취소해 주세요.');return}
     if (await execute({ type: 'bulk-stage', moduleKeys: [record.key], stages: stageChanges }, 'bulk-stage')) {
       setStageChanges({})
       setNotice('공정 상태를 저장했습니다.')
@@ -162,12 +166,15 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
 
   async function savePlan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if(stagesDirty){setError('공정 입력을 먼저 저장하거나 취소해 주세요.');return}
     const normalized = { ...plan, zone: plan.zone.trim(), factory: plan.factory.trim() }
     if (await execute({ type: 'plan', key: record.key, plan: normalized }, 'plan')) {
       setPlan(normalized)
       setNotice('모듈 관리계획을 저장했습니다.')
     }
   }
+
+  const omitControl=(stage:string,label:string,active=true)=><label className={styles.skipControl} title="이 모듈의 집계에서 제외하며 기존 기록은 보존합니다"><input type="checkbox" aria-label={`${label} 생략`} checked={isStageOmitted(plan,stage)} disabled={locked||!active} onChange={e=>{const skip=e.target.checked;setPlan(value=>{const ids=new Set(value.omittedStages??[]);if(skip)ids.add(stage);else ids.delete(stage);return {...value,omittedStages:[...ids].sort()}})}}/>생략</label>
 
   async function addInspection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -192,7 +199,7 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
           <div><span className={styles.eyebrow}>SELECTED MODULE</span><h2>{moduleNumber(record, config)}</h2></div>
           <span className={styles.floorBadge}>{floorLabelOf(record.floor, config)}</span>
         </div>
-        {phase === 'production' && <><div className={styles.progressHeading}><span>제작 진행률 <strong>{percentage}%</strong></span><span>{completedCount(record, stages)} / {stages.length} 공정</span></div>
+        {phase === 'production' && <><div className={styles.progressHeading}><span>제작 진행률 <strong>{percentage}%</strong></span><span>{completedCount(record, stages)} / {applicable.length} 공정{!applicable.length&&' · 대상 없음'}</span></div>
         <div className={styles.progressTrack} role="progressbar" aria-label="제작 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}><span style={{ width: `${percentage}%` }} /></div></>}
         {issues > 0 && <div className={styles.issueSummary}><IconAlertTriangle size={14} /><span>미해결 이슈 {issues}건</span><button type="button" onClick={() => setTab('inspections')}>확인하기</button></div>}
       </header>
@@ -239,18 +246,20 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
               <label className={styles.field}><span>Zone / 구역</span><input maxLength={80} placeholder="예: A zone, B-1 zone" value={plan.zone} disabled={locked} onChange={event => setPlan(value => ({ ...value, zone: event.target.value }))} /></label>
               <label className={styles.field}><span>생산 공장</span><input maxLength={80} placeholder="예: 진천, 보은-1" value={plan.factory} disabled={locked} onChange={event => setPlan(value => ({ ...value, factory: event.target.value }))} /></label>
             </div>
-            <label className={styles.field}><span><IconCalendar size={14} />설치 예정일{!installationActive && ' · 설치 공정 비활성'}</span><input type="date" value={plan.installationDate} disabled={locked || !installationActive} onChange={event => setPlan(value => ({ ...value, installationDate: event.target.value }))} /></label>
-            {phase === 'production' && baselinePlanAt && record.baselinePlan && <div className={styles.baselineNotice}>착수 기준 {baselinePlanAt.slice(0, 10)} · {record.baselinePlan.zone || '구역 미계획'} · {record.baselinePlan.factory || '공장 미계획'} · 설치 {record.baselinePlan.installationDate || '미계획'}</div>}
-            <div className={styles.planSectionHeading}><h4>공정별 계획 완료일</h4><span>{planStages.filter(stage => Boolean(plannedStageDateOf(plan, stage.id))).length} / {planStages.length}건 입력</span></div>
+            <div className={styles.planDateRow}><label className={styles.field}><span><IconCalendar size={14} />설치 예정일{!installationActive && ' · 설치 공정 비활성'}{isStageOmitted(plan,'installation')&&' · 생략'}</span><input type="date" value={plan.installationDate} disabled={locked || !installationActive || isStageOmitted(plan,'installation')} onChange={event => setPlan(value => ({ ...value, installationDate: event.target.value }))} /></label>{omitControl('installation','설치',installationActive)}</div>
+            {phase === 'production' && baselinePlanAt && record.baselinePlan && <div className={styles.baselineNotice}>착수 기준 {baselinePlanAt.slice(0, 10)} · {record.baselinePlan.zone || '구역 미계획'} · {record.baselinePlan.factory || '공장 미계획'} · 설치 {isStageOmitted(record.baselinePlan,'installation')?'생략':record.baselinePlan.installationDate || '미계획'}</div>}
+            <div className={styles.planSectionHeading}><h4>공정별 계획 완료일</h4><span>{plannedStages.filter(stage => Boolean(plannedStageDateOf(plan, stage.id))).length} / {plannedStages.length}건 입력</span></div>
+            <p className={styles.skipHint}>필요 없는 공정은 생략하세요. 진행률·지연에서 제외하며 기존 날짜와 실적은 보존합니다. 계획 저장 후 적용됩니다.</p>
             {planStages.map(stage => {
               const baseline = record.baselinePlan?.stages[stage.id] ?? ''
               const current = plannedStageDateOf(plan, stage.id)
               const actual = actualStageDateOf(record, stage.id)
               const currentDelta = dayDelta(actual, current)
               const baselineDelta = dayDelta(actual, baseline)
+              const skipped=isStageOmitted(plan,stage.id)
               return <div className={styles.planStageRow} key={stage.id}>
-                <label className={styles.planStageField}><span>{stage.label}</span><input type="date" value={current} disabled={locked} onChange={event => setPlan(value => ({ ...value, stages: { ...value.stages, [stage.id]: event.target.value } }))} /></label>
-                <div className={styles.planStageMeta}><span>기준 {baseline || (baselinePlanAt ? '미계획' : '미설정')}</span><span>실제 {actual || '미완료'} · {deltaText(currentDelta, current, actual)}{baseline ? ` · 기준 ${deltaText(baselineDelta, baseline, actual)}` : ''}</span>{actual && actual > today() && <b className={styles.invalidActual}>미래 실제일 · 지연 판정상 미완료</b>}</div>
+                <div className={styles.planDateRow}><label className={styles.planStageField}><span>{stage.label}</span><input type="date" value={current} disabled={locked||skipped} onChange={event => setPlan(value => ({ ...value, stages: { ...value.stages, [stage.id]: event.target.value } }))} /></label>{omitControl(stage.id,stage.label)}</div>
+                <div className={styles.planStageMeta}><span>기준 {isStageOmitted(record.baselinePlan,stage.id)?'생략':baseline || (baselinePlanAt ? '미계획' : '미설정')}</span><span>{skipped?`생략 · 집계 제외 · 기존 완료 ${actual||'없음'}`:`실제 ${actual || '미완료'} · ${deltaText(currentDelta, current, actual)}${baseline&&!isStageOmitted(record.baselinePlan,stage.id)?` · 기준 ${deltaText(baselineDelta, baseline, actual)}`:''}`}</span>{!skipped&&actual && actual > today() && <b className={styles.invalidActual}>미래 실제일 · 지연 판정상 미완료</b>}</div>
               </div>
             })}
             {inactiveWithHistory.length > 0 && <details className={styles.inactiveStageHistory}>
@@ -268,7 +277,9 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
                   {planDirty ? '아래 [계획 저장] 버튼을 누르면 즉시 데이터베이스에 보관됩니다.' : '모듈별로 즉시 저장되므로 언제든 창을 닫거나 나중에 이어서 작업할 수 있습니다.'}
                 </small>
               </div>
-              <button type="submit" className={styles.primaryButton} disabled={locked || !planDirty}>
+              <button type="button" className={styles.textButton} disabled={locked||!planDirty} onClick={()=>setPlan(currentPlanOf(record))}>계획 입력 취소</button>
+              {stagesDirty&&<small>공정 입력을 먼저 저장하거나 취소해 주세요.</small>}
+              <button type="submit" className={styles.primaryButton} disabled={locked || !planDirty || stagesDirty}>
                 <IconDeviceFloppy size={15} />{pending === 'plan' ? '저장 중…' : '계획 저장'}
               </button>
             </div>
@@ -282,18 +293,20 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
 
         <section role="tabpanel" id={`${id}-panel-stages`} aria-labelledby={`${id}-tab-stages`} hidden={tab !== 'stages'} className={styles.stagesPanel}>
           <div className={styles.sectionIntro}>
-            <p>완료한 공정을 입력하세요</p>
+            <p>완료한 공정을 입력하세요. 생략 공정은 관리계획에서 해제한 뒤 입력할 수 있습니다.</p>
+            {planDirty&&<p className={styles.skipHint}>관리계획을 먼저 저장하거나 계획 입력을 취소해 주세요.</p>}
           </div>
           <div className={styles.stageGroup}>
               {stages.map(stage => {
+                const skipped=isStageOmitted(record.currentPlan,stage.id)
                 const stageDate = stageChanges[stage.id] !== undefined ? stageChanges[stage.id] : actualStageDateOf(record, stage.id)
-                const actualIsValid = validActualDate(stageDate || undefined)
+                const actualIsValid = !skipped&&validActualDate(stageDate || undefined)
                 const planDate = plannedStageDateOf(currentPlanOf(record), stage.id)
                 const variance = dayDelta(stageDate || undefined, planDate)
-                const delayDays = variance !== null && variance > 0 ? variance : !stageDate && planDate && planDate < today() ? dayDelta(today(), planDate) : null
-                return <div className={`${styles.stageRow} ${actualIsValid ? styles.stageDone : ''}`} key={stage.id}>
+                const delayDays = skipped?null:variance !== null && variance > 0 ? variance : !stageDate && planDate && planDate < today() ? dayDelta(today(), planDate) : null
+                return <div className={`${styles.stageRow} ${skipped?styles.omitted:''} ${actualIsValid ? styles.stageDone : ''}`} key={stage.id}>
                   <label className={styles.stageCheck}>
-                    <input type="checkbox" checked={Boolean(stageDate)} disabled={locked} onChange={() => {
+                    <input type="checkbox" checked={Boolean(stageDate)} disabled={locked||skipped} onChange={() => {
                       const original = actualStageDateOf(record, stage.id)
                       const nextValue = !Boolean(stageDate) ? (original || today()) : null
                       if (nextValue === (original || null)) {
@@ -302,7 +315,7 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
                         setStageChanges(prev => ({ ...prev, [stage.id]: nextValue }))
                       }
                     }} />
-                    <span>{stage.label}</span>
+                    <span>{stage.label}{skipped&&' · 생략'}</span>
                   </label>
                   <div className={styles.stageInfo}>
                     <div className={styles.stageDataRow}>
@@ -312,7 +325,7 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
                     <div className={styles.stageDataRow}>
                       <span className={styles.stagePlanDate}>{planDate || '미입력'}</span>
                       <label className={styles.stageActual}>
-                        <input className={styles.stageDate} type="date" max={today()} value={stageDate || ''} aria-label={`${stage.label} 완료일`} disabled={locked} onChange={event => {
+                        <input className={styles.stageDate} type="date" max={today()} value={stageDate || ''} aria-label={`${stage.label} 완료일`} disabled={locked||skipped} onChange={event => {
                           const value = event.target.value
                           if (value && !isValidDate(value)) { setError('완료일을 입력해 주세요.'); return }
                           if (value > today()) { setError('실제 공정 완료일은 오늘 이후로 입력할 수 없습니다.'); return }
@@ -365,7 +378,8 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
         {tab === 'stages' && stagesDirty ? (
           <div className={styles.footerSaveArea}>
             <span className={styles.footerWarning}>저장하지 않은 입력이 있습니다.</span>
-            <button type="button" className={styles.primaryButton} disabled={locked} onClick={saveStages}>
+            <button type="button" className={styles.textButton} disabled={locked} onClick={()=>setStageChanges({})}>공정 입력 취소</button>
+            <button type="button" className={styles.primaryButton} disabled={locked||planDirty} onClick={saveStages}>
               <IconDeviceFloppy size={15} />{pending === 'bulk-stage' ? '저장 중…' : '공정상태 저장'}
             </button>
           </div>

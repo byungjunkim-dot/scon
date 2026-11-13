@@ -547,3 +547,5 @@
     margin: 0 12px 12px !important;
   }
 }
+
+.skipBulk{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:10px;color:#64748b;margin-top:6px}.skipBulk select{width:auto;max-width:100%;font:inherit;color:#475569;border:1px solid #dbe4f0;border-radius:4px;padding:4px;background:white}
