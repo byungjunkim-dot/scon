@@ -1,6 +1,7 @@
 /** Portable, read-only 3D projection. All coordinates and dimensions are metres. */
 export interface InstallationModule {
   key: string; number: string; floor: number; x: number; y: number
+  kind?: 'normal'|'roof'|'penthouse'|'special'
   width?: number; depth?: number; height?: number; originX?: number; originY?: number; baseZ?: number
   plannedDate: string; actualDate: string
 }

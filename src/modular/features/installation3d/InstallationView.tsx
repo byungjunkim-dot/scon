@@ -26,6 +26,7 @@ function contains(points: ScreenFace['points'], x: number, y: number) {
 export function InstallationView(props: Props) {
   const { scene, moduleHeight, today, floor, selectedKey, busy, onSelect, onSaveHeight, onHeightDirty, heightReset } = props
   const [scope, setScope] = useState<FloorScope>('all')
+  const [layer,setLayer]=useState('all')
   const [asOf, setAsOf] = useState(today)
   const [installedOnly, setInstalledOnly] = useState(false)
   const [camera, setCamera] = useState<Camera>(INITIAL_CAMERA)
@@ -51,7 +52,7 @@ export function InstallationView(props: Props) {
   }, [])
   useEffect(() => { setPan({x:0,y:0}); setZoom(1) }, [scope, floor])
   const date = validDate(asOf) && asOf <= today ? asOf : today
-  const scoped = useMemo(() => floorModules(scene, { scope, floor, asOf: date, today, installedOnly }), [scene,scope,floor])
+  const scoped = useMemo(() => floorModules(scene, { scope, floor, asOf: date, today, installedOnly }).filter(m=>layer==='all'||(layer==='normal'?(m.kind??'normal')==='normal':(m.kind??'normal')!=='normal')), [scene,scope,floor,layer])
   const displayed = useMemo(() => scoped.filter(m => !installedOnly || installedAt(m,date,today)), [scoped,installedOnly,date,today])
   const installed = scoped.filter(m => installedAt(m,date,today)).length
   const frame = useMemo(() => sceneFrame(scene, scoped, moduleHeight, camera), [scene,scoped,moduleHeight,camera])
@@ -116,6 +117,7 @@ export function InstallationView(props: Props) {
     <div className={styles.heading}><div><span>INSTALLATION VIEW</span><h2>3D 설치현황</h2></div><b>{installed}<small> / {scoped.length}개 설치</small></b></div>
     <div className={styles.controls}>
       <label>층 표시<select aria-label="3D 층 표시" value={scope} onChange={e=>setScope(e.target.value as FloorScope)}><option value="all">전체 층</option><option value="single">선택한 {floorName}만</option><option value="below">{floorName} 이하 · 상부 숨김</option></select></label>
+      <label>모듈 종류<select aria-label="3D 모듈 종류" value={layer} onChange={e=>setLayer(e.target.value)}><option value="all">전체 모듈</option><option value="normal">일반 모듈</option><option value="extra">지붕·옥탑·특수</option></select></label>
       <label>설치 기준일<input aria-label="설치 기준일" type="date" max={today} value={asOf} onChange={e=>setAsOf(e.target.value)} onBlur={()=> {if(!validDate(asOf)||asOf>today)setAsOf(today)}} /></label>
       <button type="button" onClick={()=>setAsOf(today)}>오늘</button>
       <label className={styles.check}><input type="checkbox" checked={installedOnly} onChange={e=>setInstalledOnly(e.target.checked)} />설치 완료만</label>
@@ -140,7 +142,7 @@ export function InstallationView(props: Props) {
       {!displayed.length&&<div className={styles.empty}>{scoped.length?'기준일까지 설치 완료된 모듈이 없습니다.':'이 층에는 배치된 모듈이 없습니다.'}</div>}
       {hovered&&<div className={styles.tooltip}>{hovered.number} · {installedAt(hovered,date,today)?`설치 ${hovered.actualDate}`:'기준일 미설치'}</div>}
     </div>
-    <div className={styles.legend}><span><i className={styles.installed} />설치 완료</span><span><i />기준일 미설치 · 반투명</span><span><i className={styles.selected} />선택 모듈</span><small>드래그: {moveMode?'화면 이동':'회전'} · ＋/−: 확대·축소</small></div>
+    <div className={styles.legend}><span><i className={styles.installed} />설치 완료</span><span><i />미설치 · 반투명</span><span><i className={styles.selected} />선택 모듈</span><small>드래그: {moveMode?'화면 이동':'회전'} · 완료 박스 우선 선택</small></div>
     <label className={styles.moduleSelect}>모듈 선택<select aria-label="3D 모듈 선택" disabled={busy||!displayed.length} value={displayed.some(m=>m.key===selectedKey)?selectedKey!:''} onChange={e=>onSelect(e.target.value)}><option value="">입체 박스 클릭 또는 목록에서 선택</option>{displayed.map(m=><option key={m.key} value={m.key}>{m.number} · {installedAt(m,date,today)?'설치 완료':'기준일 미설치'}</option>)}</select></label>
     {picked&&<p className={styles.selection}>선택 {picked.number} · 바닥 높이 {Number((picked.baseZ ?? (picked.floor-1)*moduleHeight).toFixed(2))}m · 규격 {picked.width ?? scene.width}×{picked.depth ?? scene.depth}×{picked.height ?? moduleHeight}m · 설치 예정 {picked.plannedDate||'미입력'} · 실제 설치 {picked.actualDate||'미입력'}{!displayed.some(m=>m.key===picked.key)&&' · 현재 필터에서 숨김'}</p>}
     <p className={styles.note}>현재 저장된 실제 설치일로 날짜별 모습을 표시합니다. 우측 상세는 최신 기록입니다. 과거 수정·취소 전 상태는 재현하지 않습니다.</p>
