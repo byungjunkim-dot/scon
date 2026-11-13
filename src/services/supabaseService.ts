@@ -191,6 +191,55 @@ const fromProjectRow = (row: any): Project => {
   };
 };
 
+const fromUserRow = (row: any): User => {
+  const signupCode = typeof row?.signupCode === 'string'
+    ? row.signupCode
+    : (typeof row?.signup_code === 'string' ? row.signup_code : '');
+  const allowedProjectCodes = Array.isArray(row?.allowedProjectCodes)
+    ? row.allowedProjectCodes.map((s: any) => String(s).trim()).filter(Boolean)
+    : (signupCode ? signupCode.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+
+  return {
+    id: row.id,
+    name: row.name ?? '',
+    contact: row.contact ?? '',
+    email: row.email ?? '',
+    password: row.password,
+    affiliation: row.affiliation ?? '',
+    discipline: row.discipline ?? '',
+    signupCode,
+    allowedProjectCodes,
+    role: row.role === 'admin' ? 'admin' : 'user',
+    userRole: (row.userRole ?? row.user_role ?? '브론즈') as User['userRole'],
+    createdAt: row.createdAt ?? row.created_at ?? '',
+  };
+};
+
+const toUserRow = (user: User): Record<string, any> => {
+  const signupCode = Array.isArray(user.allowedProjectCodes)
+    ? user.allowedProjectCodes.map(s => String(s).trim()).filter(Boolean).join(', ')
+    : (user.signupCode ?? '');
+
+  const payload: Record<string, any> = {
+    id: user.id,
+    name: user.name ?? '',
+    contact: user.contact ?? '',
+    email: user.email ?? '',
+    affiliation: user.affiliation ?? '',
+    discipline: user.discipline ?? '',
+    signupCode,
+    role: user.role ?? 'user',
+    userRole: user.userRole ?? '브론즈',
+    createdAt: user.createdAt || new Date().toISOString(),
+  };
+
+  if (user.password !== undefined) {
+    payload.password = user.password;
+  }
+
+  return payload;
+};
+
 export const supabaseService = {
 // Projects
 async getProjects() {
@@ -545,19 +594,24 @@ async updateProject(project: Project) {
   async getUsers() {
     const { data, error } = await supabase.from('users').select('*');
     if (error) throw error;
-    return data as User[];
+    return (data ?? []).map(fromUserRow);
   },
 
   async saveUser(user: User) {
-    const { data, error } = await supabase.from('users').upsert(user).select().single();
+    const payload = toUserRow(user);
+    const { data, error } = await supabase
+      .from('users')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
     if (error) throw error;
-    return data as User;
+    return fromUserRow(data);
   },
 
   async getUserByEmail(email: string) {
-    const { data, error } = await supabase.from('users').select('*').eq('email', email).single();
-    if (error && error.code !== 'PGRST116') throw error;
-    return data as User | null;
+    const { data, error } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
+    if (error) throw error;
+    return data ? fromUserRow(data) : null;
   },
 
   async deleteUser(id: string) {
