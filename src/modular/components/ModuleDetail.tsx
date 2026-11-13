@@ -13,6 +13,7 @@ import styles from './ModuleDetail.module.css'
 
 interface ModuleDetailProps {
   module: ModuleRecord | null
+  onRemove?:()=>void
   generalHeight?: number
   onGeometryDirty?: (dirty:boolean)=>void
   config: ProjectConfig
@@ -70,7 +71,7 @@ function deltaText(delta: number | null, planned?: string, actual?: string) {
   return delta > 0 ? `계획보다 ${delta}일 지연` : delta < 0 ? `계획보다 ${Math.abs(delta)}일 빠름` : '계획일 완료'
 }
 
-function SelectedModule({ onGeometryDirty, generalHeight, record, config, phase, baselinePlanAt, stages, workflowStages, baselineWorkflowStages, busy, onCommand, onDirtyChange, currentTab, onTabChange }: Omit<ModuleDetailProps, 'module'> & { record: ModuleRecord }) {
+function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, config, phase, baselinePlanAt, stages, workflowStages, baselineWorkflowStages, busy, onCommand, onDirtyChange, currentTab, onTabChange }: Omit<ModuleDetailProps, 'module'> & { record: ModuleRecord }) {
   const id = useId()
   const [tab, setTab] = useState<DetailTab>(() => currentTab ?? (phase === 'planning' ? 'plan' : 'stages'))
 
@@ -198,7 +199,7 @@ function SelectedModule({ onGeometryDirty, generalHeight, record, config, phase,
 
       {phase === 'production' && baselinePlanAt && !record.baselinePlan && <div className={styles.baselineNotice}>착수 기준선 미포함 · 제작 시작 후 추가된 모듈입니다. 현재 계획과 실적은 관리하며, 착수 기준 대비 지연 집계에서는 제외합니다.</div>}
 
-      <ModuleDimensionsEditor module={record} config={config} generalHeight={generalHeight ?? 4} busy={locked} otherDirty={detailsDirty || planDirty || inspectionDirty || stagesDirty} onDirtyChange={value=>{setGeometryDirty(value);onGeometryDirty?.(value)}} onSave={dimensions => execute({ type: 'module-dimensions', key: record.key, dimensions }, 'dimensions')} />
+      <ModuleDimensionsEditor module={record} config={config} generalHeight={generalHeight ?? 4} busy={locked} otherDirty={detailsDirty || planDirty || inspectionDirty || stagesDirty} onDirtyChange={value=>{setGeometryDirty(value);onGeometryDirty?.(value)}} onRemove={record.kind?onRemove:undefined} onSave={(dimensions,baseZ) => execute({ type: 'module-dimensions', key: record.key, dimensions, baseZ }, 'dimensions')} />
       <div className={styles.tabs} role="tablist" aria-label="모듈 정보 구분">
         {([
           ['plan', '관리계획', IconCalendar],
