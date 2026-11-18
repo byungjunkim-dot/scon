@@ -1,7 +1,7 @@
 {
   "id": "modular-manager",
   "label": "모듈러 제작 관리",
-  "version": "0.1.10",
+  "version": "0.1.30",
   "type": "web-template",
   "navSurface": "insight",
   "requires": {
