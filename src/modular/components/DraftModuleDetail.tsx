@@ -6,13 +6,13 @@ import styles from '../views/ProductionBoard.module.css'
 
 interface Props {
   position: LayoutPosition | null; config: ProjectConfig; generalHeight: number; count: number; busy: boolean
-  onRemove?:()=>void; onSave: (dimensions: ModuleDimensions,baseZ?:number|null) => Promise<boolean>; onDirtyChange: (dirty: boolean) => void
+  onRemove?:()=>void; onSave: (dimensions: ModuleDimensions,baseZ?:number|null,moduleType?:import('../common/buildingModules').BuildingModuleKind) => Promise<boolean>; onDirtyChange: (dirty: boolean) => void
 }
 export function DraftModuleDetail({ position, config, generalHeight, count, busy, onRemove, onSave, onDirtyChange }: Props) {
   return <aside className={styles.draftDetail} aria-label="배치 초안 치수 설정">
     <span className={styles.eyebrow}>LAYOUT DRAFT</span>
     <h2>{position ? `${floorNameOf(position.floor, config)} · X${axisNumber(position.x)} Y${axisNumber(position.y)}` : '배치 초안 작성 중'}</h2>
-    <p>{position ? '이 위치의 모듈 치수를 설정하세요. 저장한 치수와 기준 모서리는 최종 배치 확정 후에도 유지됩니다.' : '배치된 칸을 선택하면 개별 폭·깊이·높이와 기준 모서리를 설정할 수 있습니다.'}</p>
+    <p>{position ? '배치한 뒤 종류와 치수를 자유롭게 수정하세요.' : '빈 칸을 클릭해 배치한 뒤 모듈을 선택하세요.'}</p>
     {position && <ModuleDimensionsEditor key={positionKeyOf(position)} module={{ ...position, key: positionKeyOf(position) }} config={config} generalHeight={generalHeight} busy={busy} otherDirty={false} defaultOpen onSave={onSave} onRemove={position.kind?onRemove:undefined} onDirtyChange={onDirtyChange} />}
     <div className={styles.draftDetailStats}><span>배치 예정</span><b>{count}개</b><span>기준 모듈</span><b>{config.width} × {config.depth} m</b></div>
     <p>변경사항은 저장할 때 서버에 보관됩니다. 최종 확정하면 모듈번호가 부여되고 관리계획을 입력할 수 있습니다.</p>

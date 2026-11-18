@@ -206,7 +206,7 @@ function SelectedModule({ onRemove, onGeometryDirty, generalHeight, record, conf
 
       {phase === 'production' && baselinePlanAt && !record.baselinePlan && <div className={styles.baselineNotice}>착수 기준선 미포함 · 제작 시작 후 추가된 모듈입니다. 현재 계획과 실적은 관리하며, 착수 기준 대비 지연 집계에서는 제외합니다.</div>}
 
-      <ModuleDimensionsEditor module={record} config={config} generalHeight={generalHeight ?? 4} busy={locked} otherDirty={detailsDirty || planDirty || inspectionDirty || stagesDirty} onDirtyChange={value=>{setGeometryDirty(value);onGeometryDirty?.(value)}} onRemove={record.kind?onRemove:undefined} onSave={(dimensions,baseZ) => execute({ type: 'module-dimensions', key: record.key, dimensions, baseZ }, 'dimensions')} />
+      <ModuleDimensionsEditor defaultOpen requireTypeConfirmation module={record} config={config} generalHeight={generalHeight ?? 4} busy={locked} otherDirty={detailsDirty || planDirty || inspectionDirty || stagesDirty} onDirtyChange={value=>{setGeometryDirty(value);onGeometryDirty?.(value)}} onRemove={record.kind?onRemove:undefined} onSave={(dimensions,baseZ,moduleType) => execute({ type: 'module-dimensions', key: record.key, dimensions, baseZ, ...(moduleType?{moduleType,confirmed:true as const}:{}) }, 'dimensions')} />
       <div className={styles.tabs} role="tablist" aria-label="모듈 정보 구분">
         {([
           ['plan', '관리계획', IconCalendar],
