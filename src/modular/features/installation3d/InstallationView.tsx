@@ -122,7 +122,7 @@ export function InstallationView(props: Props) {
       <button type="button" onClick={()=>setAsOf(today)}>오늘</button>
       <label className={styles.check}><input type="checkbox" checked={installedOnly} onChange={e=>setInstalledOnly(e.target.checked)} />설치 완료만</label>
     </div>
-    <form className={styles.heightForm} onSubmit={async e=>{
+    <form style={{display:scene.levels?'none':undefined}} className={styles.heightForm} onSubmit={async e=>{
       e.preventDefault();const height=Number(heightInput)
       if(!heightInput.trim() || !Number.isFinite(height) || height<0.5 || height>12 || Math.abs(height*100-Math.round(height*100))>1e-8) {setHeightError('높이는 0.5~12m, 소수 둘째 자리까지 입력해 주세요.');return}
       setHeightError('');if(await onSaveHeight(height))onHeightDirty(false)
@@ -144,6 +144,7 @@ export function InstallationView(props: Props) {
     </div>
     <div className={styles.legend}><span><i className={styles.installed} />설치 완료</span><span><i />미설치 · 반투명</span><span><i className={styles.selected} />선택 모듈</span><small>드래그: {moveMode?'화면 이동':'회전'} · 완료 박스 우선 선택</small></div>
     <label className={styles.moduleSelect}>모듈 선택<select aria-label="3D 모듈 선택" disabled={busy||!displayed.length} value={displayed.some(m=>m.key===selectedKey)?selectedKey!:''} onChange={e=>onSelect(e.target.value)}><option value="">입체 박스 클릭 또는 목록에서 선택</option>{displayed.map(m=><option key={m.key} value={m.key}>{m.number} · {m.omitted?'설치 생략':installedAt(m,date,today)?'설치 완료':'기준일 미설치'}</option>)}</select></label>
+    {scene.levels&&<p>층별 높이 사용 중 · 평면의 ‘층 이름·높이 설정’에서 수정하세요.</p>}
     {picked&&<p className={styles.selection}>선택 {picked.number}{picked.omitted&&' · 설치 생략 · 기록 보존'} · 바닥 높이 {Number((picked.baseZ ?? (picked.floor-1)*moduleHeight).toFixed(2))}m · 규격 {picked.width ?? scene.width}×{picked.depth ?? scene.depth}×{picked.height ?? moduleHeight}m · 설치 예정 {picked.plannedDate||'미입력'} · 실제 설치 {picked.actualDate||'미입력'}{!displayed.some(m=>m.key===picked.key)&&' · 현재 필터에서 숨김'}</p>}
     <p className={styles.note}>현재 저장된 실제 설치일로 날짜별 모습을 표시합니다. 우측 상세는 최신 기록입니다. 과거 수정·취소 전 상태는 재현하지 않습니다.</p>
   </section>

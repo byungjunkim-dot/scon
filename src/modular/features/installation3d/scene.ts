@@ -8,6 +8,8 @@ export interface InstallationModule {
 }
 export interface InstallationScene {
   name: string; width: number; depth: number; columns: number; rows: number; floors: number
+  levels?: {name:string;height:number}[]
+  gridWidth?:number; gridDepth?:number
   floorLabels?: Record<number, string>
   modules: InstallationModule[]
 }
@@ -64,8 +66,8 @@ function sceneFrame(scene: InstallationScene, modules: InstallationModule[], hei
   const xs = modules.flatMap(m => [m.originX ?? m.x * scene.width, (m.originX ?? m.x * scene.width) + (m.width ?? scene.width)])
   const ys = modules.flatMap(m => [m.originY ?? m.y * scene.depth, (m.originY ?? m.y * scene.depth) + (m.depth ?? scene.depth)])
   const zs = modules.flatMap(m => [m.baseZ ?? (m.floor - 1) * height, (m.baseZ ?? (m.floor - 1) * height) + (m.height ?? height)])
-  const x0 = xs.length ? Math.min(...xs) : 0, x1 = xs.length ? Math.max(...xs) : scene.width
-  const y0 = ys.length ? Math.min(...ys) : 0, y1 = ys.length ? Math.max(...ys) : scene.depth
+  const x0 = Math.min(0,...xs), x1 = Math.max(scene.gridWidth ?? (xs.length ? 0 : scene.width),...xs)
+  const y0 = Math.min(0,...ys), y1 = Math.max(scene.gridDepth ?? (ys.length ? 0 : scene.depth),...ys)
   const z0 = zs.length ? Math.min(...zs) : 0, z1 = zs.length ? Math.max(...zs) : height
   const corners = [x0,x1].flatMap(x => [y0,y1].flatMap(y => [z0,z1].map(z => projectPoint([x,y,z], camera))))
   const minX = Math.min(...corners.map(p => p.x)), maxX = Math.max(...corners.map(p => p.x))
@@ -121,15 +123,16 @@ function wireMask(edges: Array<[Point2,Point2]>, mask: Uint8Array, width: number
     }
   }
 }
-function paintFaces(ctx: CanvasRenderingContext2D, faces: BoxFace[], buffer: ReturnType<typeof rasterFaces>, selected: string | null, color: (face: BoxFace) => string, xraySelection = false) {
+function paintFaces(ctx: CanvasRenderingContext2D, faces: BoxFace[], buffer: ReturnType<typeof rasterFaces>, selected: string | null | ReadonlySet<string>, color: (face: BoxFace) => string, xraySelection = false) {
   const { width, height, ids } = buffer, image = ctx.getImageData(0,0,width,height)
+  const isSelected=(key:string)=>typeof selected==='string'?key===selected:Boolean(selected?.has(key))
   const colors = faces.map(face => { const hex=color(face); return [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)) })
   if(buffer.solidIds && buffer.solidDepths){
     const solid=buffer.solidIds,ghostEdges=new Uint8Array(width*height),selectedEdges=xraySelection&&selected?new Uint8Array(width*height):null
     faces.forEach((face,id)=>{
       const edges=buffer.wires[id];if(!edges)return
       if(!face.installed)wireMask(edges,ghostEdges,width,height,buffer.solidDepths)
-      if(selectedEdges&&face.module.key===selected)wireMask(edges,selectedEdges,width,height,null,1)
+      if(selectedEdges&&isSelected(face.module.key))wireMask(edges,selectedEdges,width,height,null,1)
     })
     const blend=(j:number,c:number[],alpha:number)=>{
       const a=image.data[j+3]/255,out=alpha+a*(1-alpha)
@@ -140,13 +143,13 @@ function paintFaces(ctx: CanvasRenderingContext2D, faces: BoxFace[], buffer: Ret
       const i=y*width+x,j=i*4,id=ids[i],solidId=solid[i]
       if(solidId>=0){
         const edge=(x>0?solid[i-1]:-1)!==solidId||(x<width-1?solid[i+1]:-1)!==solidId||(y>0?solid[i-width]:-1)!==solidId||(y<height-1?solid[i+width]:-1)!==solidId
-        const c=edge?(faces[solidId].module.key===selected?[245,158,11]:[203,213,225]):colors[solidId]
+        const c=edge?(isSelected(faces[solidId].module.key)?[245,158,11]:[203,213,225]):colors[solidId]
         for(let k=0;k<3;k++)image.data[j+k]=c[k];image.data[j+3]=255
       }
       if(id>=0&&!faces[id].installed)blend(j,colors[id],0.12)
       if(ghostEdges[i])blend(j,[100,116,139],0.24)
       // A selected planned face keeps its normal visible outline in the main view.
-      if(id>=0&&!faces[id].installed&&faces[id].module.key===selected){
+      if(id>=0&&!faces[id].installed&&isSelected(faces[id].module.key)){
         const edge=(x>0?ids[i-1]:-1)!==id||(x<width-1?ids[i+1]:-1)!==id||(y>0?ids[i-width]:-1)!==id||(y<height-1?ids[i+width]:-1)!==id
         if(edge)blend(j,[245,158,11],0.95)
       }
@@ -157,7 +160,7 @@ function paintFaces(ctx: CanvasRenderingContext2D, faces: BoxFace[], buffer: Ret
   for (let y=0; y<height; y++) for (let x=0; x<width; x++) {
     const i=y*width+x, id=ids[i]; if(id<0) continue
     const face=faces[id], neighbors=[x>0?ids[i-1]:-1,x<width-1?ids[i+1]:-1,y>0?ids[i-width]:-1,y<height-1?ids[i+width]:-1]
-    const edge=neighbors.some(n=>n!==id), picked=face.module.key===selected
+    const edge=neighbors.some(n=>n!==id), picked=isSelected(face.module.key)
     const c=edge ? (picked ? [245,158,11] : face.installed ? [203,213,225] : [148,163,184]) : colors[id]
     const j=i*4; image.data[j]=c[0];image.data[j+1]=c[1];image.data[j+2]=c[2];image.data[j+3]=255
   }
