@@ -1,6 +1,10 @@
+import {configWithLevels} from './floorLevels'
+import {moduleGeometryOf} from './moduleGeometry'
+import {axisLabelsOf} from './gridGeometry'
+import {patchModuleProperties,propertySignature} from './moduleProperties'
 import { ANCHORS, isDimension, type ModuleDimensions } from './moduleGeometry'
-import { hasValidPlacementIdentity, isElevation, isExtraKey, isExtraKind, isModuleKey, positionKeyOf, type ExtraKind } from './buildingModules'
-import { totalFloorsOf, axisNumber, currentPlanOf, defaultWorkflowStages, layoutStatusOf, managementPhaseOf, moduleKey, moduleNumber, today, workflowStagesOf, type HistoryEntry, type LayoutPosition, type ModulePlan, type ModulePlanPatch, type ModuleRecord, type ProjectCommand, type ProjectConfig, type ProjectDetail, type StageId, type WorkflowStage } from './model'
+import { floorHeightOf, floorBaseOf, moduleKindOf, isModuleType, hasValidPlacementIdentity, isElevation, isExtraKey, isExtraKind, isModuleKey, positionKeyOf, type ExtraKind } from './buildingModules'
+import { totalFloorsOf, floorNameOf, axisNumber, currentPlanOf, defaultWorkflowStages, layoutStatusOf, managementPhaseOf, moduleKey, moduleNumber, today, workflowStagesOf, type HistoryEntry, type LayoutPosition, type ModulePlan, type ModulePlanPatch, type ModuleRecord, type ProjectCommand, type ProjectConfig, type ProjectDetail, type StageId, type WorkflowStage } from './model'
 
 import { isStageColor } from './stageColors'
 import { isModuleHeight, moduleHeightOf } from './installation3d'
@@ -46,27 +50,27 @@ export function validateDate(value: unknown, optional = false): string {
 }
 export function validateConfig(value: unknown): ProjectConfig {
   const obj = record(value)
-  const allowed = ['name', 'width', 'depth', 'columns', 'rows', 'floors', 'hasRoof', 'numberingOrder', 'numberingOrigin']
-  if (Object.keys(obj).some(k => !allowed.includes(k))) fail('입력 항목을 확인해 주세요.')
-  for (const k of ['name', 'width', 'depth', 'columns', 'rows', 'floors']) {
-    if (!Object.prototype.hasOwnProperty.call(obj, k)) fail('입력 항목을 확인해 주세요.')
-  }
+  keys(obj, ['name', 'width', 'depth', 'columns', 'rows', 'floors', ...('numberingOrder' in obj?['numberingOrder']:[]),...('numberingOrigin' in obj?['numberingOrigin']:[]),...('hasRoof' in obj ? ['hasRoof'] : []), ...('legacyRoofFloor' in obj ? ['legacyRoofFloor'] : []), ...('levels' in obj ? ['levels'] : []), ...('columnWidths' in obj ? ['columnWidths'] : []), ...('rowDepths' in obj ? ['rowDepths'] : []), ...('xAxisLabels' in obj ? ['xAxisLabels'] : []), ...('yAxisLabels' in obj ? ['yAxisLabels'] : [])])
+  if ('hasRoof' in obj && typeof obj.hasRoof !== 'boolean') fail('지붕층 여부를 확인해 주세요.')
+  if('legacyRoofFloor' in obj&&(!obj.hasRoof||!Number.isSafeInteger(obj.legacyRoofFloor)||Number(obj.legacyRoofFloor)<2||Number(obj.legacyRoofFloor)>Number(obj.floors)+1))fail('기존 RF 기준면 식별자를 확인하세요.')
   const dimension = (v: unknown, label: string) => {
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0.5 || v > 30 || Math.abs(v * 100 - Math.round(v * 100)) > 1e-7) fail(`${label}: 0.5~30m, 소수 둘째 자리까지 입력해 주세요.`)
     return v
   }
-  const numberingOrder = obj.numberingOrder === 'row-col' ? 'row-col' : 'col-row'
-  const numberingOrigin = obj.numberingOrigin === 'top-left' ? 'top-left' : 'bottom-left'
+  const spacing=(field:'columnWidths'|'rowDepths',count:unknown)=>{if(!(field in obj))return {};const values=obj[field];if(!Array.isArray(values)||values.length!==count)fail('축간격 개수는 축 칸수와 같아야 합니다.');return {[field]:values.map(v=>dimension(v,'축간격'))}}
+  const labels=(field:'xAxisLabels'|'yAxisLabels',count:number)=>{if(!(field in obj))return {};const values=obj[field];if(!Array.isArray(values)||values.length!==count+1)fail('축열 이름 개수는 칸수보다 하나 많아야 합니다.');const list=values.map(v=>{const name=text(v,1,20,'축열 이름',true);if(/[\u0000-\u001f\u007f-\u009f]/.test(name))fail('축열 이름에 제어문자는 쓸 수 없습니다.');return name});if(new Set(list).size!==list.length)fail('같은 방향의 축열 이름은 중복할 수 없습니다.');return {[field]:list}}
+  let levels: ProjectConfig['levels']
+  if('levels' in obj){
+    if(!Array.isArray(obj.levels)||obj.levels.length !== Number(obj.floors)+(obj.hasRoof?1:0))fail('층 이름·높이 목록은 전체 층수와 같아야 합니다.')
+    const names=new Set<string>();levels=obj.levels.map(v=>{const l=record(v);keys(l,['name','height']);const name=text(l.name,1,20,'층 이름',true);if(names.has(name))fail('층 이름이 중복됩니다.');names.add(name);if(!isModuleHeight(l.height))fail('층간 높이는 0.5~12m입니다.');return {name,height:l.height}})
+  }
   return {
-    name: text(obj.name, 1, 80, '프로젝트 이름', true),
-    width: dimension(obj.width, '모듈 너비'),
-    depth: dimension(obj.depth, '모듈 깊이'),
-    columns: integer(obj.columns, 1, 40, '가로 칸수'),
-    rows: integer(obj.rows, 1, 40, '세로 칸수'),
-    floors: integer(obj.floors, 1, 15, '층수'),
-    hasRoof: typeof obj.hasRoof === 'boolean' ? obj.hasRoof : false,
-    numberingOrder,
-    numberingOrigin,
+    numberingOrder:obj.numberingOrder==='row-col'?'row-col':'col-row',numberingOrigin:obj.numberingOrigin==='top-left'?'top-left':'bottom-left',
+    ...(levels?{levels}:{}),
+    ...spacing('columnWidths',obj.columns),...spacing('rowDepths',obj.rows),...labels('xAxisLabels',Number(obj.columns)),...labels('yAxisLabels',Number(obj.rows)),
+    ...('hasRoof' in obj ? { hasRoof: obj.hasRoof as boolean } : {}),...('legacyRoofFloor' in obj?{legacyRoofFloor:obj.legacyRoofFloor as number}:{}),
+    name: text(obj.name, 1, 80, '프로젝트 이름', true), width: dimension(obj.width, '모듈 너비'), depth: dimension(obj.depth, '모듈 깊이'),
+    columns: integer(obj.columns, 1, 40, 'X축 칸수'), rows: integer(obj.rows, 1, 40, 'Y축 칸수'), floors: integer(obj.floors, 1, 15, '층수'),
   }
 }
 function validStageId(value: unknown): value is StageId {
@@ -149,20 +153,40 @@ function validateDimensions(value: unknown): ModuleDimensions {
 export function validateCommand(value: unknown): ProjectCommand {
   const obj = record(value)
   const layouts: Record<string, readonly string[]> = {
-    'add-extra': ['type', 'floor', 'x', 'y', 'kind', 'baseZ', 'dimensions', 'confirmed'],
+    'bulk-properties': ['type','moduleKeys','patch','confirmed'],
+    'grid-label': ['type','axis','index','value'],
+    'grid-spacing': ['type','axis','index','value','confirmed'],
+    'floor-levels': ['type','levels','confirmed',...('resize' in obj?['resize']:[])],
+    'module-type': ['type','key','moduleType','confirmed'],
+    'add-extra': ['type', 'floor', 'x', 'y', 'kind', 'baseZ', 'dimensions', 'confirmed', ...('moduleType' in obj?['moduleType']:[])],
     'extra-state': ['type', 'key', 'active', 'confirmed'],
     'layout-module': ['type', 'floor', 'x', 'y', 'active', 'confirmed'],
-    'module-dimensions': ['type', 'key', 'dimensions', ...('baseZ' in obj ? ['baseZ'] : [])],
+    'module-dimensions': ['type', 'key', 'dimensions', ...('baseZ' in obj ? ['baseZ'] : []),...('moduleType' in obj?['moduleType']:[]),...('confirmed' in obj?['confirmed']:[])],
     'installation-3d': ['type', 'moduleHeight'],
     settings: ['type', 'config'], place: ['type', 'floor', 'x', 'y', 'active'], fill: ['type', 'floor'], 'reset-floor': ['type', 'floor'], copy: ['type', 'sourceFloor', 'targetFloor'], 'confirm-layout': ['type'], plan: ['type', 'key', 'plan'], 'bulk-plan': ['type', 'moduleKeys', 'patch'], 'bulk-stage': ['type', 'moduleKeys', 'stages'], installation: ['type', 'key', 'date'], 'establish-baseline': ['type'], 'start-production': ['type'],
     workflow: ['type', 'stages', 'reason'], 'stage-colors': ['type', 'colors'], stage: ['type', 'key', 'stage', 'date'], notes: ['type', 'key', 'notes', 'targetDate'], inspect: ['type', 'key', 'date', 'kind', 'content'], resolve: ['type', 'key', 'inspectionId', 'resolved'],
   }
   if (typeof obj.type !== 'string' || !Object.prototype.hasOwnProperty.call(layouts, obj.type)) fail('지원하지 않는 작업입니다.')
+  if(['place','fill','layout-module'].includes(obj.type) && 'moduleType' in obj){layouts[obj.type]=[...layouts[obj.type],'moduleType'];if(!isModuleType(obj.moduleType))fail('모듈 성격을 확인해 주세요.')}
   keys(obj, layouts[obj.type])
+  if(obj.type==='grid-label'){if(!['x','y'].includes(obj.axis as string))fail('축 방향을 확인하세요.');return {type:'grid-label',axis:obj.axis as 'x'|'y',index:integer(obj.index,0,40,'축선'),value:text(obj.value,1,20,'축열 이름',true)}}
+  if(obj.type==='bulk-properties'){
+    if(typeof obj.confirmed!=='boolean'||!Array.isArray(obj.moduleKeys)||!obj.moduleKeys.length||obj.moduleKeys.length>MAX_PLACED_MODULES||obj.moduleKeys.some(k=>!isModuleKey(k))||new Set(obj.moduleKeys).size!==obj.moduleKeys.length)fail('일괄 속성 대상과 확인을 점검하세요.')
+    const patch=record(obj.patch),allowed=['width','depth','height','baseZ','anchor','moduleType'];if(!Object.keys(patch).length||Object.keys(patch).some(k=>!allowed.includes(k)))fail('변경할 속성을 선택하세요.')
+    for(const k of ['width','depth','height'] as const)if(k in patch&&patch[k]!==null&&!isDimension(patch[k],k==='height'?12:30))fail('모듈 치수를 확인하세요.')
+    if('baseZ' in patch&&patch.baseZ!==null&&!isElevation(patch.baseZ))fail('시작 높이를 확인하세요.')
+    if('anchor' in patch&&patch.anchor!==null&&(typeof patch.anchor!=='string'||!Object.hasOwn(ANCHORS,patch.anchor)))fail('기준 모서리를 확인하세요.')
+    if('moduleType' in patch&&!isModuleType(patch.moduleType))fail('모듈 종류를 확인하세요.')
+    return {type:'bulk-properties',moduleKeys:obj.moduleKeys as string[],patch:patch as import('./model').ModulePropertyPatch,confirmed:obj.confirmed}
+  }
+  if(obj.type==='grid-spacing'){if(!['x','y'].includes(obj.axis as string)||!isDimension(obj.value)||typeof obj.confirmed!=='boolean')fail('축간격과 확인을 점검하세요.');return {type:'grid-spacing',axis:obj.axis as 'x'|'y',index:integer(obj.index,0,39,'축 구간'),value:obj.value,confirmed:obj.confirmed}}
+  if(obj.type==='floor-levels'){if(!Array.isArray(obj.levels)||obj.levels.length<1||obj.levels.length>16||obj.confirmed!==true||('resize' in obj&&obj.resize!==true))fail('층 설정 확인이 필요합니다.');return {type:'floor-levels',levels:obj.levels as NonNullable<ProjectConfig['levels']>,confirmed:true,...('resize' in obj?{resize:true as const}:{})}}
+  if(obj.type==='module-type'){if(!isModuleKey(obj.key)||!isModuleType(obj.moduleType)||typeof obj.confirmed!=='boolean')fail('모듈 성격과 확인을 점검하세요.');return {type:'module-type',key:obj.key,moduleType:obj.moduleType,confirmed:obj.confirmed}}
   if (obj.type === 'add-extra') {
+    if('moduleType' in obj&&!isModuleType(obj.moduleType))fail('모듈 종류를 확인하세요.')
     integer(obj.floor, 1, 16, '관리층'); integer(obj.x, 0, 39, 'X축열', 1); integer(obj.y, 0, 39, 'Y축열', 1)
     if (!isExtraKind(obj.kind) || !isElevation(obj.baseZ) || typeof obj.confirmed !== 'boolean') fail('모듈 종류·추가 확인·시작 높이(0~500m, 소수 둘째 자리)를 확인해 주세요.')
-    return { type: 'add-extra', floor: obj.floor as number, x: obj.x as number, y: obj.y as number, kind: obj.kind, baseZ: obj.baseZ, dimensions: validateDimensions(obj.dimensions), confirmed: obj.confirmed }
+    return { type: 'add-extra', floor: obj.floor as number, x: obj.x as number, y: obj.y as number, kind: obj.kind, baseZ: obj.baseZ, dimensions: validateDimensions(obj.dimensions), confirmed: obj.confirmed, ...('moduleType' in obj?{moduleType:obj.moduleType as import('./buildingModules').BuildingModuleKind}:{}) }
   }
   if (obj.type === 'extra-state') {
     if (!isExtraKey(obj.key) || typeof obj.active !== 'boolean' || typeof obj.confirmed !== 'boolean') fail('추가 모듈 식별자와 배치 확인을 확인해 주세요.')
@@ -231,8 +255,9 @@ export function validateCommand(value: unknown): ProjectCommand {
   } else {
     if (!isModuleKey(obj.key)) fail('모듈 식별자를 확인해 주세요.')
     if (obj.type === 'module-dimensions') {
+      if('moduleType' in obj&&!isModuleType(obj.moduleType))fail('모듈 종류를 확인하세요.');if('confirmed' in obj&&obj.confirmed!==true)fail('속성 변경 확인이 필요합니다.')
       if ('baseZ' in obj && obj.baseZ !== null && !isElevation(obj.baseZ)) fail('시작 높이는 0~500m, 소수 둘째 자리까지 입력해 주세요.')
-      return { type: 'module-dimensions', key: obj.key, dimensions: validateDimensions(obj.dimensions), ...('baseZ' in obj ? { baseZ: obj.baseZ as number | null } : {}) }
+      return { type: 'module-dimensions', key: obj.key, dimensions: validateDimensions(obj.dimensions), ...('baseZ' in obj ? { baseZ: obj.baseZ as number | null } : {}), ...('moduleType' in obj?{moduleType:obj.moduleType as import('./buildingModules').BuildingModuleKind}:{}), ...('confirmed' in obj?{confirmed:true as const}:{}) }
     } else if (obj.type === 'plan') {
       return { type: 'plan', key: obj.key, plan: validatePlan(obj.plan) }
     } else if (obj.type === 'installation') {
@@ -271,7 +296,7 @@ function freshModule(floor: number, x: number, y: number): ModuleRecord {
   return { key: moduleKey(floor, x, y), floor, x, y, active: true, completed: {}, notes: '', targetDate: '', inspections: [], history: [] }
 }
 function moduleFromPosition(p: LayoutPosition): ModuleRecord {
-  return { ...freshModule(p.floor, p.x, p.y), key: positionKeyOf(p), ...(p.kind ? { kind: p.kind, sequence: p.sequence } : {}), ...(p.baseZ !== undefined ? { baseZ: p.baseZ } : {}), ...(p.dimensions && Object.keys(p.dimensions).length ? { dimensions: structuredClone(p.dimensions) } : {}) }
+  return { ...freshModule(p.floor, p.x, p.y), key: positionKeyOf(p), ...(p.moduleType ? {moduleType:p.moduleType} : {}), ...(p.kind ? { kind: p.kind, sequence: p.sequence } : {}), ...(p.baseZ !== undefined ? { baseZ: p.baseZ } : {}), ...(p.dimensions && Object.keys(p.dimensions).length ? { dimensions: structuredClone(p.dimensions) } : {}) }
 }
 function planChanges(before: ModulePlan, after: ModulePlan, stages: readonly WorkflowStage[]) {
   const changes: Array<{ field: string; before: string; after: string }> = []
@@ -335,7 +360,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
   if (['add-extra','extra-state','layout-module','place','fill','copy','reset-floor','confirm-layout'].includes(command.type)) validatePositions(positions())
   let message = ''
   const layoutCommand = ['settings', 'place', 'fill', 'reset-floor', 'copy'].includes(command.type)
-  const moduleCommand = ['stage', 'notes', 'inspect', 'resolve', 'plan', 'bulk-plan', 'bulk-stage', 'installation', 'module-dimensions'].includes(command.type)
+  const moduleCommand = ['stage', 'notes', 'inspect', 'resolve', 'plan', 'bulk-plan', 'bulk-stage', 'installation', 'module-dimensions', 'bulk-properties'].includes(command.type)
   const productionCommand = ['stage', 'installation', 'bulk-stage'].includes(command.type)
   const phase = managementPhaseOf(result)
   const stageDefinitions = workflowStagesOf(result)
@@ -349,17 +374,53 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
   if (command.type === 'stage' && !activeStageIds.has(command.stage)) fail('비활성 공정에는 실제 완료일을 입력할 수 없습니다.')
   if (command.type === 'installation' && !activeStageIds.has('installation')) fail('비활성 설치 공정에는 실제 완료일을 입력할 수 없습니다.')
   if (layoutCommand) requireDraft()
-  if (moduleCommand && command.type !== 'module-dimensions' && phase === 'draft') fail('최종 배치를 확정한 뒤 모듈별 관리계획을 입력할 수 있습니다.', 409)
+  if (moduleCommand && command.type !== 'module-dimensions' && command.type !== 'bulk-properties' && phase === 'draft') fail('최종 배치를 확정한 뒤 모듈별 관리계획을 입력할 수 있습니다.', 409)
   if (productionCommand && phase === 'draft') fail('제작 관리 시작 후 실제 공정·설치 실적을 입력할 수 있습니다.', 409)
   if (command.type === 'confirm-layout' && result.layoutStatus !== 'draft') fail('이미 최종 배치가 확정된 프로젝트입니다.', 409)
-  if (command.type === 'add-extra') {
+  if(command.type==='bulk-properties'){
+    const pool=positions();if(result.layoutStatus!=='draft'&&pool.some(p=>!isModuleKey(p.key)))fail('확정 모듈의 저장 식별자를 확인해 주세요.',409);validatePositions(pool);const byKey=new Map(pool.map(p=>[positionKeyOf(p),p]));const targets=command.moduleKeys.map(key=>{const p=byKey.get(key);if(!p||(result.layoutStatus!=='draft'&&!(p as ModuleRecord).active))fail('배치된 일괄 속성 대상을 찾을 수 없습니다.',409);return p})
+    if(result.layoutStatus!=='draft'&&command.patch.moduleType!==undefined&&targets.some(p=>moduleKindOf(p,result.config)!==command.patch.moduleType)&&!command.confirmed)fail('일괄 종류 변경 확인이 필요합니다.',409)
+    let count=0;for(const p of targets){const next=patchModuleProperties(p,command.patch);if(propertySignature(next)===propertySignature(p))continue;const before=propertySignature(p);if(next.dimensions)p.dimensions=next.dimensions;else delete p.dimensions;if(next.baseZ===undefined)delete p.baseZ;else p.baseZ=next.baseZ;if(next.moduleType!==undefined)p.moduleType=next.moduleType;if(result.layoutStatus!=='draft')audit(p as ModuleRecord,'속성 일괄 변경 · '+before+' → '+propertySignature(p));count++}
+    if(!count)return current;message=count+'개 모듈 속성 일괄 변경 · '+Object.keys(command.patch).join(' / ')
+  } else if(command.type==='grid-label'){
+    const count=command.axis==='x'?result.config.columns:result.config.rows;if(command.index>count)fail('축선 범위를 벗어났습니다.');const values=axisLabelsOf(result.config,command.axis);if(values[command.index]===command.value)return current;values[command.index]=command.value;result.config=validateConfig({...result.config,[command.axis==='x'?'xAxisLabels':'yAxisLabels']:values});message=command.axis.toUpperCase()+'축선 '+(command.index+1)+' 이름 변경 · '+command.value+' · 전체 층'
+  } else if(command.type==='grid-spacing'){
+    if(result.layoutStatus!=='draft'&&!command.confirmed)fail('전체 층에 적용되는 축간격 변경 확인이 필요합니다.',409)
+    const field=command.axis==='x'?'columnWidths':'rowDepths',count=command.axis==='x'?result.config.columns:result.config.rows,base=command.axis==='x'?result.config.width:result.config.depth
+    if(command.index>=count)fail('축간격 범위를 벗어났습니다.')
+    const values=[...(result.config[field]??Array(count).fill(base))];if(values[command.index]===command.value)return current;values[command.index]=command.value
+    result.config=validateConfig({...result.config,[field]:values});message=command.axis.toUpperCase()+'축 '+(command.index+1)+'–'+(command.index+2)+' 간격 '+command.value+'m 변경 · 전체 층/상속 치수 연동'
+  } else if(command.type==='floor-levels'){
+    const oldConfig=result.config,oldCount=totalFloorsOf(oldConfig),newCount=command.levels.length
+    if(!command.resize&&newCount!==oldCount)fail('기준면 개수 변경 확인이 필요합니다.',409)
+    if(command.resize&&newCount<oldCount&&[...current.modules,...(current.draftLayout??[])].some(p=>p.floor>newCount))fail('삭제할 기준면에 모듈 또는 보존된 모듈 기록이 있습니다. 기록이 없는 맨 위 기준면만 삭제할 수 있습니다.',409)
+    const next=validateConfig(command.resize&&newCount!==oldCount?configWithLevels(oldConfig,command.levels):{...oldConfig,levels:command.levels})
+    if(JSON.stringify(next)===JSON.stringify(oldConfig))return current
+    // Materialising old implicit levels must not lower legacy extras or shrink explicit-normal RF modules.
+    if(!oldConfig.levels){
+      const height=moduleHeightOf(result.installation3d),compat={...oldConfig,levels:Array.from({length:oldCount},(_,i)=>({name:floorNameOf(i+1,oldConfig),height:floorHeightOf(i+1,oldConfig,height)}))}
+      for(const p of positions()){
+        const before=moduleGeometryOf(p,oldConfig,result.installation3d),after=moduleGeometryOf(p,compat,result.installation3d);let pinned=false
+        if(before.height!==after.height){p.dimensions={...p.dimensions,height:before.height};pinned=true}
+        if(before.baseZ!==after.baseZ){p.baseZ=before.baseZ;pinned=true}
+        if(pinned&&result.layoutStatus!=='draft')audit(p as ModuleRecord,'기준면 형식 전환 호환 · 기존 실제 높이/시작 높이 보존')
+      }
+    }
+    result.config=next;message='기준면 이름·층간 높이 변경'+(oldCount!==newCount?' · '+oldCount+' → '+newCount+'개':'')+' · 번호·계획·실적 보존'
+  } else if(command.type==='module-type'){
+    if(result.layoutStatus!=='draft'&&!command.confirmed)fail('모듈 성격 변경 확인이 필요합니다.',409)
+    const p=positions().find(p=>positionKeyOf(p)===command.key);if(!p||!hasValidPlacementIdentity(p))fail('모듈을 찾을 수 없습니다.',409)
+    if(p.moduleType===command.moduleType)return current
+    p.moduleType=command.moduleType;message='모듈 성격 변경 · 번호·명시 치수·실적 보존 · 기본 높이는 새 성격 적용'
+    if(result.layoutStatus!=='draft')audit(p as ModuleRecord,message)
+  } else if (command.type === 'add-extra') {
     if (result.layoutStatus !== 'draft' && !command.confirmed) fail('모듈 추가 확인이 필요합니다.', 409)
     floor(command.floor)
     if (command.x >= result.config.columns || command.y >= result.config.rows) fail('설정한 축열 범위를 벗어났습니다.')
     if (positions().length >= MAX_PLACED_MODULES) fail(`삭제 기록을 포함하여 최대 ${MAX_PLACED_MODULES}개 모듈을 보관할 수 있습니다.`, 409)
     const p = { ...nextExtra(command, positions()), baseZ: command.baseZ, ...(Object.keys(command.dimensions).length ? {dimensions:command.dimensions} : {}) }
     // Only placement metadata enters the stored draft; never persist command fields.
-    const placed: LayoutPosition = { key:p.key, floor:p.floor, x:p.x, y:p.y, kind:p.kind, sequence:p.sequence, baseZ:p.baseZ, ...(p.dimensions ? {dimensions:p.dimensions} : {}) }
+    const placed: LayoutPosition = { key:p.key, floor:p.floor, x:p.x, y:p.y, kind:p.kind, sequence:p.sequence, baseZ:p.baseZ, ...(command.moduleType?{moduleType:command.moduleType}:{}), ...(p.dimensions ? {dimensions:p.dimensions} : {}) }
     if (result.layoutStatus === 'draft') { draftPositions().push(placed); message = `${p.floor}층 X${axisNumber(p.x)} Y${axisNumber(p.y)} · ${p.kind} 초안 추가 · 시작 ${p.baseZ}m` }
     else { const m = moduleFromPosition(placed); message = `${moduleNumber(m,result.config)} · 추가 모듈 배치 · 시작 ${p.baseZ}m${result.baselinePlanAt ? ' · 착수 기준선 미포함' : ''}`; audit(m,message); result.modules.push(m) }
   } else if (command.type === 'extra-state') {
@@ -376,7 +437,8 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       m.active = command.active; message = `${moduleNumber(m,result.config)} · 추가 모듈 ${command.active ? '기록 복원' : '배치 제외'} · 기존 치수·계획·실적·검사·기준선 보존`; audit(m,message)
     }
   } else if (command.type === 'settings') {
-    const next = command.config
+    let next = command.config
+    if(result.config.legacyRoofFloor!==undefined){if(!next.hasRoof||totalFloorsOf(next)!==totalFloorsOf(result.config)||(next.legacyRoofFloor!==undefined&&next.legacyRoofFloor!==result.config.legacyRoofFloor))fail('기존 RF 기준면은 유지됩니다. 기준면 추가·삭제는 기준면 설정창을 이용하세요.',409);next=validateConfig({...next,legacyRoofFloor:result.config.legacyRoofFloor,levels:next.levels??result.config.levels})}
     if (draftPositions().some(p => p.floor > totalFloorsOf(next) || p.x >= next.columns || p.y >= next.rows)) fail('배치 초안이 새 그리드 범위를 벗어납니다. 해당 위치를 먼저 제외한 뒤 설정을 저장해 주세요.', 409)
     result.config = next
     message = `프로젝트 설정 변경 · ${next.name} · ${next.width}×${next.depth}m · X${next.columns}/Y${next.rows} · ${next.floors}층`
@@ -384,7 +446,8 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     const p = draftPositions().find(p => positionKeyOf(p) === command.key)
     if (!p) fail('배치 초안 모듈을 찾을 수 없습니다.')
     if (!hasValidPlacementIdentity(p)) fail('배치 초안 식별자를 확인해 주세요.', 409)
-    if (JSON.stringify(p.dimensions ?? {}) === JSON.stringify(command.dimensions) && (!('baseZ' in command) || p.baseZ === (command.baseZ ?? undefined))) return current
+    if (JSON.stringify(p.dimensions ?? {}) === JSON.stringify(command.dimensions) && (!('baseZ' in command) || p.baseZ === (command.baseZ ?? undefined)) && (command.moduleType===undefined || p.moduleType===command.moduleType)) return current
+    if(command.moduleType!==undefined)p.moduleType=command.moduleType
     if (Object.keys(command.dimensions).length) p.dimensions = command.dimensions
     else delete p.dimensions
     if ('baseZ' in command) { if (command.baseZ === null) delete p.baseZ; else p.baseZ = command.baseZ }
@@ -403,6 +466,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     if (!m) {
       if (result.modules.length >= MAX_PLACED_MODULES) fail(`삭제 기록을 포함하여 최대 ${MAX_PLACED_MODULES}개 좌표를 보관할 수 있습니다. 기존 삭제 위치는 복원할 수 있습니다.`, 409)
       m = freshModule(command.floor, command.x, command.y)
+      if(command.moduleType)m.moduleType=command.moduleType
       result.modules.push(m)
     } else m.active = command.active
     message = `${moduleNumber(m, result.config)} · ${command.active ? restored ? '배치 복원 · 기존 치수·계획·실적·검사 기록 유지' : '모듈 추가 · 빈 관리계획으로 시작' : '배치 삭제 · 기존 기록 보존'}${command.active && !restored && result.baselinePlanAt ? ' · 착수 기준선 미포함' : ''}`
@@ -416,7 +480,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       const index = positions.findIndex(p => positionKeyOf(p) === key)
       if (command.active && index < 0) {
         if (positions.length >= MAX_PLACED_MODULES) fail(`프로젝트에는 최대 ${MAX_PLACED_MODULES}개 배치 초안을 저장할 수 있습니다.`, 409)
-        positions.push({ floor: command.floor, x: command.x, y: command.y })
+        positions.push({ floor: command.floor, x: command.x, y: command.y, ...(command.moduleType?{moduleType:command.moduleType}:{}) })
       } else if (!command.active) {
         if (index < 0) fail('제외할 배치 초안을 찾을 수 없습니다.')
         positions.splice(index, 1)
@@ -432,7 +496,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       if (positions.length + extra > MAX_PLACED_MODULES) fail(`프로젝트에는 최대 ${MAX_PLACED_MODULES}개 배치 초안을 저장할 수 있습니다.`, 409)
       for (let y = 0; y < result.config.rows; y++) for (let x = 0; x < result.config.columns; x++) {
         const key = moduleKey(command.floor, x, y)
-        if (!present.has(key)) positions.push({ floor: command.floor, x, y })
+        if (!present.has(key)) positions.push({ floor: command.floor, x, y, ...(command.moduleType?{moduleType:command.moduleType}:{}) })
       }
       message = `${command.floor}층 배치 초안 전체 저장`
     }
@@ -456,7 +520,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
       if (nextCount > MAX_PLACED_MODULES) fail(`프로젝트에는 최대 ${MAX_PLACED_MODULES}개 배치 초안을 저장할 수 있습니다.`, 409)
       const copied = positions.filter(p => p.floor !== command.targetFloor)
       for (const p of source) {
-        const next: LayoutPosition = { floor:command.targetFloor, x:p.x, y:p.y, ...(p.dimensions ? {dimensions:validateDimensions(p.dimensions)} : {}), ...(p.baseZ !== undefined ? {baseZ:Math.round((p.baseZ+(command.targetFloor-command.sourceFloor)*moduleHeightOf(result.installation3d))*100)/100} : {}) }
+        const next: LayoutPosition = { floor:command.targetFloor, x:p.x, y:p.y, ...(p.moduleType?{moduleType:p.moduleType}:{}), ...(p.dimensions ? {dimensions:validateDimensions(p.dimensions)} : {}), ...(p.baseZ !== undefined ? {baseZ:Math.round((p.baseZ+(floorBaseOf(command.targetFloor,result.config,moduleHeightOf(result.installation3d))-floorBaseOf(command.sourceFloor,result.config,moduleHeightOf(result.installation3d))))*100)/100} : {}) }
         if (p.kind) Object.assign(next,nextExtra({floor:command.targetFloor,x:p.x,y:p.y,kind:p.kind},copied))
         copied.push(next)
       }
@@ -503,6 +567,7 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
     result.managementPhase = 'production'
     message = `제작 관리 시작 · 착수 기준일정 고정 · ${result.modules.filter(item => item.active).length}개 모듈`
   } else if (command.type === 'installation-3d') {
+    if(result.config.levels)fail('층별 높이를 사용 중입니다. 층 이름·높이 설정에서 수정해 주세요.',409)
     result.installation3d = { moduleHeight: command.moduleHeight }
     message = `3D 설치현황 높이 변경 · ${command.moduleHeight}m`
   } else if (command.type === 'stage-colors') {
@@ -566,12 +631,14 @@ export function applyCommand(current: ProjectDetail, value: unknown, context: Do
   } else {
     const m = activeModule(command.key)
     if (command.type === 'module-dimensions') {
-      if (JSON.stringify(m.dimensions ?? {}) === JSON.stringify(command.dimensions) && (!('baseZ' in command) || m.baseZ === (command.baseZ ?? undefined))) return current
-      const before = JSON.stringify(m.dimensions ?? {})
+      if (JSON.stringify(m.dimensions ?? {}) === JSON.stringify(command.dimensions) && (!('baseZ' in command) || m.baseZ === (command.baseZ ?? undefined)) && (command.moduleType===undefined || m.moduleType===command.moduleType)) return current
+      if(command.moduleType!==undefined&&moduleKindOf(m,result.config)!==command.moduleType&&!command.confirmed)fail('모듈 종류 변경 확인이 필요합니다.',409)
+      const before = JSON.stringify({dimensions:m.dimensions??{},moduleType:moduleKindOf(m,result.config)})
+      if(command.moduleType!==undefined)m.moduleType=command.moduleType
       if (Object.keys(command.dimensions).length) m.dimensions = command.dimensions
       else delete m.dimensions
       if ('baseZ' in command) { if (command.baseZ === null) delete m.baseZ; else m.baseZ = command.baseZ }
-      message = `${moduleNumber(m, result.config)} 모듈 치수·기준 모서리 변경 · ${before} → ${JSON.stringify(command.dimensions)} · 시작 ${m.baseZ ?? '기본'}m${Object.keys(command.dimensions).length ? '' : ' (기본값 상속)'}`
+      message = `${moduleNumber(m, result.config)} 모듈 속성·치수·기준 모서리 변경 · ${before} → ${JSON.stringify({dimensions:command.dimensions,moduleType:moduleKindOf(m,result.config)})} · 시작 ${m.baseZ ?? '기본'}m${Object.keys(command.dimensions).length ? '' : ' (기본값 상속)'}`
     } else if (command.type === 'stage') {
       if (isStageOmitted(m.currentPlan,command.stage)) fail('이 모듈에서 생략한 공정입니다. 관리계획에서 생략을 해제한 뒤 실적을 입력해 주세요.',409)
       if (command.date === null) {

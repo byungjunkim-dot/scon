@@ -1,5 +1,5 @@
-import { extraNumberSuffix, type PlacementMetadata, type ExtraKind } from './buildingModules'
 import type { ModuleDimensions } from './moduleGeometry'
+import { legacyRoofFloorOf, extraNumberSuffix, type PlacementMetadata, type ExtraKind } from './buildingModules'
 import type { Installation3DSettings } from './installation3d'
 
 export const STAGES = [
@@ -49,17 +49,22 @@ export interface PlanRevision {
 }
 export type NumberingOrder = 'col-row' | 'row-col'
 export type NumberingOrigin = 'bottom-left' | 'top-left'
-
 export interface ProjectConfig {
+  numberingOrder?:NumberingOrder
+  numberingOrigin?:NumberingOrigin
   name: string
   width: number
   depth: number
   columns: number
   rows: number
   floors: number
+  columnWidths?: number[]
+  rowDepths?: number[]
+  xAxisLabels?: string[]
+  yAxisLabels?: string[]
+  levels?: {name:string;height:number}[]
   hasRoof?: boolean
-  numberingOrder?: NumberingOrder
-  numberingOrigin?: NumberingOrigin
+  legacyRoofFloor?: number
 }
 export interface Inspection {
   id: string
@@ -90,7 +95,7 @@ export interface ModuleRecord extends PlacementMetadata {
 }
 export type LayoutStatus = 'draft' | 'confirmed'
 export type ManagementPhase = 'planning' | 'production'
-export interface LayoutPosition extends PlacementMetadata { key?:string; floor: number; x: number; y: number; dimensions?: ModuleDimensions }
+export interface LayoutPosition extends PlacementMetadata { key?: string; floor: number; x: number; y: number; dimensions?: ModuleDimensions }
 export interface ProjectDetail {
   id: string
   revision: number
@@ -173,41 +178,37 @@ export function stageOverdue(m: ModuleRecord, id: StageId, asOf=today(), plan=cu
   const planned=plannedStageDateOf(plan,id)
   return !isStageOmitted(plan,id)&&Boolean(planned&&planned<asOf&&!validActualDate(actualStageDateOf(m,id)))
 }
+export type ModulePropertyPatch = Partial<Record<'width'|'depth'|'height'|'baseZ',number|null>> & {anchor?:import('./moduleGeometry').ModuleAnchor|null;moduleType?:import('./buildingModules').BuildingModuleKind}
 export type ProjectCommand =
-  | {type:'add-extra';floor:number;x:number;y:number;kind:ExtraKind;baseZ:number;dimensions:ModuleDimensions;confirmed:boolean}
-  | {type:'extra-state';key:string;active:boolean;confirmed:boolean}
-  | { type: 'layout-module'; floor: number; x: number; y: number; active: boolean; confirmed: true }
+  | {type:'bulk-properties';moduleKeys:string[];patch:ModulePropertyPatch;confirmed:boolean}
+  | {type:'grid-label';axis:'x'|'y';index:number;value:string}
+  | { type: 'add-extra'; moduleType?: import('./buildingModules').BuildingModuleKind; floor: number; x: number; y: number; kind: ExtraKind; baseZ: number; dimensions: ModuleDimensions; confirmed: boolean }
+  | { type: 'extra-state'; key: string; active: boolean; confirmed: boolean }
+  | { type: 'layout-module'; moduleType?: import('./buildingModules').BuildingModuleKind; floor: number; x: number; y: number; active: boolean; confirmed: true }
+  | { type: 'grid-spacing'; axis:'x'|'y'; index:number; value:number; confirmed:boolean }
+  | { type: 'floor-levels'; levels: NonNullable<ProjectConfig['levels']>; confirmed: true; resize?:true }
+  | { type: 'module-type'; key: string; moduleType: import('./buildingModules').BuildingModuleKind; confirmed: boolean }
   | { type: 'settings'; config: ProjectConfig }
-  | { type: 'place'; floor: number; x: number; y: number; active: boolean }
-  | { type: 'fill'; floor: number }
+  | { type: 'place'; moduleType?: import('./buildingModules').BuildingModuleKind; floor: number; x: number; y: number; active: boolean }
+  | { type: 'fill'; moduleType?: import('./buildingModules').BuildingModuleKind; floor: number }
   | { type: 'reset-floor'; floor: number }
   | { type: 'copy'; sourceFloor: number; targetFloor: number }
   | { type: 'confirm-layout' }
   | { type: 'plan'; key: string; plan: ModulePlan }
   | { type: 'bulk-plan'; moduleKeys: string[]; patch: ModulePlanPatch }
-  | { type: 'bulk-stage'; moduleKeys: string[]; stages: Partial<Record<StageId, string | null>> }
+  | { type:'bulk-stage'; moduleKeys:string[]; stages:Partial<Record<StageId,string|null>> }
   | { type: 'installation'; key: string; date: string | null }
   | { type: 'establish-baseline' }
   | { type: 'start-production' }
   | { type: 'workflow'; stages: WorkflowStage[]; reason: string }
   | { type: 'stage-colors'; colors: Record<StageId, string> }
   | { type: 'installation-3d'; moduleHeight: number }
-  | { type: 'module-dimensions'; key: string; dimensions: ModuleDimensions; baseZ?:number|null }
+  | { type: 'module-dimensions'; key: string; dimensions: ModuleDimensions; baseZ?: number | null; moduleType?: import('./buildingModules').BuildingModuleKind; confirmed?: true }
   | { type: 'stage'; key: string; stage: StageId; date: string | null }
   | { type: 'notes'; key: string; notes: string; targetDate: string }
   | { type: 'inspect'; key: string; date: string; kind: Inspection['kind']; content: string }
   | { type: 'resolve'; key: string; inspectionId: string; resolved: boolean }
-export const DEFAULT_CONFIG: ProjectConfig = {
-  name: '',
-  width: 4,
-  depth: 11.5,
-  columns: 8,
-  rows: 2,
-  floors: 5,
-  hasRoof: false,
-  numberingOrder: 'col-row',
-  numberingOrigin: 'bottom-left',
-}
+export const DEFAULT_CONFIG: ProjectConfig = { name: '', width: 4, depth: 11.5, columns: 8, rows: 2, floors: 5 }
 export const moduleKey = (floor: number, x: number, y: number) => `${floor}:${x}:${y}`
 /** Stored coordinates and stable keys remain zero-based; users see axes starting at 1. */
 export const axisNumber = (coordinate: number) => coordinate + 1
@@ -221,11 +222,10 @@ export const axisNumberFor = (
   }
   return coordinate + 1
 }
-export const totalFloorsOf = (config: Pick<ProjectConfig, 'floors' | 'hasRoof'>) => config.floors + (config.hasRoof ? 1 : 0)
-export const isRoofFloorOf = (floor: number, config: Pick<ProjectConfig, 'floors' | 'hasRoof'>) => Boolean(config.hasRoof && floor === config.floors + 1)
-export const floorLabelOf = (floor: number, config: Pick<ProjectConfig, 'floors' | 'hasRoof'>) => isRoofFloorOf(floor, config) ? 'RF' : `${String(floor).padStart(2, '0')}F`
-export const floorNameOf = (floor: number, config: Pick<ProjectConfig, 'floors' | 'hasRoof'>) => isRoofFloorOf(floor, config) ? '지붕층 (RF)' : `${floor}층`
-
+export const totalFloorsOf = (config: ProjectConfig) => config.floors + (config.hasRoof ? 1 : 0)
+export const isRoofFloorOf = (floor: number, config: ProjectConfig) => floor === legacyRoofFloorOf(config)
+export const floorLabelOf = (floor: number, config: ProjectConfig) => config.levels?.[floor-1]?.name ?? (isRoofFloorOf(floor, config) ? 'RF' : `${String(floor).padStart(2, '0')}F`)
+export const floorNameOf = (floor: number, config: ProjectConfig) => config.levels?.[floor-1]?.name ?? (isRoofFloorOf(floor, config) ? '지붕층 (RF)' : `${floor}층`)
 export const moduleCoordinateNumbers = (
   m: Pick<ModuleRecord, 'x' | 'y'>,
   config?: Pick<ProjectConfig, 'rows' | 'numberingOrigin'>
@@ -237,7 +237,7 @@ export const moduleCoordinateNumbers = (
 
 export const moduleNumber = (
   m: Pick<ModuleRecord, 'floor' | 'x' | 'y' | 'kind' | 'sequence'>,
-  config?: Pick<ProjectConfig, 'floors' | 'hasRoof' | 'rows' | 'numberingOrder' | 'numberingOrigin'>
+  config?: ProjectConfig
 ) => {
   const { colNum, rowNum } = moduleCoordinateNumbers(m, config)
   const colStr = String(colNum).padStart(2, '0')
