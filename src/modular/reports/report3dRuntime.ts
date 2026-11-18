@@ -119,8 +119,8 @@ export function bootReport3D(math: ReturnType<typeof createSceneMath>, env: Envi
     const faces = math.boxFaces(scene, visible, data.moduleHeight, camera, date, data.asOf,true)
     const width = canvas.clientWidth, height = canvas.clientHeight, ctx = canvas.getContext('2d')
     element('floor-title').textContent = `3D 현황 · ${floorLabel()}`
-    element('floor-summary').textContent = `${stage?.label || '전체 공정 / 진행 현황'} · ${date} 기준 · 일반층 기본 ${data.moduleHeight}m · RF 기본 1m · 개별 치수 우선`
-    element('three-caption').textContent = `${floorLabel()} · ${stage?.label || '전체 공정 / 진행 현황'} · ${date} 기준 · 일반층 기본 ${data.moduleHeight}m · RF 기본 1m · 개별 치수 우선`
+    element('floor-summary').textContent = `${stage?.label || '전체 공정 / 진행 현황'} · ${date} 기준 · ${data.config.levels ? '층별 높이 적용' : `일반층 기본 ${data.moduleHeight}m · RF 기본 1m`} · 개별 치수 우선`
+    element('three-caption').textContent = `${floorLabel()} · ${stage?.label || '전체 공정 / 진행 현황'} · ${date} 기준 · ${data.config.levels ? '층별 높이 적용' : `일반층 기본 ${data.moduleHeight}m · RF 기본 1m`} · 개별 치수 우선`
     element('selection-summary').textContent = `${completed} / ${entries.filter(m=>!m.omitted).length}개 ${stage ? '완료' : '공정 진행'} · 생략 ${entries.filter(m=>m.omitted).length}개`
     element('three-count').textContent = `표시 ${visible.length}개 · 기준일 완료 ${completed}개`
     const legend = element('legend'), swatch = create('span', '')
