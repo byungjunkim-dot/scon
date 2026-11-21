@@ -1,7 +1,7 @@
 'use client'
 
-import {PRODUCTION_STATES,productionStateOf} from '../../common/productionDisplay'
-import {moduleTone} from '../../common/moduleAppearance'
+import {PRODUCTION_STATES,productionStateOf,productionTone} from '../../common/productionDisplay'
+import {moduleMarker} from '../../common/moduleAppearance'
 import {gridGeometryOf} from '../../common/gridGeometry'
 
 import { useEffect, useRef, useState } from 'react'
@@ -18,7 +18,7 @@ export function ExtraPlanLayer({ positions, config, settings, zoom, selectedKey,
     const key=positionKeyOf(p),g=moduleGeometryOf(p,config,settings),selected=selectedKey===key||selectedKeys.has(key)
     const match=draft||!matches||matches(p as ModuleRecord),state=draft?PRODUCTION_STATES.waiting:productionStateOf(p as ModuleRecord,stages)
     const label=draft?`${moduleKindLabel(p,config)} · X${axisNumber(p.x)} Y${axisNumber(p.y)}`:moduleNumber(p,config)
-    return <button key={key} type="button" className={`${styles.box} ${selected?styles.selected:''}`} style={{...moduleTone(moduleKindOf(p,config)),opacity:match?1:0.18,left:g.originX*13*zoom,top:(gridGeometryOf(config).depth-g.originY-g.depth)*13*zoom,width:g.width*13*zoom,height:g.depth*13*zoom,zIndex:selected?6000:20+i}} disabled={busy||!match} onClick={()=>onSelect(key)} aria-label={`${label} · 시작 ${g.baseZ}m · ${moduleKindLabel(p,config)} · ${state.label}`} aria-pressed={selected} title={`${label}\n${moduleKindLabel(p,config)} · 시작 ${g.baseZ}m · 높이 ${g.height}m · ${state.label}`}><b><i className={styles.statusDot} style={{background:state.color}} aria-label={state.label}/>{label}</b><span>{moduleKindLabel(p,config)} · {g.baseZ}m{!draft&&'completed' in p?` · ${state.label} · ${progress(p as ModuleRecord,stages)}%`:''}</span></button>
+    return <button key={key} type="button" className={`${styles.box} ${selected?styles.selected:''}`} style={{...productionTone(state),opacity:match?1:0.18,left:g.originX*13*zoom,top:(gridGeometryOf(config).depth-g.originY-g.depth)*13*zoom,width:g.width*13*zoom,height:g.depth*13*zoom,zIndex:selected?6000:20+i}} disabled={busy||!match} onClick={()=>onSelect(key)} aria-label={`${label} · 시작 ${g.baseZ}m · ${moduleKindLabel(p,config)} · ${state.label}`} aria-pressed={selected} title={`${label}\n${moduleKindLabel(p,config)} · 시작 ${g.baseZ}m · 높이 ${g.height}m · ${state.label}`}><b><i className={styles.statusDot} style={{background:moduleMarker(moduleKindOf(p,config)).color}} aria-label={moduleMarker(moduleKindOf(p,config)).label} title={moduleKindLabel(p,config)}/>{label}</b><span>{moduleKindLabel(p,config)} · {g.baseZ}m{!draft&&'completed' in p?` · ${state.label} · ${progress(p as ModuleRecord,stages)}%`:''}</span></button>
   })}</>
 }
 
