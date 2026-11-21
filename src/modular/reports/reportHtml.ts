@@ -1,5 +1,6 @@
+import {PRODUCTION_STATES,productionStateOf,productionTone} from '../common/productionDisplay'
 import {createPlanImageExporter} from '../features/plan-image/exporter'
-import {moduleTone} from '../common/moduleAppearance'
+import {MODULE_MARKERS,moduleMarker} from '../common/moduleAppearance'
 import {axisLabelsOf,gridGeometryOf} from '../common/gridGeometry'
 import { moduleGeometryOf, planBoundsOf } from '../common/moduleGeometry'
 import { moduleKindOf } from '../common/buildingModules'
@@ -26,12 +27,13 @@ export function reportSnapshot(project: ProjectDetail, colors = project.stageCol
     name: project.config.name, axisLabels:{x:axisLabelsOf(project.config,'x'),y:axisLabelsOf(project.config,'y')}, grid: gridGeometryOf(project.config), config: { width: project.config.width, depth: project.config.depth, columns: project.config.columns, rows: project.config.rows, floors: project.config.floors, gridWidth:gridGeometryOf(project.config).width,gridDepth:gridGeometryOf(project.config).depth, hasRoof: project.config.hasRoof, legacyRoofFloor:project.config.legacyRoofFloor, levels: project.config.levels },
     floorLabels: Object.fromEntries(Array.from({length: totalFloorsOf(project.config)},(_,i)=>[i+1,floorNameOf(i+1,project.config)])),
     bounds: Object.fromEntries(Array.from({length: totalFloorsOf(project.config)},(_,i)=>[i+1,planBoundsOf(project.modules.filter(m=>m.active && m.floor===i+1),project.config)])),
+    productionLegend:Object.values(PRODUCTION_STATES).map(state=>({label:state.label,...productionTone(state)})),kindLegend:Object.values(MODULE_MARKERS),
     exportedAt: new Date().toISOString(), updatedAt: project.updatedAt, asOf, stages, installationStage, moduleHeight: moduleHeightOf(project.installation3d),
     modules: project.modules.filter(module => module.active).map(module => {
       const plan = currentPlanOf(module)
       const installationDate = reportDate(actualStageDateOf(module, 'installation'))
       return {
-        number: moduleNumber(module, project.config), tone:moduleTone(moduleKindOf(module,project.config)), kind:moduleKindOf(module,project.config), geometry: moduleGeometryOf(module, project.config, project.installation3d), floor: module.floor, x: module.x, y: module.y,
+        number: moduleNumber(module, project.config), tone:productionTone(productionStateOf(module,workflow,asOf)),marker:moduleMarker(moduleKindOf(module,project.config)), kind:moduleKindOf(module,project.config), geometry: moduleGeometryOf(module, project.config, project.installation3d), floor: module.floor, x: module.x, y: module.y,
         omittedStages:[...(plan.omittedStages??[])],
         installation: { plannedDate: reportDate(plan.installationDate), actualDate: installationDate && installationDate <= asOf ? installationDate : '' },
         planned: Object.fromEntries(stages.map(stage => [stage.id, reportDate(plannedStageDateOf(plan, stage.id))])),
@@ -111,6 +113,7 @@ const REPORT_CSS = `
 @container report-tile (min-aspect-ratio:3/2) and (max-width:76px){.module-progress{display:none}.module-number{font-size:9px}}
 .drawing-head{align-items:flex-start}.plan-image-actions{display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end;max-width:300px;font-size:11px}.plan-image-actions button{padding:5px 9px}.plan-image-actions span{flex-basis:100%;color:#64748b}.drawing-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px;min-width:0;flex-shrink:0}#plan-mini-3d{position:relative;width:260px;max-width:100%;height:170px;border:1px solid #dbe5f3;border-radius:9px;overflow:hidden;background:radial-gradient(ellipse at center,#fff,#f3f6fb)}#plan-mini-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}.plan-mini-controls{position:absolute;right:6px;bottom:6px;display:flex;gap:2px;padding:2px;border-radius:5px;background:#ffffffe6}.plan-mini-controls button{display:grid;place-items:center;width:22px;height:22px;padding:0;border:0;background:transparent;color:#64748b;font-size:14px}.plan-mini-controls button:hover{background:#eff6ff;color:#155dfc}@media(max-width:900px){.drawing-actions{margin-left:auto}}@media(max-width:520px){.drawing-actions{width:100%;align-items:flex-end}#plan-mini-3d{height:150px}}@media print{#plan-mini-3d{display:none!important}}
 @page{size:A4 landscape;margin:12mm}
+.legend{flex-wrap:wrap}.legend-group{display:flex;flex-basis:100%;flex-wrap:wrap;align-items:center;gap:7px}.legend-group>b{font-size:10px;color:#64748b;margin-right:3px}.legend-entry{display:inline-flex;align-items:center;gap:4px}.kind-dot{display:inline-block;width:7px;height:7px;min-width:7px;border-radius:50%;margin-right:4px;vertical-align:middle}.swatch.kind-dot{width:8px;height:8px;min-width:8px;margin-right:0;border-radius:50%}
 @media print{.plan-image-actions{display:none!important}body{background:white}header{padding:0 0 15px}main{display:block;padding:10px 0}.drawing{border:0;overflow:visible}.drawing-head{padding:10px 0}.zoom,aside,#color-settings{display:none}#viewport{height:auto!important;min-height:0;overflow:visible;border:0}#board{margin:40px 60px 60px 140px}.module{break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact}.drawing-foot{margin-left:0}}
 `
 
@@ -153,7 +156,7 @@ const REPORT_SCRIPT = String.raw`
     $('floor-title').textContent=data.floorLabels[selectedFloor]+' 모듈 배치도';
     var floorTotal=modules.reduce(function(sum,m){return sum+eligible(m).length;},0), floorDone=modules.reduce(function(sum,m){return sum+done(m).length;},0);
     $('floor-summary').textContent=modules.length+'개 모듈 · 층 진행률 '+(floorTotal?Math.round(floorDone/floorTotal*100):0)+'% · '+config.width+' × '+config.depth+' m 기준 그리드';
-    var legend=$('legend');legend.replaceChildren();var dot=el('span',undefined,'swatch');dot.style.background=stage?stage.color:'#dce7f7';legend.append(dot,el('span',stage?stage.label+' 완료':'전체 공정 진행률'));
+    var legend=$('legend');legend.replaceChildren();function legendGroup(label,items,round){var group=el('div',undefined,'legend-group');group.append(el('b',label));items.forEach(function(item){var entry=el('span',undefined,'legend-entry'),dot=el('i',undefined,'swatch'+(round?' kind-dot':''));dot.style.background=round?item.color:item.background;dot.style.borderColor=item.borderColor||item.color;entry.append(dot,el('span',item.label));group.append(entry);});legend.append(group);}legendGroup(stage?'선택 공정':'바탕',stage?[{label:stage.label+' 완료',background:stage.color,borderColor:stage.color}]:data.productionLegend,false);legendGroup('도트',data.kindLegend,true);
     $('selection-summary').textContent=completed+' / '+modules.filter(function(m){return stage?!omitted(m,stage.id):eligible(m).length>0;}).length+'개 '+(stage?'완료':'전체 공정 완료')+(modules.some(function(m){return stage?omitted(m,stage.id):!eligible(m).length;})?' · 생략 '+modules.filter(function(m){return stage?omitted(m,stage.id):!eligible(m).length;}).length+'개':'');
     var selector=$('plane-selection');selector.replaceChildren(el('option','모듈을 선택하세요'));selector.firstChild.value='';modules.forEach(function(m){var o=el('option',m.number);o.value=m.number;selector.append(o);});selector.value=selectedNumber;
     var board=$('board');board.replaceChildren();var cw=140*zoom,ch=cw*config.depth/config.width,scale=cw/config.width,bounds=data.bounds[selectedFloor],ox=-bounds.x0*scale,oy=(bounds.y1-data.grid.depth)*scale;board.style.width=bounds.width*scale+'px';board.style.height=bounds.depth*scale+'px';board.style.backgroundImage='none';
@@ -166,7 +169,7 @@ const REPORT_SCRIPT = String.raw`
       var cell=el('button',undefined,'module'+(selectedNumber===m.number?' selected':''));cell.dataset.module=m.number;cell.dataset.completed=stage?String(Boolean(isDone)):String(finished.length);cell.setAttribute('aria-label',m.number+' · '+percent(m)+'%'+(stage?' · '+stage.label+(omitted(m,stage.id)?' 생략':isDone?' 완료':' 미완료'):''));cell.setAttribute('aria-pressed',String(selectedNumber===m.number));
       var g=m.geometry;cell.style.left=ox+g.originX*scale+2+'px';cell.style.top=oy+(data.grid.depth-g.originY-g.depth)*scale+2+'px';cell.style.width=Math.max(1,g.width*scale-4)+'px';cell.style.height=Math.max(1,g.depth*scale-4)+'px';
       cell.style.background=stage?(isDone?stage.color:'#eef1f5'):m.tone.background;cell.style.color=stage?(isDone?foreground(stage.color):'#27384f'):m.tone.color;cell.style.borderColor=stage?(isDone?stage.color:'#ccd6e3'):m.tone.borderColor;
-      var content=el('span',undefined,'module-content'),heading=el('span',undefined,'module-heading');heading.append(el('span',m.number,'module-number'),el('span',percent(m)+'%','module-progress'));content.append(heading);
+      var content=el('span',undefined,'module-content'),heading=el('span',undefined,'module-heading');var number=el('span',undefined,'module-number'),kindDot=el('i',undefined,'kind-dot');kindDot.style.background=m.marker.color;kindDot.setAttribute('aria-label',m.marker.label);kindDot.title=m.marker.label;number.append(kindDot,document.createTextNode(m.number));heading.append(number,el('span',percent(m)+'%','module-progress'));content.append(heading);
       var bar=el('span',undefined,'bar'),fill=el('i');fill.style.width=percent(m)+'%';bar.append(fill);content.append(bar);
       var text=stage?(omitted(m,stage.id)?stage.label+' 생략 · 집계 제외':isDone?stage.label+' 완료\n'+m.completed[stage.id]:'미완료'):(finished.length?finished.map(function(s){return s.label;}).join(' · '):'완료 공정 없음');
       var list=el('span',text,'done-list');content.append(list);var summary=stage?stage.label+(omitted(m,stage.id)?' 생략':isDone?' 완료':' 미완료'):!eligible(m).length?'대상 공정 없음':latest?latest.label+' 완료'+(finished.length>1?' 외 '+(finished.length-1)+'개':''):'제작 대기';content.append(el('span',summary,'done-summary'));cell.append(content);cell.title=m.number+' · '+percent(m)+'%\n'+text;
@@ -208,8 +211,8 @@ const REPORT_SCRIPT = String.raw`
   function imageButtons(){var disabled=imageBusy||!!(three&&three.isActive());$('image-save').disabled=disabled;$('image-copy').disabled=disabled;}
   function imageAction(action){
     if(imageBusy||(three&&three.isActive()))return;
-    var name=data.name+'_'+data.floorLabels[selectedFloor]+'_평면_'+Math.round(zoom*100)+'%',swatch=$('legend').querySelector('.swatch');
-    var options={element:$('board'),title:data.name+' · '+data.floorLabels[selectedFloor]+' · '+Math.round(zoom*100)+'%',filename:name,legend:[{label:$('legend').textContent||'전체 공정',color:swatch?getComputedStyle(swatch).backgroundColor:'#dce7f7'}]};
+    var name=data.name+'_'+data.floorLabels[selectedFloor]+'_평면_'+Math.round(zoom*100)+'%';
+    var options={element:$('board'),title:data.name+' · '+data.floorLabels[selectedFloor]+' · '+Math.round(zoom*100)+'%',filename:name,legend:[].map.call($('legend').querySelectorAll('.legend-entry'),function(entry){var swatch=entry.querySelector('.swatch');return {label:(swatch.classList.contains('kind-dot')?'도트 · ':'바탕 · ')+entry.textContent,color:getComputedStyle(swatch).backgroundColor,shape:swatch.classList.contains('kind-dot')?'dot':undefined};})};
     imageBusy=true;$('image-status').textContent='이미지 생성 중…';imageButtons();
     imageExporter.run(options,action).then(function(result){$('image-status').textContent=result==='saved'?'PNG 다운로드를 시작했습니다.':result==='copied'?'평면 이미지를 복사했습니다.':'미리보기에서 이미지 복사를 선택하세요.';}).catch(function(error){$('image-status').textContent=imageExporter.message(error);}).finally(function(){imageBusy=false;imageButtons();});
   }
