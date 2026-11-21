@@ -1,5 +1,5 @@
 export interface PlanImageOptions {
- element:HTMLElement; title:string; filename:string; legend:{label:string;color:string}[]; pixelRatio?:1|2
+ element:HTMLElement; title:string; filename:string; legend:{label:string;color:string;shape?:'dot'}[]; pixelRatio?:1|2
 }
 export interface PlanImageResult {blob:Blob;width:number;height:number}
 
@@ -73,12 +73,20 @@ export function createPlanImageExporter(){
  }
  async function capture(options:PlanImageOptions):Promise<PlanImageResult>{
   // Everything describing the image is frozen before the first await.
-  const title=String(options.title),legend=options.legend.map(item=>({label:String(item.label),color:item.color})),ratio=options.pixelRatio??2,shot=snapshot(options.element)
+  const title=String(options.title),legend=options.legend.map(item=>({label:String(item.label),color:item.color,shape:item.shape})),ratio=options.pixelRatio??2,shot=snapshot(options.element)
   if(ratio!==1&&ratio!==2)throw new Error('이미지 해상도를 확인해 주세요.')
-  const cssWidth=Math.max(320,shot.width),cssHeight=shot.height+90,width=Math.ceil(cssWidth*ratio),height=Math.ceil(cssHeight*ratio)
-  if(width>16384||height>16384||width*height>32000000)throw new Error('현재 배율의 전체 이미지가 너무 큽니다. 평면 배율을 낮춘 뒤 다시 시도해 주세요.')
+  const cssWidth=Math.max(320,shot.width),width=Math.ceil(cssWidth*ratio)
+  const sizeError=()=>new Error('현재 배율의 전체 이미지가 너무 큽니다. 평면 배율을 낮춘 뒤 다시 시도해 주세요.')
+  if(width>16384||(shot.height+90)*ratio>16384||width*(shot.height+90)*ratio>32000000)throw sizeError()
   const doc=options.element.ownerDocument
   await doc.fonts?.ready
+  const measuring=doc.createElement('canvas'),measure=measuring.getContext('2d')!
+  if(!measure)throw new Error('이 브라우저에서 평면 이미지를 생성할 수 없습니다.')
+  measure.font='11px "Segoe UI","Malgun Gothic",sans-serif';let lx=16,ly=shot.height+64
+  const entries=legend.map(item=>{let text=item.label;while(text.length&&measure.measureText(text).width>cssWidth-50)text=text.slice(0,-1);if(text!==item.label)text=text.slice(0,-1)+'…';const itemWidth=measure.measureText(text).width+32;if(lx+itemWidth>cssWidth-12){lx=16;ly+=18}const result={...item,text,x:lx,y:ly};lx+=itemWidth;return result})
+  measuring.width=0;measuring.height=0
+  const cssHeight=Math.max(shot.height+90,ly+18),height=Math.ceil(cssHeight*ratio)
+  if(height>16384||width*height>32000000)throw sizeError()
   const img=new Image();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(shot.xml)
   try{
    await img.decode()
@@ -88,8 +96,8 @@ export function createPlanImageExporter(){
    function fit(text:string,max:number){let result=text;while(result.length&&ctx.measureText(result).width>max)result=result.slice(0,-1);return result===text?text:result.slice(0,-1)+'…'}
    ctx.fillStyle='#334155';ctx.font='600 16px "Segoe UI","Malgun Gothic",sans-serif';ctx.fillText(fit(title,cssWidth-32),16,28)
    ctx.drawImage(img,0,44,shot.width,shot.height)
-   ctx.font='11px "Segoe UI","Malgun Gothic",sans-serif';let x=16,y=shot.height+64
-   for(const item of legend){const text=fit(item.label,cssWidth-50),itemWidth=ctx.measureText(text).width+32;if(x+itemWidth>cssWidth-12){x=16;y+=18}if(y>cssHeight-5)break;ctx.fillStyle=item.color;ctx.fillRect(x,y-8,8,8);ctx.fillStyle='#64748b';ctx.fillText(text,x+13,y);x+=itemWidth}
+   ctx.font='11px "Segoe UI","Malgun Gothic",sans-serif'
+   for(const item of entries){ctx.fillStyle=item.color;if(item.shape==='dot'){ctx.beginPath();ctx.arc(item.x+4,item.y-4,4,0,Math.PI*2);ctx.fill()}else ctx.fillRect(item.x,item.y-8,8,8);ctx.fillStyle='#64748b';ctx.fillText(item.text,item.x+13,item.y)}
    const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('PNG 이미지 생성에 실패했습니다.')),'image/png'))
    canvas.width=0;canvas.height=0
    return {blob,width,height}
