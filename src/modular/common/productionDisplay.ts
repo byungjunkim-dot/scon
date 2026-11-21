@@ -7,6 +7,14 @@ export const PRODUCTION_STATES = {
  shipped:{id:'shipped',label:'출고',color:'#2563EB'},
  installed:{id:'installed',label:'설치',color:'#15915B'},
 } as const
+/** Quiet status fills keep module labels legible at report scale. */
+export const PRODUCTION_TONES = {
+ waiting:{background:'#ECF1F6',borderColor:'#CBD5E1',color:'#475569'},
+ working:{background:'#FFF3DB',borderColor:'#E9C77F',color:'#8A5A10'},
+ shipped:{background:'#E9F2FF',borderColor:'#93C5FD',color:'#155DFC'},
+ installed:{background:'#E7F9EE',borderColor:'#86CDA5',color:'#23764C'},
+} as const
+export const productionTone=(state:{id:keyof typeof PRODUCTION_STATES})=>PRODUCTION_TONES[state.id]
 export function productionStateOf(module:Pick<ModuleRecord,'completed'|'actualInstallationDate'|'currentPlan'>,stages:readonly WorkflowStage[],asOf=today()):{id:keyof typeof PRODUCTION_STATES;label:string;color:string}{
  const applicable=applicableStagesOf(module,stages)
  const done=(id:string)=>{
