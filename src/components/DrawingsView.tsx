@@ -356,12 +356,13 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
     }
   };
 
-  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.5, 4));
+  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.5, 8));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.5, 0.5));
   const handleResetView = () => {
     setZoom(1);
     setViewKey((prev) => prev + 1);
   };
+  const dragLimit = Math.max(1200, Math.round(zoom * 1000));
 
   const hasPreview = Boolean(pendingMedia || newImageUrl);
 
@@ -489,10 +490,10 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
                 key={viewKey}
                 drag
                 dragConstraints={{
-                  top: -1200,
-                  left: -1200,
-                  right: 1200,
-                  bottom: 1200,
+                  top: -dragLimit,
+                  left: -dragLimit,
+                  right: dragLimit,
+                  bottom: dragLimit,
                 }}
                 dragElastic={0.2}
                 animate={{ scale: zoom }}
@@ -526,21 +527,32 @@ export function DrawingsView({ project, currentUser }: DrawingsViewProps) {
             )}
 
             {/* Zoom Controls */}
-            <div className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex flex-col gap-2 z-10">
+            <div className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex flex-col items-center gap-2 z-10">
+              <span className="px-2 py-0.5 rounded-full bg-white/95 border border-gray-200 shadow-sm text-[10px] font-bold text-gray-600 tabular-nums">
+                {Math.round(zoom * 100)}%
+              </span>
               <button
+                type="button"
                 onClick={handleZoomIn}
-                className="w-8 h-8 md:w-10 md:h-10 bg-white text-gray-700 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-50 border border-gray-200 transition-all active:scale-95"
+                disabled={zoom >= 8}
+                title="확대 (최대 800%)"
+                className="w-8 h-8 md:w-10 md:h-10 bg-white text-gray-700 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-50 border border-gray-200 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 +
               </button>
               <button
+                type="button"
                 onClick={handleZoomOut}
-                className="w-8 h-8 md:w-10 md:h-10 bg-white text-gray-700 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-50 border border-gray-200 transition-all active:scale-95"
+                disabled={zoom <= 0.5}
+                title="축소 (최소 50%)"
+                className="w-8 h-8 md:w-10 md:h-10 bg-white text-gray-700 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-50 border border-gray-200 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 -
               </button>
               <button
+                type="button"
                 onClick={handleResetView}
+                title="원래 크기 (100%)"
                 className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg hover:bg-blue-700 transition-all active:scale-95"
               >
                 1:1
